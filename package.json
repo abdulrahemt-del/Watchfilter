@@ -1,0 +1,31 @@
+{
+  "name": "watchfilter",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:3001": "next dev -H 127.0.0.1 -p 3001",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "analyze": "tsx scripts/analyze-cli.ts"
+  },
+  "dependencies": {
+    "next": "^15.3.3",
+    "resend": "^4.0.0",
+    "openai": "^4.104.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "undici": "^7.0.0",
+    "youtube-transcript": "^1.2.1",
+    "zod": "^3.25.56"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.15.29",
+    "@types/react": "^19.1.6",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
