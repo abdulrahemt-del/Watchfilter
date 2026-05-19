@@ -217,6 +217,7 @@ function EmailButton({ analysisId }: { analysisId: string }) {
 
 /* ── Accordion data card ── */
 type DataPoint =
+  | { metric_title: string; causal_chain: string; direct_quote: string; credibility_check: string; exact_timestamp: string }
   | { metric_title: string; speaker_thesis: string; direct_quote: string; exact_timestamp: string }
   | { metric_value: string; metric_context: string; root_cause: string }
   | { metric: string; root_cause: string }
@@ -224,33 +225,63 @@ type DataPoint =
 
 type ResolvedPoint = {
   title: string;
-  thesis: string | null;
+  causalChain: string | null;
   quote: string | null;
+  credibilityCheck: string | null;
   timestamp: string | null;
 };
 
 function resolveDataPoint(point: DataPoint): ResolvedPoint {
   if (typeof point === "string") {
-    return { title: point, thesis: null, quote: null, timestamp: null };
+    return { title: point, causalChain: null, quote: null, credibilityCheck: null, timestamp: null };
   }
-  if ("metric_title" in point) {
+  if ("causal_chain" in point) {
     return {
       title: point.metric_title,
-      thesis: point.speaker_thesis,
+      causalChain: point.causal_chain,
       quote: point.direct_quote,
+      credibilityCheck: point.credibility_check,
+      timestamp: point.exact_timestamp,
+    };
+  }
+  if ("speaker_thesis" in point) {
+    // previous schema
+    return {
+      title: point.metric_title,
+      causalChain: point.speaker_thesis,
+      quote: point.direct_quote,
+      credibilityCheck: null,
       timestamp: point.exact_timestamp,
     };
   }
   if ("metric_context" in point) {
     return {
       title: `${point.metric_context} — ${point.metric_value}`,
-      thesis: point.root_cause,
+      causalChain: point.root_cause,
       quote: null,
+      credibilityCheck: null,
       timestamp: null,
     };
   }
   // legacy { metric, root_cause }
-  return { title: point.metric, thesis: point.root_cause, quote: null, timestamp: null };
+  return { title: point.metric, causalChain: point.root_cause, quote: null, credibilityCheck: null, timestamp: null };
+}
+
+function CausalChain({ text }: { text: string }) {
+  const steps = text.split(/\s*→\s*|\s*->\s*/).map((s) => s.trim()).filter(Boolean);
+  if (steps.length <= 1) {
+    return <p className="data-card__thesis">{text}</p>;
+  }
+  return (
+    <p className="data-card__causal-chain">
+      {steps.flatMap((step, i) => [
+        <span key={`s${i}`} className="data-card__causal-step">{step}</span>,
+        i < steps.length - 1
+          ? <span key={`a${i}`} className="data-card__causal-arrow">→</span>
+          : null,
+      ])}
+    </p>
+  );
 }
 
 function DataCard({
@@ -263,8 +294,8 @@ function DataCard({
   defaultOpen: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const { title, thesis, quote, timestamp } = resolveDataPoint(point);
-  const hasBody = !!(thesis || quote);
+  const { title, causalChain, quote, credibilityCheck, timestamp } = resolveDataPoint(point);
+  const hasBody = !!(causalChain || quote || credibilityCheck);
 
   return (
     <div className="data-card">
@@ -309,10 +340,10 @@ function DataCard({
         <div className={`accordion-body ${open ? "accordion-body--open" : ""}`}>
           <div className="accordion-inner">
 
-            {thesis && (
+            {causalChain && (
               <div className="data-card__tier">
-                <p className="data-card__tier-label">Speaker Thesis</p>
-                <p className="data-card__thesis">{thesis}</p>
+                <p className="data-card__tier-label">Causal Chain</p>
+                <CausalChain text={causalChain} />
               </div>
             )}
 
@@ -322,11 +353,20 @@ function DataCard({
                   <svg width="13" height="10" viewBox="0 0 13 10" fill="currentColor" aria-hidden>
                     <path d="M0 10V6.2C0 3.7 1.4 1.7 4.3.4L5.1 2C3.3 2.8 2.4 4 2.3 5.6H4.8V10H0zm7.2 0V6.2c0-2.5 1.4-4.5 4.3-5.8L12.3 2c-1.8.8-2.7 2-2.8 3.6H12V10H7.2z"/>
                   </svg>
-                  Transcript Anchor
+                  Direct Quote
                 </p>
                 <div className="data-card__quote-block">
                   <p className="data-card__quote-text">"{quote}"</p>
                 </div>
+              </div>
+            )}
+
+            {credibilityCheck && (
+              <div className="data-card__tier">
+                <p className="data-card__tier-label data-card__tier-label--amber">
+                  ⚖ Credibility Check
+                </p>
+                <p className="data-card__credibility">{credibilityCheck}</p>
               </div>
             )}
 

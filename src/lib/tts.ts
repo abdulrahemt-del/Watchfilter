@@ -24,19 +24,22 @@ export function buildPodcastScript(
   if (analysis.hard_data_points.length > 0) {
     lines.push("Key Data Points.", "");
     analysis.hard_data_points.forEach((point, i) => {
-      let title: string, thesis: string | null, quote: string | null;
+      let title: string, causalChain: string | null, quote: string | null, credibility: string | null;
       if (typeof point === "string") {
-        title = point; thesis = null; quote = null;
-      } else if ("metric_title" in point) {
-        title = point.metric_title; thesis = point.speaker_thesis; quote = point.direct_quote;
+        title = point; causalChain = null; quote = null; credibility = null;
+      } else if ("causal_chain" in point) {
+        title = point.metric_title; causalChain = point.causal_chain; quote = point.direct_quote; credibility = point.credibility_check;
+      } else if ("speaker_thesis" in point) {
+        title = point.metric_title; causalChain = point.speaker_thesis; quote = point.direct_quote; credibility = null;
       } else if ("metric_context" in point) {
-        title = `${point.metric_context}: ${point.metric_value}`; thesis = point.root_cause; quote = null;
+        title = `${point.metric_context}: ${point.metric_value}`; causalChain = point.root_cause; quote = null; credibility = null;
       } else {
-        title = point.metric; thesis = point.root_cause; quote = null;
+        title = point.metric; causalChain = point.root_cause; quote = null; credibility = null;
       }
       lines.push(`${i + 1}. ${title}.`);
-      if (thesis) lines.push(`Analysis: ${thesis}`);
+      if (causalChain) lines.push(`Causal chain: ${causalChain}`);
       if (quote) lines.push(`Quote: "${quote}"`);
+      if (credibility) lines.push(`Credibility: ${credibility}`);
       lines.push("");
     });
   }

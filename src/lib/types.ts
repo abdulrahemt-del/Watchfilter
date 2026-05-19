@@ -20,26 +20,31 @@ export const videoAnalysisSchema = z.object({
         metric_title: z
           .string()
           .describe(
-            "The specific data point or number as a complete, self-explanatory statement (e.g. '22x more memorable than statistics alone', '90% of decisions are subconscious')",
+            "The specific data point as a complete, self-explanatory statement including the number and what it measures (e.g. '22x more memorable than statistics alone')",
           ),
-        speaker_thesis: z
+        causal_chain: z
           .string()
           .describe(
-            "3-to-4 sentences explaining EXACTLY how the speaker connects this number to their overarching argument — name the specific concepts, frameworks, or examples they actually raised",
+            "Step-by-step logical chain showing exactly how the speaker connects their premise to this data point. Format: Step A → Result B → Core Metric. Specific to this video's argument.",
           ),
         direct_quote: z
           .string()
           .describe(
-            "A powerful direct quote or close paraphrase from the speaker explaining or reacting to this specific statistic — use quotation marks if verbatim",
+            "The single most high-impact verbatim or near-verbatim quote from the speaker at the exact moment they explain this statistic. Use quotation marks. Never fabricate.",
+          ),
+        credibility_check: z
+          .string()
+          .describe(
+            "1-to-2 sentences objectively assessing whether this claim is: a verified historical/economic fact, an active policy/institutional statistic, or a speculative prediction by the speaker. Be precise and honest.",
           ),
         exact_timestamp: z
           .string()
           .describe(
-            "M:SS or H:MM:SS timestamp from the bracketed transcript markers where the speaker is actively articulating this point",
+            "M:SS or H:MM:SS timestamp from the bracketed transcript where the speaker is actively articulating this point",
           ),
       }),
     )
-    .describe("Key quantitative claims with deep speaker-anchored thesis, direct quote, and timestamp"),
+    .describe("Key quantitative claims with causal chain, direct quote, credibility assessment, and timestamp"),
   actionable_takeaways: z
     .array(
       z.object({

@@ -10,10 +10,16 @@ clickbait_score: Rate how misleading the TITLE is versus what the video actually
 
 primary_subject: One concise phrase naming the real core topic — not the hype in the title.
 
-hard_data_points: Extract every key number, percentage, milestone, or metric mentioned. For EACH one return four fields:
-  - metric_title: The specific data point written as a complete, self-explanatory statement that includes the number AND what it measures (e.g. "Stories are 22x more memorable than statistics alone", "90% of financial decisions are made subconsciously"). Do not just state a bare number.
-  - speaker_thesis: 3-to-4 sentences explaining EXACTLY how the speaker connects this number to their core argument. You must name the specific concepts, frameworks, narratives, or examples the speaker actually raised — not generic commentary. Quote their reasoning chain. No filler sentences.
-  - direct_quote: The most powerful direct quote or close paraphrase from the speaker in which they explain or react to this specific statistic. Prefer verbatim if possible; use quotation marks. This must be anchored to THIS specific data point, not the video in general.
+hard_data_points: Extract every key number, percentage, milestone, or metric mentioned. For EACH one return five fields with legal-brief precision:
+
+  - metric_title: A complete, self-explanatory statement including the number AND what it measures (e.g. "Stories are 22x more memorable than statistics alone"). Never a bare number.
+
+  - causal_chain: A crisp, step-by-step logical breakdown of how the speaker connects the video's core premise to this specific data point. Format strictly as: Premise → Mechanism → Outcome → Metric. Each node must be a short phrase (3-6 words). Be specific to the speaker's actual argument — not a generic description of the topic.
+
+  - direct_quote: The single most high-impact verbatim quote or highly accurate transcript extract from the speaker at the exact moment they explain this statistic. Use quotation marks. Never invent or generalize — pull the actual words.
+
+  - credibility_check: 1-to-2 sentences of objective context. Explicitly state whether this claim is: (a) a verified historical or economic fact supported by cited research, (b) an active institutional or policy statistic from a named source, or (c) a speculative forward-looking prediction made by the speaker. Call out any hedging language the speaker used.
+
   - exact_timestamp: The M:SS or H:MM:SS timestamp from the bracketed transcript markers at the moment the speaker is actively articulating this specific point.
 
 actionable_takeaways: Exactly 3–4 high-level strategy conclusions. For each, provide 2–3 execution_steps: specific, tactical actions a professional can implement in their real life today. Each step should start with a concrete verb (Automate, Run, Set, Block, etc.). No vague inspiration.

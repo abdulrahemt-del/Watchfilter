@@ -680,22 +680,43 @@ input {
   margin-bottom: 0.45rem;
 }
 
-.data-card__thesis {
-  margin: 0;
-  font-size: 0.84rem;
-  color: var(--muted);
-  line-height: 1.65;
+.data-card__tier-label--amber {
+  color: var(--warn);
 }
 
+/* Causal chain — flex pill steps with arrows */
+.data-card__causal-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+}
+
+.data-card__causal-step {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text);
+  background: rgba(91, 141, 239, 0.08);
+  border: 1px solid rgba(91, 141, 239, 0.18);
+  border-radius: 4px;
+  padding: 0.18rem 0.55rem;
+  line-height: 1.4;
+}
+
+.data-card__causal-arrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-dim);
+}
+
+/* Quote / transcript block */
 .data-card__quote-block {
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent-dim);
   border-radius: 0 calc(var(--radius) - 2px) calc(var(--radius) - 2px) 0;
   padding: 0.6rem 0.9rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
 }
 
 .data-card__quote-text {
@@ -704,6 +725,18 @@ input {
   font-style: italic;
   color: #9aa3b5;
   line-height: 1.6;
+}
+
+/* Credibility check box */
+.data-card__credibility {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.6;
+  padding: 0.5rem 0.75rem;
+  background: rgba(232, 168, 74, 0.05);
+  border: 1px solid rgba(232, 168, 74, 0.15);
+  border-radius: calc(var(--radius) - 2px);
 }
 
 /* ── Metric value pill badge ── */

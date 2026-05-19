@@ -33,32 +33,39 @@ function buildHtml(analysis: SavedAnalysis): string {
 
   const dataPointsHtml = analysis.hard_data_points.length > 0
     ? analysis.hard_data_points.map((point) => {
-        let title: string, thesis: string | null, quote: string | null, ts: string | null;
+        let title: string, causalChain: string | null, quote: string | null, credibility: string | null, ts: string | null;
         if (typeof point === "string") {
-          title = point; thesis = null; quote = null; ts = null;
-        } else if ("metric_title" in point) {
-          title = point.metric_title; thesis = point.speaker_thesis; quote = point.direct_quote; ts = point.exact_timestamp;
+          title = point; causalChain = null; quote = null; credibility = null; ts = null;
+        } else if ("causal_chain" in point) {
+          title = point.metric_title; causalChain = point.causal_chain; quote = point.direct_quote; credibility = point.credibility_check; ts = point.exact_timestamp;
+        } else if ("speaker_thesis" in point) {
+          title = point.metric_title; causalChain = point.speaker_thesis; quote = point.direct_quote; credibility = null; ts = point.exact_timestamp;
         } else if ("metric_context" in point) {
-          title = `${point.metric_context} — ${point.metric_value}`; thesis = point.root_cause; quote = null; ts = null;
+          title = `${point.metric_context} — ${point.metric_value}`; causalChain = point.root_cause; quote = null; credibility = null; ts = null;
         } else {
-          title = point.metric; thesis = point.root_cause; quote = null; ts = null;
+          title = point.metric; causalChain = point.root_cause; quote = null; credibility = null; ts = null;
         }
         return `
           <tr>
             <td style="padding:14px 0;border-bottom:1px solid #e5e7eb;">
-              <p style="margin:0 0 8px;font-weight:700;color:#111827;font-size:14px;line-height:1.4;">
+              <p style="margin:0 0 10px;font-weight:700;color:#111827;font-size:14px;line-height:1.4;">
                 ${title}
                 ${ts ? `<span style="margin-left:8px;display:inline-block;background:#eff6ff;color:#2563eb;font-size:11px;padding:2px 8px;border-radius:9999px;font-weight:600;">▶ ${ts}</span>` : ""}
               </p>
-              ${thesis ? `
-              <div style="margin-bottom:8px;">
-                <p style="margin:0 0 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b8def;">Speaker Thesis</p>
-                <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">${thesis}</p>
+              ${causalChain ? `
+              <div style="margin-bottom:10px;">
+                <p style="margin:0 0 5px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b8def;">Causal Chain</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">${causalChain}</p>
               </div>` : ""}
               ${quote ? `
-              <div style="border-left:3px solid #5b8def;padding:8px 12px;background:#f0f4ff;border-radius:0 4px 4px 0;">
-                <p style="margin:0 0 3px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b8def;">Transcript Anchor</p>
+              <div style="margin-bottom:10px;border-left:3px solid #5b8def;padding:8px 12px;background:#f0f4ff;border-radius:0 4px 4px 0;">
+                <p style="margin:0 0 3px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b8def;">Direct Quote</p>
                 <p style="margin:0;font-size:13px;color:#6b7280;font-style:italic;line-height:1.55;">"${quote}"</p>
+              </div>` : ""}
+              ${credibility ? `
+              <div style="padding:8px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;">
+                <p style="margin:0 0 3px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#d97706;">⚖ Credibility Check</p>
+                <p style="margin:0;font-size:13px;color:#78716c;line-height:1.55;">${credibility}</p>
               </div>` : ""}
             </td>
           </tr>`;
