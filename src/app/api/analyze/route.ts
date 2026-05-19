@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { analyzeYouTubeVideo, TranscriptFetchError } from "@/lib/analyzeVideo";
 import { saveAnalysis } from "@/lib/db";
@@ -59,10 +58,7 @@ export async function POST(request: Request) {
     if (apiKey) {
       try {
         const script = buildPodcastScript(result);
-        const filename = `${analysisId}.mp3`;
-        const outputPath = join(process.cwd(), "public", "audio", filename);
-        await generateSpeechFile(script, outputPath, apiKey);
-        audioPath = `/audio/${filename}`;
+        audioPath = await generateSpeechFile(script, `${analysisId}.mp3`, apiKey);
       } catch (ttsErr) {
         // TTS failure must not block the analysis response.
         console.error("TTS generation failed (non-fatal):", ttsErr);

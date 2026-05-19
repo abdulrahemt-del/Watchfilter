@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type { VideoAnalysis } from "./types";
 
 const TTS_CHAR_LIMIT = 4096;
@@ -60,11 +60,16 @@ export function buildPodcastScript(
     : script;
 }
 
+/**
+ * Generates an MP3 from the script and returns a public URL.
+ * - On Vercel (BLOB_READ_WRITE_TOKEN set): uploads to Vercel Blob, returns blob URL.
+ * - Locally (no token): writes to public/audio/, returns /audio/{filename}.
+ */
 export async function generateSpeechFile(
   script: string,
-  outputPath: string,
+  filename: string,
   apiKey: string
-): Promise<void> {
+): Promise<string> {
   const openai = new OpenAI({ apiKey });
 
   const response = await openai.audio.speech.create({
@@ -75,6 +80,21 @@ export async function generateSpeechFile(
   });
 
   const buffer = Buffer.from(await response.arrayBuffer());
+
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+  if (blobToken) {
+    const { put } = await import("@vercel/blob");
+    const blob = await put(`audio/${filename}`, buffer, {
+      access: "public",
+      contentType: "audio/mpeg",
+      token: blobToken,
+    });
+    return blob.url;
+  }
+
+  // Local fallback: write to public/audio/
+  const outputPath = join(process.cwd(), "public", "audio", filename);
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, buffer);
+  return `/audio/${filename}`;
 }
