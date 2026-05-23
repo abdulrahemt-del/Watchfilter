@@ -8,6 +8,8 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const VALID_VOICES = ["onyx", "nova", "echo", "fable", "shimmer", "alloy"] as const;
+
+const inProgress = new Set<string>();
 type Voice = (typeof VALID_VOICES)[number];
 
 export async function POST(request: Request) {
@@ -44,6 +46,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Analysis incomplete" }, { status: 422 });
   }
 
+  if (inProgress.has(analysisId)) {
+    return NextResponse.json({ error: "Audio generation already in progress for this analysis." }, { status: 409 });
+  }
+
+  inProgress.add(analysisId);
   try {
     const script = buildPodcastScript(analysis as Parameters<typeof buildPodcastScript>[0]);
     const filename = `${analysisId}-${safeVoice}.mp3`;
@@ -53,5 +60,7 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "TTS generation failed";
     return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    inProgress.delete(analysisId);
   }
 }

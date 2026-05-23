@@ -10,6 +10,22 @@ import type { TranscriptFetchOverrides } from "@/lib/youtube";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
+}
+
 function readStringField(body: object, key: string): string | undefined {
   const value = (body as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -26,6 +42,16 @@ export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const ip =
+    (request as unknown as { headers: Headers }).headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    (session.user?.email ?? "unknown");
+  if (!checkRateLimit(ip)) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait before analyzing another video." },
+      { status: 429 },
+    );
   }
 
   let body: unknown;
