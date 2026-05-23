@@ -1,0 +1,17 @@
+reviews:
+  profile: "assertive"
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  path_filters:
+    - "!node_modules/**"
+    - "!**/*.lock"
+    - "!dist/**"
+  instructions: |
+    - Flag any OpenAI model calls not using gpt-4o-mini
+    - Check all API routes for missing input validation with Zod
+    - Flag unhandled promise rejections in server components and API routes
+    - Flag any exposed secrets or API keys in code
+language: "en-US"
