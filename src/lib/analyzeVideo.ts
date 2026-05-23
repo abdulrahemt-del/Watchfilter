@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import {
   extractYouTubeVideoId,
-  fetchYouTubeTitle,
+  fetchYouTubeMetadata,
   fetchYouTubeTranscript,
   formatTranscriptForModel,
   type TranscriptFetchOverrides,
@@ -22,6 +22,8 @@ export type AnalyzeVideoOptions = {
   model?: string;
   /** Proxy / external API overrides for transcript fetch */
   transcript?: TranscriptFetchOverrides;
+  /** Cap transcript length before sending to the model; defaults to MAX_TRANSCRIPT_CHARS */
+  maxTranscriptChars?: number;
 };
 
 export { TranscriptFetchError };
@@ -43,11 +45,12 @@ export async function analyzeYouTubeVideo(
     );
   }
 
-  const [title, transcriptResult] = await Promise.all([
-    fetchYouTubeTitle(videoId),
+  const [metadata, transcriptResult] = await Promise.all([
+    fetchYouTubeMetadata(videoId),
     fetchYouTubeTranscript(videoId, options.transcript),
   ]);
 
+  const { title, channelName, viewCount, uploadDate, durationSeconds } = metadata;
   const timestampedTranscript = formatTranscriptForModel(
     transcriptResult.segments,
   );
@@ -56,15 +59,33 @@ export async function analyzeYouTubeVideo(
     model: options.model ?? "gpt-4o-mini",
     title,
     timestampedTranscript,
+    maxTranscriptChars: options.maxTranscriptChars,
   });
 
   return {
     ...analysis,
     videoId,
     title,
-    transcriptCharCount: timestampedTranscript.length,
+    channelName,
+    viewCount,
+    uploadDate,
+    durationSeconds: durationSeconds ?? null,
+    transcriptCharCount: Math.min(timestampedTranscript.length, MAX_TRANSCRIPT_CHARS),
     transcriptSource: transcriptResult.source,
   };
+}
+
+// ~90k tokens of transcript headroom — leaves ~38k tokens for system prompt, schema, and response.
+const MAX_TRANSCRIPT_CHARS = 360_000;
+
+function fitTranscript(transcript: string, maxChars = MAX_TRANSCRIPT_CHARS): string {
+  if (transcript.length <= maxChars) return transcript;
+  const boundary = transcript.lastIndexOf("\n", maxChars);
+  const sliceAt = boundary > 0 ? boundary : maxChars;
+  return (
+    transcript.slice(0, sliceAt) +
+    "\n[... transcript truncated — video continues beyond this point ...]"
+  );
 }
 
 async function summarizeTranscript(input: {
@@ -72,6 +93,7 @@ async function summarizeTranscript(input: {
   model: string;
   title: string | null;
   timestampedTranscript: string;
+  maxTranscriptChars?: number;
 }): Promise<VideoAnalysis> {
   const openai = new OpenAI({ apiKey: input.apiKey });
 
@@ -79,7 +101,7 @@ async function summarizeTranscript(input: {
     input.title ? `Video title: ${input.title}` : "Video title: (unknown)",
     "",
     "Timestamped transcript:",
-    input.timestampedTranscript,
+    fitTranscript(input.timestampedTranscript, input.maxTranscriptChars),
   ].join("\n");
 
   const completion = await openai.beta.chat.completions.parse({
