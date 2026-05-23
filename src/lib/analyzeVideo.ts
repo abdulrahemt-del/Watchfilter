@@ -98,7 +98,7 @@ async function summarizeTranscript(input: {
   const openai = new OpenAI({ apiKey: input.apiKey });
 
   const userContent = [
-    input.title ? `Video title: ${input.title}` : "Video title: (unknown)",
+    input.title ? `Video title: ${JSON.stringify(input.title)}` : "Video title: (unknown)",
     "",
     "Timestamped transcript:",
     fitTranscript(input.timestampedTranscript, input.maxTranscriptChars),

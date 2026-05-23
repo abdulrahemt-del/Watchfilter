@@ -67,20 +67,20 @@ export async function POST(req: Request) {
     }
 
     const themeList = themes.slice(0, 6).map((t, i) =>
-      `Theme ${i + 1}: "${t.topic}"\nCreators (${t.creators.length}): ${t.creators.slice(0, 4).join(", ")}\nVideos: ${t.count}\nKey insights:\n${
-        t.insights.slice(0, 3).map((s) => `  - ${s}`).join("\n") || "  - (no insights extracted)"
+      `Theme ${i + 1}: ${JSON.stringify(t.topic)}\nCreators (${t.creators.length}): ${t.creators.slice(0, 4).map((c) => JSON.stringify(c)).join(", ")}\nVideos: ${t.count}\nKey insights:\n${
+        t.insights.slice(0, 3).map((s) => `  - ${JSON.stringify(s)}`).join("\n") || "  - (no insights extracted)"
       }`
     ).join("\n\n");
 
     const oppSection = topOpportunity
-      ? `\n\nTop Opportunity: "${topOpportunity.topic}"\nCreators: ${topOpportunity.creators.slice(0, 3).join(", ")}\nInsights:\n${
-          topOpportunity.insights.slice(0, 3).map((s) => `  - ${s}`).join("\n") || "  - (no insights)"
+      ? `\n\nTop Opportunity: ${JSON.stringify(topOpportunity.topic)}\nCreators: ${topOpportunity.creators.slice(0, 3).map((c) => JSON.stringify(c)).join(", ")}\nInsights:\n${
+          topOpportunity.insights.slice(0, 3).map((s) => `  - ${JSON.stringify(s)}`).join("\n") || "  - (no insights)"
         }`
       : "\n\nTop Opportunity: none identified";
 
     const riskSection = topRisk
-      ? `\n\nTop Risk: "${topRisk.topic}"\nCreators: ${topRisk.creators.slice(0, 3).join(", ")}\nInsights:\n${
-          topRisk.insights.slice(0, 3).map((s) => `  - ${s}`).join("\n") || "  - (no insights)"
+      ? `\n\nTop Risk: ${JSON.stringify(topRisk.topic)}\nCreators: ${topRisk.creators.slice(0, 3).map((c) => JSON.stringify(c)).join(", ")}\nInsights:\n${
+          topRisk.insights.slice(0, 3).map((s) => `  - ${JSON.stringify(s)}`).join("\n") || "  - (no insights)"
         }`
       : "\n\nTop Risk: none identified";
 
