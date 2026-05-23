@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import { Resend } from "resend";
 import { getAnalysisById } from "@/lib/db";
 import type { SavedAnalysis } from "@/lib/client-types";
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 function youtubeWatchUrl(videoId: string, time?: string): string {
   const base = `https://www.youtube.com/watch?v=${videoId}`;
@@ -27,23 +38,26 @@ function clickbaitLabel(score: number): string {
 }
 
 function buildHtml(analysis: SavedAnalysis): string {
-  const title = analysis.title ?? `Video ${analysis.videoId}`;
+  const title = escapeHtml(analysis.title ?? `Video ${analysis.videoId}`);
   const scoreColor = clickbaitColor(analysis.clickbait_score);
   const scoreLabel = clickbaitLabel(analysis.clickbait_score);
 
   const dataPointsHtml = analysis.hard_data_points.length > 0
-    ? analysis.hard_data_points.map((point) => {
-        let title: string, causalChain: string | null, quote: string | null, credibility: string | null, ts: string | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ? analysis.hard_data_points.map((point: any) => {
+        let title: string, speakerThesis: string | null, causalChain: string | null, quote: string | null, credibility: string | null, ts: string | null;
         if (typeof point === "string") {
-          title = point; causalChain = null; quote = null; credibility = null; ts = null;
+          title = escapeHtml(point); speakerThesis = null; causalChain = null; quote = null; credibility = null; ts = null;
         } else if ("causal_chain" in point) {
-          title = point.metric_title; causalChain = point.causal_chain; quote = point.direct_quote; credibility = point.credibility_check; ts = point.exact_timestamp;
+          title = escapeHtml(point.metric_title);
+          speakerThesis = "speaker_thesis" in point ? escapeHtml(point.speaker_thesis) : null;
+          causalChain = escapeHtml(point.causal_chain); quote = escapeHtml(point.direct_quote); credibility = escapeHtml(point.credibility_check); ts = escapeHtml(point.exact_timestamp);
         } else if ("speaker_thesis" in point) {
-          title = point.metric_title; causalChain = point.speaker_thesis; quote = point.direct_quote; credibility = null; ts = point.exact_timestamp;
+          title = escapeHtml(point.metric_title); speakerThesis = escapeHtml(point.speaker_thesis); causalChain = null; quote = escapeHtml(point.direct_quote); credibility = null; ts = escapeHtml(point.exact_timestamp);
         } else if ("metric_context" in point) {
-          title = `${point.metric_context} — ${point.metric_value}`; causalChain = point.root_cause; quote = null; credibility = null; ts = null;
+          title = escapeHtml(`${point.metric_context} — ${point.metric_value}`); speakerThesis = null; causalChain = escapeHtml(point.root_cause); quote = null; credibility = null; ts = null;
         } else {
-          title = point.metric; causalChain = point.root_cause; quote = null; credibility = null; ts = null;
+          title = escapeHtml(point.metric); speakerThesis = null; causalChain = escapeHtml(point.root_cause); quote = null; credibility = null; ts = null;
         }
         return `
           <tr>
@@ -52,6 +66,11 @@ function buildHtml(analysis: SavedAnalysis): string {
                 ${title}
                 ${ts ? `<span style="margin-left:8px;display:inline-block;background:#eff6ff;color:#2563eb;font-size:11px;padding:2px 8px;border-radius:9999px;font-weight:600;">▶ ${ts}</span>` : ""}
               </p>
+              ${speakerThesis ? `
+              <div style="margin-bottom:10px;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;">
+                <p style="margin:0 0 4px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;">Speaker Narrative</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.7;">${speakerThesis}</p>
+              </div>` : ""}
               ${causalChain ? `
               <div style="margin-bottom:10px;">
                 <p style="margin:0 0 5px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b8def;">Causal Chain</p>
@@ -73,14 +92,14 @@ function buildHtml(analysis: SavedAnalysis): string {
     : `<tr><td style="padding:12px 0;color:#6b7280;font-size:13px;">No hard data points extracted.</td></tr>`;
 
   const takeawaysHtml = analysis.actionable_takeaways.map((takeaway, index) => {
-    const strategy = typeof takeaway === "string" ? takeaway : takeaway.strategy;
+    const strategy = escapeHtml(typeof takeaway === "string" ? takeaway : takeaway.strategy);
     const steps = typeof takeaway === "string" ? [] : (takeaway.execution_steps ?? []);
     const ts = analysis.timestamps.find((t) => t.takeaway_index === index);
     const stepsHtml = steps.map((step) =>
-      `<li style="margin:4px 0;color:#374151;font-size:13px;">${step}</li>`
+      `<li style="margin:4px 0;color:#374151;font-size:13px;">${escapeHtml(step)}</li>`
     ).join("");
     const tsHtml = ts
-      ? `<a href="${youtubeWatchUrl(analysis.videoId, ts.time)}" style="display:inline-block;margin-top:8px;padding:4px 12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:999px;font-size:12px;font-weight:600;color:#2563eb;text-decoration:none;">▶ ${ts.time}${ts.label ? ` · ${ts.label}` : ""}</a>`
+      ? `<a href="${youtubeWatchUrl(analysis.videoId, ts.time)}" style="display:inline-block;margin-top:8px;padding:4px 12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:999px;font-size:12px;font-weight:600;color:#2563eb;text-decoration:none;">▶ ${escapeHtml(ts.time)}${ts.label ? ` · ${escapeHtml(ts.label)}` : ""}</a>`
       : "";
     return `
       <tr>
@@ -95,8 +114,8 @@ function buildHtml(analysis: SavedAnalysis): string {
 
   const timestampsHtml = analysis.timestamps.map((ts) => {
     const takeaway = analysis.actionable_takeaways[ts.takeaway_index];
-    const label = ts.label || (typeof takeaway === "string" ? takeaway : takeaway?.strategy) || "";
-    return `<a href="${youtubeWatchUrl(analysis.videoId, ts.time)}" style="display:inline-flex;align-items:center;gap:6px;margin:4px;padding:6px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:999px;font-size:12px;font-weight:600;color:#2563eb;text-decoration:none;">▶ ${ts.time} <span style="font-weight:400;color:#4b5563;">${label}</span></a>`;
+    const label = escapeHtml(ts.label || (typeof takeaway === "string" ? takeaway : takeaway?.strategy) || "");
+    return `<a href="${youtubeWatchUrl(analysis.videoId, ts.time)}" style="display:inline-flex;align-items:center;gap:6px;margin:4px;padding:6px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:999px;font-size:12px;font-weight:600;color:#2563eb;text-decoration:none;">▶ ${escapeHtml(ts.time)} <span style="font-weight:400;color:#4b5563;">${label}</span></a>`;
   }).join("");
 
   return `<!DOCTYPE html>
@@ -127,7 +146,7 @@ function buildHtml(analysis: SavedAnalysis): string {
               </td>
               <td style="padding:14px 18px;border-right:1px solid #e5e7eb;">
                 <p style="margin:0 0 2px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9ca3af;">Primary Subject</p>
-                <p style="margin:0;font-size:14px;font-weight:500;color:#111827;">${analysis.primary_subject}</p>
+                <p style="margin:0;font-size:14px;font-weight:500;color:#111827;">${escapeHtml(analysis.primary_subject)}</p>
               </td>
               <td style="padding:14px 18px;text-align:center;white-space:nowrap;">
                 <p style="margin:0 0 2px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9ca3af;">Data Density</p>
@@ -168,6 +187,11 @@ function buildHtml(analysis: SavedAnalysis): string {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey || apiKey === "re_your_resend_api_key_here") {
     return NextResponse.json({ error: "RESEND_API_KEY not configured." }, { status: 503 });
@@ -188,7 +212,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid email address." }, { status: 400 });
   }
 
-  const analysis = getAnalysisById(analysisId);
+  const analysis = await getAnalysisById(analysisId);
   if (!analysis) {
     return NextResponse.json({ error: "Analysis not found." }, { status: 404 });
   }
