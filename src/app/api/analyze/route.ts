@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import { analyzeYouTubeVideo, TranscriptFetchError } from "@/lib/analyzeVideo";
-import { saveAnalysis } from "@/lib/db";
+import { saveAnalysis, getLatestAnalysisByVideoId } from "@/lib/db";
 import { buildPodcastScript, generateSpeechFile } from "@/lib/tts";
+import { extractYouTubeVideoId } from "@/lib/youtube";
 import type { TranscriptFetchOverrides } from "@/lib/youtube";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 function readStringField(body: object, key: string): string | undefined {
   const value = (body as Record<string, unknown>)[key];
@@ -20,6 +23,11 @@ function buildTranscriptOverrides(body: object): TranscriptFetchOverrides | unde
 }
 
 export async function POST(request: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
   let body: unknown;
 
   try {
@@ -44,28 +52,43 @@ export async function POST(request: Request) {
     );
   }
 
+  // Return the cached analysis if this video was already analyzed — no OpenAI call.
+  let videoId: string;
+  try {
+    videoId = extractYouTubeVideoId(url);
+  } catch {
+    return NextResponse.json({ error: "Invalid YouTube URL." }, { status: 400 });
+  }
+
+  const existing = await getLatestAnalysisByVideoId(videoId);
+  if (existing) {
+    return NextResponse.json(existing);
+  }
+
   try {
     const result = await analyzeYouTubeVideo(url, {
       transcript: buildTranscriptOverrides(body),
     });
 
-    // Generate a stable ID upfront so the audio filename matches the DB row.
     const analysisId = crypto.randomUUID();
 
+    // Generate audio synchronously so audioPath is included in the response.
     let audioPath: string | null = null;
     const apiKey = process.env.OPENAI_API_KEY;
-
     if (apiKey) {
+      const rawVoice = readStringField(body, "voice") ?? "onyx";
+      const voice = (["onyx", "nova", "echo", "fable", "shimmer", "alloy"].includes(rawVoice)
+        ? rawVoice
+        : "onyx") as "onyx" | "nova" | "echo" | "fable" | "shimmer" | "alloy";
       try {
-        const script = buildPodcastScript(result);
-        audioPath = await generateSpeechFile(script, `${analysisId}.mp3`, apiKey);
+        const script = buildPodcastScript({ ...result, title: result.title });
+        audioPath = await generateSpeechFile(script, `${analysisId}.mp3`, apiKey, voice);
       } catch (ttsErr) {
-        // TTS failure must not block the analysis response.
-        console.error("TTS generation failed (non-fatal):", ttsErr);
+        console.error("[TTS] Failed (non-fatal):", ttsErr);
       }
     }
 
-    const saved = saveAnalysis(url, result, { id: analysisId, audioPath });
+    const saved = await saveAnalysis(url, result, { id: analysisId, audioPath });
     return NextResponse.json(saved);
   } catch (error) {
     if (error instanceof TranscriptFetchError) {

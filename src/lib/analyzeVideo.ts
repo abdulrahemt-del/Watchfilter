@@ -18,8 +18,8 @@ import {
 export type AnalyzeVideoOptions = {
   /** Override OPENAI_API_KEY from the environment */
   openaiApiKey?: string;
-  /** OpenAI model; defaults to gpt-4o-mini */
-  model?: string;
+  /** OpenAI model; only gpt-4o-mini is accepted */
+  model?: "gpt-4o-mini";
   /** Proxy / external API overrides for transcript fetch */
   transcript?: TranscriptFetchOverrides;
   /** Cap transcript length before sending to the model; defaults to MAX_TRANSCRIPT_CHARS */

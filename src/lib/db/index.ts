@@ -1,20 +1,43 @@
-import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createClient, type Client } from "@libsql/client";
+import { randomUUID } from "crypto";
 import type { AnalyzeVideoResult } from "../types";
-import type { AnalysisRow, AnalysisSummary, SavedAnalysis } from "./schema";
+import type { AnalysisRow, AnalysisSummary, SavedAnalysis, WorthWatchingData } from "./schema";
 
-const DEFAULT_DB_PATH = join(process.cwd(), "data", "watchfilter.db");
+// ── Client singleton ──────────────────────────────────────────────────────────
 
-function getDbPath(): string {
-  return process.env.DATABASE_PATH?.trim() || DEFAULT_DB_PATH;
+let _client: Client | null = null;
+
+function getClient(): Client {
+  if (_client) return _client;
+  const url = process.env.TURSO_DATABASE_URL ?? "file:./data/watchfilter.db";
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+  _client = createClient({ url, authToken });
+  return _client;
 }
 
-let db: DatabaseSync | null = null;
+// ── Schema init (runs once per cold start) ────────────────────────────────────
 
-function initSchema(database: DatabaseSync): void {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS analyses (
+let _schemaInit: Promise<void> | null = null;
+
+async function ensureSchema(): Promise<void> {
+  const c = getClient();
+  await c.batch([
+    { sql: `CREATE TABLE IF NOT EXISTS user_refresh_tokens (
+      user_id      TEXT PRIMARY KEY,
+      refresh_token TEXT NOT NULL,
+      updated_at   TEXT NOT NULL
+    )`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS intelligence_snapshot (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT UNIQUE NOT NULL,
+      computed_at TEXT NOT NULL,
+      meta_data   TEXT NOT NULL,
+      brief       TEXT NOT NULL,
+      alerts      TEXT NOT NULL,
+      shifts      TEXT NOT NULL,
+      voice_share TEXT NOT NULL
+    )`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS analyses (
       id TEXT PRIMARY KEY,
       video_id TEXT NOT NULL,
       youtube_url TEXT NOT NULL,
@@ -28,146 +51,288 @@ function initSchema(database: DatabaseSync): void {
       transcript_char_count INTEGER,
       audio_path TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+    )`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_analyses_video_id ON analyses (video_id)`, args: [] },
+  ], "write");
 
-    CREATE INDEX IF NOT EXISTS idx_analyses_created_at
-      ON analyses (created_at DESC);
-
-    CREATE INDEX IF NOT EXISTS idx_analyses_video_id
-      ON analyses (video_id);
-  `);
-
-  // Migration: add audio_path for databases created before this column existed.
-  // SQLite does not support ADD COLUMN IF NOT EXISTS, so we catch the error if it already exists.
-  try {
-    database.exec(`ALTER TABLE analyses ADD COLUMN audio_path TEXT`);
-  } catch {
-    // column already present — nothing to do
+  for (const sql of [
+    `ALTER TABLE analyses ADD COLUMN audio_path TEXT`,
+    `ALTER TABLE analyses ADD COLUMN worth_watching TEXT`,
+    `ALTER TABLE analyses ADD COLUMN channel_name TEXT`,
+    `ALTER TABLE analyses ADD COLUMN view_count INTEGER`,
+    `ALTER TABLE analyses ADD COLUMN upload_date TEXT`,
+    `ALTER TABLE analyses ADD COLUMN duration_seconds INTEGER`,
+    `ALTER TABLE analyses ADD COLUMN off_script_nuggets TEXT`,
+    `ALTER TABLE analyses ADD COLUMN speaker_name TEXT`,
+  ]) {
+    try { await c.execute(sql); } catch { /* column already present */ }
   }
 }
 
-export function getDb(): DatabaseSync {
-  if (db) return db;
+async function db(): Promise<Client> {
+  if (!_schemaInit) _schemaInit = ensureSchema();
+  await _schemaInit;
+  return getClient();
+}
 
-  const dbPath = getDbPath();
-  mkdirSync(dirname(dbPath), { recursive: true });
+// ── Row mapper ────────────────────────────────────────────────────────────────
 
-  db = new DatabaseSync(dbPath);
-  db.exec("PRAGMA journal_mode = WAL");
-  initSchema(db);
-  return db;
+function safeJsonParse<T>(json: string, fallback: T): T {
+  try { return JSON.parse(json) as T; } catch { return fallback; }
 }
 
 function rowToSavedAnalysis(row: AnalysisRow): SavedAnalysis {
+  let worthWatching: WorthWatchingData | undefined;
+  if (row.worth_watching) {
+    try { worthWatching = JSON.parse(row.worth_watching) as WorthWatchingData; } catch { /* ignore */ }
+  }
   return {
     id: row.id,
     videoId: row.video_id,
     youtubeUrl: row.youtube_url,
     title: row.title,
+    channelName: row.channel_name ?? null,
+    viewCount: row.view_count ?? null,
+    uploadDate: row.upload_date ?? null,
+    durationSeconds: row.duration_seconds ?? null,
     clickbait_score: row.clickbait_score,
     primary_subject: row.primary_subject,
-    hard_data_points: JSON.parse(row.hard_data_points) as string[],
-    actionable_takeaways: JSON.parse(row.actionable_takeaways) as string[],
-    timestamps: JSON.parse(row.timestamps) as SavedAnalysis["timestamps"],
+    hard_data_points: safeJsonParse(row.hard_data_points, []) as SavedAnalysis["hard_data_points"],
+    actionable_takeaways: safeJsonParse(row.actionable_takeaways, []) as SavedAnalysis["actionable_takeaways"],
+    timestamps: safeJsonParse(row.timestamps, []) as SavedAnalysis["timestamps"],
+    speaker_name: row.speaker_name ?? undefined,
+    off_script_nuggets: row.off_script_nuggets ? safeJsonParse(row.off_script_nuggets, [] as string[]) : [],
     transcriptSource: row.transcript_source ?? "unknown",
     transcriptCharCount: row.transcript_char_count ?? 0,
     audioPath: row.audio_path ?? null,
+    worth_watching: worthWatching,
     createdAt: row.created_at,
   };
 }
 
-export function saveAnalysis(
+// ── Exports ───────────────────────────────────────────────────────────────────
+
+export async function saveAnalysis(
   youtubeUrl: string,
   result: AnalyzeVideoResult,
   opts: { id?: string; audioPath?: string | null } = {},
-): SavedAnalysis {
-  const database = getDb();
+): Promise<SavedAnalysis> {
+  const c = await db();
   const id = opts.id ?? crypto.randomUUID();
   const audioPath = opts.audioPath ?? null;
   const createdAt = new Date().toISOString();
 
-  database
-    .prepare(
-      `INSERT INTO analyses (
-        id, video_id, youtube_url, title,
-        clickbait_score, primary_subject,
-        hard_data_points, actionable_takeaways, timestamps,
-        transcript_source, transcript_char_count, audio_path, created_at
-      ) VALUES (
-        @id, @video_id, @youtube_url, @title,
-        @clickbait_score, @primary_subject,
-        @hard_data_points, @actionable_takeaways, @timestamps,
-        @transcript_source, @transcript_char_count, @audio_path, @created_at
-      )`,
-    )
-    .run({
+  await c.execute({
+    sql: `INSERT INTO analyses (
+      id, video_id, youtube_url, title, channel_name, view_count, upload_date, duration_seconds,
+      clickbait_score, primary_subject,
+      hard_data_points, actionable_takeaways, timestamps, off_script_nuggets, speaker_name,
+      transcript_source, transcript_char_count, audio_path, worth_watching, created_at
+    ) VALUES (
+      :id, :video_id, :youtube_url, :title, :channel_name, :view_count, :upload_date, :duration_seconds,
+      :clickbait_score, :primary_subject,
+      :hard_data_points, :actionable_takeaways, :timestamps, :off_script_nuggets, :speaker_name,
+      :transcript_source, :transcript_char_count, :audio_path, :worth_watching, :created_at
+    )`,
+    args: {
       id,
       video_id: result.videoId,
       youtube_url: youtubeUrl,
-      title: result.title,
+      title: result.title ?? null,
+      channel_name: result.channelName ?? null,
+      view_count: result.viewCount ?? null,
+      upload_date: result.uploadDate ?? null,
+      duration_seconds: result.durationSeconds ?? null,
       clickbait_score: result.clickbait_score,
       primary_subject: result.primary_subject,
       hard_data_points: JSON.stringify(result.hard_data_points),
       actionable_takeaways: JSON.stringify(result.actionable_takeaways),
       timestamps: JSON.stringify(result.timestamps),
+      off_script_nuggets: JSON.stringify(result.off_script_nuggets ?? []),
+      speaker_name: result.speaker_name ?? null,
       transcript_source: result.transcriptSource,
       transcript_char_count: result.transcriptCharCount,
       audio_path: audioPath,
+      worth_watching: result.worth_watching ? JSON.stringify(result.worth_watching) : null,
       created_at: createdAt,
-    });
+    },
+  });
 
-  return {
-    ...result,
-    id,
-    youtubeUrl,
-    audioPath,
-    createdAt,
-  };
+  return { ...result, id, youtubeUrl, audioPath, createdAt };
 }
 
-export function listAnalyses(limit = 50): AnalysisSummary[] {
-  const database = getDb();
-  const rows = database
-    .prepare(
-      `SELECT id, video_id, youtube_url, title, clickbait_score, primary_subject, created_at
-       FROM analyses
-       ORDER BY created_at DESC
-       LIMIT ?`,
-    )
-    .all(limit) as Array<{
-    id: string;
-    video_id: string;
-    youtube_url: string;
-    title: string | null;
-    clickbait_score: number;
-    primary_subject: string;
-    created_at: string;
-  }>;
+export async function updateAudioPath(id: string, audioPath: string): Promise<void> {
+  const c = await db();
+  await c.execute({ sql: `UPDATE analyses SET audio_path = ? WHERE id = ?`, args: [audioPath, id] });
+}
 
-  return rows.map((row) => ({
-    id: row.id,
-    videoId: row.video_id,
-    youtubeUrl: row.youtube_url,
-    title: row.title,
-    clickbaitScore: row.clickbait_score,
-    primarySubject: row.primary_subject,
-    createdAt: row.created_at,
+function toKeyAnchorPreview(metricTitle: string | null): string | null {
+  if (!metricTitle) return null;
+  if (metricTitle.length <= 120) return metricTitle;
+  const cut = metricTitle.lastIndexOf(" ", 120);
+  return (cut > 60 ? metricTitle.slice(0, cut) : metricTitle.slice(0, 120)) + "…";
+}
+
+export async function listAnalyses(limit = 50): Promise<AnalysisSummary[]> {
+  const c = await db();
+  const result = await c.execute({
+    sql: `SELECT id, video_id, youtube_url, title, channel_name, clickbait_score, primary_subject,
+                 created_at, audio_path, upload_date, duration_seconds,
+                 json_array_length(hard_data_points) as data_points_count,
+                 COALESCE(transcript_char_count, 0) as transcript_char_count,
+                 json_extract(hard_data_points, '$[0].metric_title') as key_anchor,
+                 json_extract(hard_data_points, '$[0].metric_context_example') as context_example
+          FROM analyses ORDER BY created_at DESC LIMIT ?`,
+    args: [limit],
+  });
+
+  return result.rows.map((row) => ({
+    id: row.id as string,
+    videoId: row.video_id as string,
+    youtubeUrl: row.youtube_url as string,
+    title: (row.title as string | null) ?? null,
+    channelName: (row.channel_name as string | null) ?? null,
+    clickbaitScore: row.clickbait_score as number,
+    primarySubject: row.primary_subject as string,
+    audioPath: (row.audio_path as string | null) ?? null,
+    dataPointsCount: (row.data_points_count as number) ?? 0,
+    keyAnchorPreview: toKeyAnchorPreview((row.key_anchor as string | null) ?? null),
+    contextExamplePreview: row.context_example ? (row.context_example as string).slice(0, 200) : null,
+    durationSeconds: (row.duration_seconds as number | null) ?? null,
+    transcriptCharCount: (row.transcript_char_count as number) ?? 0,
+    uploadDate: (row.upload_date as string | null) ?? null,
+    createdAt: row.created_at as string,
   }));
 }
 
-export function getAnalysisById(id: string): SavedAnalysis | null {
-  const database = getDb();
-  const row = database
-    .prepare(`SELECT * FROM analyses WHERE id = ?`)
-    .get(id) as AnalysisRow | undefined;
-
-  return row ? rowToSavedAnalysis(row) : null;
+export async function getLatestAnalysisByVideoId(videoId: string): Promise<SavedAnalysis | null> {
+  const c = await db();
+  const result = await c.execute({
+    sql: `SELECT * FROM analyses WHERE video_id = ? ORDER BY created_at DESC LIMIT 1`,
+    args: [videoId],
+  });
+  const row = result.rows[0];
+  return row ? rowToSavedAnalysis(row as unknown as AnalysisRow) : null;
 }
 
-export function deleteAnalysis(id: string): boolean {
-  const database = getDb();
-  const result = database
-    .prepare(`DELETE FROM analyses WHERE id = ?`)
-    .run(id);
-  return (result.changes as number) > 0;
+export async function getAnalysisById(id: string): Promise<SavedAnalysis | null> {
+  const c = await db();
+  const result = await c.execute({ sql: `SELECT * FROM analyses WHERE id = ?`, args: [id] });
+  const row = result.rows[0];
+  return row ? rowToSavedAnalysis(row as unknown as AnalysisRow) : null;
+}
+
+export async function getAnalysesByIds(ids: string[]): Promise<SavedAnalysis[]> {
+  if (!ids.length) return [];
+  const c = await db();
+  const placeholders = ids.map(() => "?").join(", ");
+  const result = await c.execute({ sql: `SELECT * FROM analyses WHERE id IN (${placeholders})`, args: ids });
+  return result.rows.map((row) => rowToSavedAnalysis(row as unknown as AnalysisRow));
+}
+
+export async function updateBackfilledFields(
+  id: string,
+  updates: { durationSeconds: number | null; hardDataPoints: string; offScriptNuggets: string },
+): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `UPDATE analyses SET duration_seconds = ?, hard_data_points = ?, off_script_nuggets = ? WHERE id = ?`,
+    args: [updates.durationSeconds, updates.hardDataPoints, updates.offScriptNuggets, id],
+  });
+}
+
+export async function deleteAnalysis(id: string): Promise<boolean> {
+  const c = await db();
+  const result = await c.execute({ sql: `DELETE FROM analyses WHERE id = ?`, args: [id] });
+  return (result.rowsAffected ?? 0) > 0;
+}
+
+// ── Intelligence Snapshot ─────────────────────────────────────────────────────
+
+export interface SnapshotRecord {
+  id: string;
+  userId: string;
+  computedAt: Date;
+  metaData: Record<string, unknown>;
+  brief: string[];
+  alerts: Record<string, unknown>[];
+  shifts: Record<string, unknown>[];
+  voiceShare: Record<string, unknown>[];
+}
+
+export interface SnapshotUpsertData {
+  userId: string;
+  metaData: Record<string, unknown>;
+  brief: string[];
+  alerts: Record<string, unknown>[];
+  shifts: Record<string, unknown>[];
+  voiceShare: Record<string, unknown>[];
+}
+
+export async function getIntelligenceSnapshot(userId: string): Promise<SnapshotRecord | null> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: "SELECT * FROM intelligence_snapshot WHERE user_id = ?",
+    args: [userId],
+  });
+  if (!rows.length) return null;
+  const r = rows[0];
+  return {
+    id: r.id as string,
+    userId: r.user_id as string,
+    computedAt: new Date(r.computed_at as string),
+    metaData: JSON.parse(r.meta_data as string),
+    brief: JSON.parse(r.brief as string),
+    alerts: JSON.parse(r.alerts as string),
+    shifts: JSON.parse(r.shifts as string),
+    voiceShare: JSON.parse(r.voice_share as string),
+  };
+}
+
+export async function saveRefreshToken(userId: string, refreshToken: string): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `INSERT INTO user_refresh_tokens (user_id, refresh_token, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET
+            refresh_token = excluded.refresh_token,
+            updated_at    = excluded.updated_at`,
+    args: [userId, refreshToken, new Date().toISOString()],
+  });
+}
+
+export async function getRefreshToken(userId: string): Promise<string | null> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: "SELECT refresh_token FROM user_refresh_tokens WHERE user_id = ?",
+    args: [userId],
+  });
+  return rows.length ? (rows[0].refresh_token as string) : null;
+}
+
+export async function upsertIntelligenceSnapshot(data: SnapshotUpsertData): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `INSERT INTO intelligence_snapshot
+            (id, user_id, computed_at, meta_data, brief, alerts, shifts, voice_share)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET
+            computed_at = excluded.computed_at,
+            meta_data   = excluded.meta_data,
+            brief       = excluded.brief,
+            alerts      = excluded.alerts,
+            shifts      = excluded.shifts,
+            voice_share = excluded.voice_share`,
+    args: [
+      randomUUID(),
+      data.userId,
+      new Date().toISOString(),
+      JSON.stringify(data.metaData),
+      JSON.stringify(data.brief),
+      JSON.stringify(data.alerts),
+      JSON.stringify(data.shifts),
+      JSON.stringify(data.voiceShare),
+    ],
+  });
 }
