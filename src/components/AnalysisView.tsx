@@ -292,14 +292,47 @@ function timestampToSeconds(t: string): number {
 function WorthWatchingCard({
   ww,
   videoId,
+  dataPointCount,
+  takeawayCount,
 }: {
   ww: WorthWatching;
   videoId: string;
+  dataPointCount?: number;
+  takeawayCount?: number;
 }) {
   const color = wwScoreColor(ww.score);
   const skipTo = ww.skip_to && timestampToSeconds(ww.skip_to) >= 30 ? ww.skip_to : null;
+  const worthIt = ww.score >= 6;
+  const signalQuality = ww.score >= 8 ? "High" : ww.score >= 6 ? "Medium" : "Low";
+  const signalColor = ww.score >= 8 ? "var(--ok)" : ww.score >= 6 ? "var(--warn)" : "var(--danger)";
   return (
     <div className="av-ww-card">
+      {/* WATCHFILTER VERDICT banner */}
+      <div className="av-verdict-banner" style={{ borderColor: worthIt ? "var(--ok)" : "var(--danger)" }}>
+        <div className="av-verdict-banner__left">
+          <span className="av-verdict-banner__label">WATCHFILTER VERDICT</span>
+          <span className="av-verdict-banner__decision" style={{ color: worthIt ? "var(--ok)" : "var(--danger)" }}>
+            Worth Watching: {worthIt ? "YES" : "NO"}
+          </span>
+        </div>
+        <div className="av-verdict-banner__right">
+          <span className="av-verdict-banner__signal-label">Signal Quality</span>
+          <span className="av-verdict-banner__signal" style={{ color: signalColor }}>{signalQuality}</span>
+        </div>
+      </div>
+
+      {/* Evidence summary */}
+      {(dataPointCount !== undefined || takeawayCount !== undefined) && (
+        <div className="av-verdict-evidence">
+          {dataPointCount !== undefined && dataPointCount > 0 && (
+            <span className="av-verdict-evidence__item">{dataPointCount} hard data points</span>
+          )}
+          {takeawayCount !== undefined && takeawayCount > 0 && (
+            <span className="av-verdict-evidence__item">{takeawayCount} actionable insights</span>
+          )}
+        </div>
+      )}
+
       <div className="av-ww-top">
         <div className="av-ww-score">
           <span className="av-ww-num" style={{ color }}>{ww.score.toFixed(1)}</span>
@@ -448,8 +481,12 @@ export function AnalysisView({ analysis, onRefresh }: {
 
         {analysis.worth_watching && (
           <div>
-            <p className="av-score-key" style={{ marginBottom: "0.5rem" }}>Worth-Watching Score</p>
-            <WorthWatchingCard ww={analysis.worth_watching} videoId={analysis.videoId} />
+            <WorthWatchingCard
+              ww={analysis.worth_watching}
+              videoId={analysis.videoId}
+              dataPointCount={analysis.hard_data_points.length}
+              takeawayCount={analysis.actionable_takeaways.length}
+            />
           </div>
         )}
 

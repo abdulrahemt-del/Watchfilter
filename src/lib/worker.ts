@@ -156,21 +156,71 @@ interface Theme {
   insights: string[];
 }
 
+// Semantic deduplication: merge categories that share a dominant keyword.
+// E.g. "AI Agencies", "AI Automation", "AI Business", "AI Employees" → "AI"
+// Returns a canonical label → set of raw labels that belong to it.
+function deduplicateCategories(
+  raw: Map<string, { count: number; channels: Set<string>; insights: string[] }>,
+): Map<string, { count: number; channels: Set<string>; insights: string[] }> {
+  // Extract the most common leading keyword (first word or two) from each category.
+  function leadingKey(label: string): string {
+    const words = label.trim().split(/\s+/);
+    // Use first two words if second word is short, otherwise first word.
+    if (words.length >= 2 && words[1]!.length <= 4) return `${words[0]} ${words[1]}`.toLowerCase();
+    return words[0]!.toLowerCase();
+  }
+
+  const groups = new Map<string, string[]>(); // leadingKey → raw labels
+  for (const label of raw.keys()) {
+    const key = leadingKey(label);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(label);
+  }
+
+  const merged = new Map<string, { count: number; channels: Set<string>; insights: string[] }>();
+
+  for (const [, labels] of groups) {
+    if (labels.length === 1) {
+      // No merge needed
+      merged.set(labels[0]!, raw.get(labels[0]!)!);
+    } else {
+      // Find the label with the highest count to use as canonical
+      const canonical = labels.reduce((best, l) =>
+        (raw.get(l)?.count ?? 0) > (raw.get(best)?.count ?? 0) ? l : best
+      );
+      const agg = { count: 0, channels: new Set<string>(), insights: [] as string[] };
+      for (const l of labels) {
+        const e = raw.get(l)!;
+        agg.count += e.count;
+        e.channels.forEach(ch => agg.channels.add(ch));
+        for (const ins of e.insights) {
+          if (agg.insights.length < 4 && !agg.insights.includes(ins)) agg.insights.push(ins);
+        }
+      }
+      merged.set(canonical, agg);
+    }
+  }
+
+  return merged;
+}
+
 function buildThemes(videos: FeedVideo[], scores: Record<string, AIScore>): Theme[] {
-  const map = new Map<string, { count: number; channels: Set<string>; insights: string[] }>();
+  const raw = new Map<string, { count: number; channels: Set<string>; insights: string[] }>();
 
   videos.forEach(v => {
     const ai = scores[v.videoId];
     if (!ai || ai.topicCategory === "excluded") return;
     ai.categories.forEach(cat => {
       if (!cat) return;
-      if (!map.has(cat)) map.set(cat, { count: 0, channels: new Set(), insights: [] });
-      const e = map.get(cat)!;
+      if (!raw.has(cat)) raw.set(cat, { count: 0, channels: new Set(), insights: [] });
+      const e = raw.get(cat)!;
       e.count++;
       e.channels.add(v.channelTitle);
       if (ai.whyItMatters && e.insights.length < 4) e.insights.push(ai.whyItMatters);
     });
   });
+
+  const map = deduplicateCategories(raw);
 
   const usedChannels = new Set<string>();
   return [...map.entries()]
@@ -218,7 +268,8 @@ async function runConsensus(themes: Theme[]): Promise<ConsensusResult | null> {
           role: "user",
           content:
             `Generate the intelligence briefing. Return JSON:\n` +
-            `{"executiveBrief":["..."],"themes":[{"topic":"...","consensus":"...","confidence":80}],"topOpportunity":{"topic":"...","reason":"...","confidence":80},"topRisk":null,"actions":["..."]}\n\n` +
+            `{"executiveBrief":["..."],"themes":[{"topic":"...","consensus":"...","confidence":80,"trendDirection":"growing","opportunitySignal":"High","opportunityTopics":["AI Agencies"],"whyItMatters":"Signals that...","recommendedActions":["Audit...","Build...","Test..."],"contrarianView":""}],` +
+            `"topOpportunity":{"topic":"...","reason":"...","confidence":80},"topRisk":null,"actions":["..."]}\n\n` +
             themeList + oppSection + riskSection,
         },
       ],
@@ -269,19 +320,38 @@ function buildAlerts(
     const type = isNew ? "Emerging" : i === 0 ? "Critical" : "Stable";
     const prevCount = prevMap.get(t.topic.toLowerCase());
     const delta = prevCount !== undefined
-      ? t.count > prevCount ? `+${t.count - prevCount}` : prevCount > t.count ? `-${prevCount - t.count}` : "Steady"
+      ? t.count > prevCount ? `+${t.count - prevCount} videos` : prevCount > t.count ? `-${prevCount - t.count} videos` : "Steady"
       : isNew ? "New Track" : "Steady";
-    alerts.push({ id: i + 1, type, label: t.topic, delta });
+
+    // Find the matching consensus theme for whyItMatters
+    const cTheme = consensus?.themes?.find(ct => ct.topic.toLowerCase() === t.topic.toLowerCase());
+    const whyItMatters = cTheme?.whyItMatters ?? t.insights[0] ?? undefined;
+
+    alerts.push({
+      id: i + 1,
+      type,
+      label: t.topic,
+      delta,
+      creators: t.creators,
+      videos: t.count,
+      evidenceCount: t.insights.length,
+      whyItMatters,
+    });
   });
 
   if (consensus?.topOpportunity && alerts.length < 3) {
     const already = alerts.some(a => (a.label as string).toLowerCase() === consensus.topOpportunity!.topic.toLowerCase());
     if (!already) {
+      const matchTheme = themes.find(t => t.topic.toLowerCase() === consensus.topOpportunity!.topic.toLowerCase());
       alerts.push({
         id: alerts.length + 1,
         type: "Emerging",
         label: consensus.topOpportunity.topic,
         delta: `${consensus.topOpportunity.confidence}% conf`,
+        creators: matchTheme?.creators,
+        videos: matchTheme?.count,
+        evidenceCount: matchTheme?.insights.length,
+        whyItMatters: consensus.topOpportunity.reason,
       });
     }
   }

@@ -37,12 +37,6 @@ function smartTruncate(desc: string, max = 400): string {
   return desc.slice(0, max).trimEnd() + "…";
 }
 
-function strHash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = ((h * 31) + s.charCodeAt(i)) >>> 0;
-  return h;
-}
-
 // ── SVG: Intelligence Score Ring ──────────────────────────────────────────────
 
 function ScoreRing({ score }: { score: number }) {
@@ -65,68 +59,6 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-// ── SVG: Topic Momentum Chart ─────────────────────────────────────────────────
-
-interface TopicPoint { topic: string; points: number[] }
-
-function TopicMomentumChart({ series }: { series: TopicPoint[] }) {
-  const W = 460, H = 140;
-  const PAD = { t: 12, r: 92, b: 22, l: 28 };
-  const iW = W - PAD.l - PAD.r, iH = H - PAD.t - PAD.b;
-  const days = 7;
-  const maxVal = Math.max(...series.flatMap(s => s.points), 1);
-  const xStep = iW / (days - 1);
-
-  const toPath = (pts: number[]) => {
-    const coords = pts.map((v, d) => ({
-      x: PAD.l + d * xStep,
-      y: PAD.t + iH - (v / maxVal) * iH,
-    }));
-    return coords.map((p, i) => {
-      if (i === 0) return `M ${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
-      const prev = coords[i - 1];
-      const cx = ((prev.x + p.x) / 2).toFixed(1);
-      return `C ${cx} ${prev.y.toFixed(1)}, ${cx} ${p.y.toFixed(1)}, ${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
-    }).join(" ");
-  };
-
-  const colors = ["#3b82f6", "#8b5cf6", "#10b981", "#f59e0b"];
-  const today = new Date().getDay();
-  const dayLabels = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  const labels = Array.from({ length: 7 }, (_, i) => dayLabels[(today - 6 + i + 7) % 7]);
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="id-momentum-chart__svg" aria-hidden>
-      {[0.33, 0.66, 1].map(f => (
-        <line key={f}
-          x1={PAD.l} y1={(PAD.t + iH - f * iH).toFixed(1)}
-          x2={PAD.l + iW} y2={(PAD.t + iH - f * iH).toFixed(1)}
-          stroke="#1e293b" strokeWidth={0.8} />
-      ))}
-      {labels.map((d, i) => (
-        <text key={i} x={(PAD.l + i * xStep).toFixed(1)} y={H - 4}
-          textAnchor="middle" fontSize={8} fill="#475569"
-          fontFamily="system-ui, sans-serif">{d}</text>
-      ))}
-      <line x1={PAD.l + iW} y1={PAD.t} x2={PAD.l + iW} y2={PAD.t + iH}
-        stroke="#3b82f6" strokeWidth={1} strokeDasharray="3 2" />
-      {series.map((s, i) => {
-        const endY = PAD.t + iH - (s.points[6] / maxVal) * iH;
-        return (
-          <g key={s.topic}>
-            <path d={toPath(s.points)} fill="none" stroke={colors[i % 4]}
-              strokeWidth={1.8} strokeLinecap="round" />
-            <circle cx={(PAD.l + iW).toFixed(1)} cy={endY.toFixed(1)} r={3} fill={colors[i % 4]} />
-            <text x={(PAD.l + iW + 6).toFixed(1)} y={(endY + 3).toFixed(1)}
-              fontSize={7.5} fill={colors[i % 4]} fontFamily="system-ui, sans-serif">
-              {s.topic.length > 13 ? s.topic.slice(0, 13) + "…" : s.topic}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -355,20 +287,6 @@ export function IntelligenceDashboard() {
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
       .slice(0, 6);
   }, [todaysThemes, prevSnapshot]);
-
-  // ── Derived: synthetic 7-day momentum series ──────────────────────────────
-  const momentumSeries = useMemo((): TopicPoint[] => {
-    return todaysThemes.slice(0, 4).map(t => {
-      const seed = strHash(t.topic);
-      const pts = Array.from({ length: 7 }, (_, d) => {
-        const noise = ((seed * (d + 1) * 37) % 7) - 3;
-        const ramp  = d >= 5 ? d - 4 : 0;
-        return Math.max(1, t.count + noise + ramp);
-      });
-      pts[6] = t.count; // today = real value
-      return { topic: t.topic, points: pts };
-    });
-  }, [todaysThemes]);
 
   // ── Derived: intelligence score ───────────────────────────────────────────
   const intelligenceScore = useMemo(() => {
@@ -803,29 +721,42 @@ export function IntelligenceDashboard() {
             )}
           </div>
 
-          {/* Consensus Shift Tracker */}
+          {/* What Changed Today */}
           <div className="id-section">
             <div className="id-section__head">
-              <h2 className="id-section__title">Consensus Shift</h2>
+              <h2 className="id-section__title">What Changed Today</h2>
               <span className="id-section__badge">vs. last visit</span>
             </div>
             {shiftData.length > 0 ? (
               <div className="id-shift-list">
-                {shiftData.map(item => (
-                  <div key={item.topic} className="id-shift-row">
-                    <div className="id-shift-row__topic">{item.topic}</div>
-                    <div className="id-shift-row__right">
-                      <span className="id-shift-row__current">{item.current}</span>
-                      {item.delta > 0 && <span className="id-shift-delta id-shift-delta--up">▲{item.delta}</span>}
-                      {item.delta < 0 && <span className="id-shift-delta id-shift-delta--down">▼{Math.abs(item.delta)}</span>}
-                      {item.delta === 0 && <span className="id-shift-delta id-shift-delta--flat">→</span>}
+                {shiftData.map(item => {
+                  const icon = item.delta > 0 ? "↑" : item.delta < 0 ? "↓" : "→";
+                  const label =
+                    item.delta > 0
+                      ? `${item.topic} gaining momentum (+${item.delta} videos)`
+                      : item.delta < 0
+                      ? `${item.topic} declining (−${Math.abs(item.delta)} videos)`
+                      : `${item.topic} holding steady`;
+                  return (
+                    <div key={item.topic} className="id-shift-row">
+                      <div className="id-shift-row__topic">
+                        <span className={
+                          item.delta > 0 ? "id-shift-delta id-shift-delta--up" :
+                          item.delta < 0 ? "id-shift-delta id-shift-delta--down" :
+                          "id-shift-delta id-shift-delta--flat"
+                        }>{icon}</span>
+                        {label}
+                      </div>
+                      <div className="id-shift-row__right">
+                        <span className="id-shift-row__current">{item.current} videos</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="id-section__empty">
-                {prevSnapshot ? "No significant shifts detected." : "First visit — come back tomorrow for shift tracking."}
+                {prevSnapshot ? "No significant shifts detected." : "First visit — return tomorrow for daily change tracking."}
               </p>
             )}
           </div>

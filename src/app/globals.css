@@ -2171,6 +2171,76 @@ input {
   display:flex
 }
 
+.av-verdict-banner {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+  padding:.75rem 1rem;
+  border:2px solid;
+  border-radius:8px;
+  background:rgba(0,0,0,0.03)
+}
+
+.av-verdict-banner__left {
+  display:flex;
+  flex-direction:column;
+  gap:.2rem
+}
+
+.av-verdict-banner__label {
+  font-family:var(--font-mono,monospace);
+  font-size:.6rem;
+  font-weight:700;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--muted)
+}
+
+.av-verdict-banner__decision {
+  font-size:1.05rem;
+  font-weight:800;
+  letter-spacing:-.01em
+}
+
+.av-verdict-banner__right {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:.2rem
+}
+
+.av-verdict-banner__signal-label {
+  font-family:var(--font-mono,monospace);
+  font-size:.6rem;
+  font-weight:700;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--muted)
+}
+
+.av-verdict-banner__signal {
+  font-size:.85rem;
+  font-weight:700
+}
+
+.av-verdict-evidence {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.5rem
+}
+
+.av-verdict-evidence__item {
+  font-family:var(--font-mono,monospace);
+  font-size:.72rem;
+  font-weight:600;
+  color:var(--text-2);
+  background:var(--accent-bg);
+  border:1px solid rgba(74,111,165,0.2);
+  border-radius:4px;
+  padding:.2rem .6rem
+}
+
 .av-ww-top {
   flex-wrap:wrap;
   align-items:center;
