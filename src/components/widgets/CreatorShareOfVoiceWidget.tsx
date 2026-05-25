@@ -40,7 +40,7 @@ export function CreatorShareOfVoiceWidget({ creators, loading }: Props) {
                 <span className="font-medium text-[#6b8a99] truncate max-w-[70%]">{creator.name}</span>
                 <span className="font-mono text-[11px] text-[#6b8a99] shrink-0">{creator.share}%</span>
               </div>
-              <div className="w-full h-1.5 bg-[#f0f6f9] rounded-full overflow-hidden">
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-700 ${BAR_COLORS[i % BAR_COLORS.length]}`}
                   style={{ width: `${creator.share}%` }}

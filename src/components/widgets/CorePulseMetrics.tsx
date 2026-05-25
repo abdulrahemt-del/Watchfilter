@@ -58,7 +58,7 @@ export function CorePulseMetrics({ metrics, loading }: Props) {
         <div key={i} className="bg-[#101520] border border-[#c0d6df]/80 rounded-xl p-4 space-y-2 hover:border-[#a8bfcb] transition-colors">
           <p className="text-[9px] font-mono font-bold text-[#6b8a99] tracking-widest uppercase">{m.label}</p>
           <div className="flex items-end justify-between gap-1">
-            <p className={`text-xl font-black tracking-tight leading-none ${m.color ?? "text-[#0f2535]"}`}>{m.value}</p>
+            <p className={`text-xl font-black tracking-tight leading-none ${m.color ?? "text-white"}`}>{m.value}</p>
             <Sparkline trend={m.trend} />
           </div>
           {m.sub && <p className="text-[9px] text-[#6b8a99] font-mono">{m.sub}</p>}

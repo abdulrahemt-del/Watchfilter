@@ -38,7 +38,7 @@ const STRENGTH_LABEL: Record<string, string> = {
 export function OpportunityAlertsWidget({ alerts, loading }: Props) {
   return (
     <>
-      <div className="flex justify-between items-center border-b border-[#c0d6df] pb-2">
+      <div className="flex justify-between items-center border-b border-slate-700 pb-2">
         <h3 className="text-xs font-bold text-[#6b8a99] tracking-wider uppercase font-mono">
           🚨 Alpha Opportunity Alerts
         </h3>

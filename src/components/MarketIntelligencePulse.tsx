@@ -375,7 +375,7 @@ export function MarketIntelligencePulse() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center text-[#6b8a99] font-mono text-sm">
+      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center text-slate-500 font-mono text-sm">
         Connecting…
       </div>
     );
@@ -383,22 +383,22 @@ export function MarketIntelligencePulse() {
 
   if (status === "unauthenticated") {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-4 text-[#6b8a99]">
+      <div className="min-h-screen bg-[#0d1117] flex flex-col items-center justify-center gap-4 text-slate-500">
         <p className="font-mono text-sm">Sign in to view Market Intelligence.</p>
-        <Link href="/" className="text-[#4a6fa5] hover:text-[#4a6fa5] font-mono text-sm">← Return to Feed</Link>
+        <Link href="/" className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors">← Return to Feed</Link>
       </div>
     );
   }
 
   if (feedMissing) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-4 text-center px-6">
+      <div className="min-h-screen bg-[#0d1117] flex flex-col items-center justify-center gap-4 text-center px-6">
         <span className="text-4xl">📡</span>
-        <h2 className="text-[#0f2535] font-black text-lg">No feed data yet</h2>
-        <p className="text-[#6b8a99] font-mono text-xs max-w-xs">
-          Load your subscription feed first, then return here for your intelligence briefing.
+        <h2 className="text-white font-black text-lg">No feed data yet</h2>
+        <p className="text-slate-500 font-mono text-xs max-w-xs">
+          Load your subscription feed first, then return here for your full intelligence briefing.
         </p>
-        <Link href="/" className="mt-2 bg-blue-600 hover:bg-blue-500 text-[#0f2535] font-bold text-sm px-5 py-2 rounded-lg transition-colors">
+        <Link href="/" className="mt-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-5 py-2 rounded-lg transition-colors">
           ← Go to Feed
         </Link>
       </div>
@@ -408,183 +408,183 @@ export function MarketIntelligencePulse() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6 bg-white min-h-screen text-[#1a2e3b] font-sans">
+    <div className="max-w-7xl mx-auto p-6 space-y-8 bg-[#0d1117] min-h-screen text-slate-100 font-sans antialiased">
 
-      {/* HEADER HUD */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-[#c0d6df] pb-4 gap-4">
+      {/* ── HEADER ── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-4 gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/" className="text-[10px] font-mono text-[#6b8a99] hover:text-[#6b8a99] transition-colors">
+          <Link href="/" className="text-[10px] font-mono text-slate-500 hover:text-slate-300 transition-colors">
             ← Feed
           </Link>
           <div>
-            <h1 className="text-xl font-black text-[#0f2535] tracking-tight flex items-center gap-2">
-              📡 Market Intelligence Hub
+            <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+              📡 WatchFilter Intelligence Terminal
             </h1>
-            <p className="text-xs text-[#6b8a99]">
-              Real-time thematic shifts synthesized from your subscription channels.
+            <p className="text-xs text-slate-500 font-mono">
+              Creator consensus synthesized from your subscription channels
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {isLoading && (
-            <span className="text-[10px] font-mono text-[#b45309] bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg animate-pulse">
+            <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg animate-pulse">
               {aiLoading ? "⚙ Scoring…" : "⚙ Synthesizing…"}
             </span>
           )}
-          <div className="text-xs font-mono text-[#6b8a99] bg-[#dbe9ee]/50 px-3 py-1.5 rounded-lg border border-[#c0d6df]">
-            Last Sync:{" "}
-            <span className="text-[#4a6fa5]">{feedTs ? timeAgo(feedTs) : "—"}</span>
+          <div className="text-xs font-mono text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700">
+            Last Sync: <span className="text-blue-400">{feedTs ? timeAgo(feedTs) : "—"}</span>
           </div>
         </div>
       </div>
 
-      {/* ⏱ SINCE YOUR LAST VISIT */}
-      {sinceLastVisit && (
-        <div className="flex flex-wrap gap-2 px-1">
-          <span className="text-[9px] font-mono text-[#4f6d7a] uppercase tracking-widest self-center mr-1">Since last visit:</span>
-          {sinceLastVisit.items.map((item, i) => (
-            <span key={i} className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border ${item.color}`}>
-              {item.label}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* 🎯 MOST IMPORTANT INSIGHT TODAY */}
+      {/* ══════════════════════════════════════════════
+          1. IF YOU ONLY READ ONE THING TODAY — HERO
+         ══════════════════════════════════════════════ */}
       {topInsight ? (
-        <div className="bg-gradient-to-br from-blue-950/60 via-[#101520] to-purple-950/50 border border-blue-500/60/40 rounded-xl p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono font-black text-[#4a6fa5] tracking-widest uppercase">🎯 Most Important Insight Today</span>
+        <div className="bg-gradient-to-br from-[#0d1f3c] via-[#0d1520] to-[#130d2a] border border-blue-500/30 rounded-2xl p-6 shadow-[0_0_48px_rgba(59,130,246,0.07)] space-y-4">
+          <div className="flex items-center gap-2 text-[10px] font-mono text-blue-400 font-black uppercase tracking-widest">
+            🎯 If You Only Read One Thing Today
           </div>
-          <p className="text-base font-bold text-[#0f2535] leading-relaxed">
+          <p className="text-lg font-bold text-white leading-relaxed">
             {topInsight.statement}
           </p>
-          <div className="grid grid-cols-3 gap-4 pt-1 border-t border-[#c0d6df]">
+          <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-blue-500/20">
             <div>
-              <p className="text-[9px] font-mono text-[#6b8a99] uppercase tracking-wider mb-1">Confidence</p>
-              <p className={`text-sm font-black ${topInsight.confidence >= 70 ? "text-[#0a7a4a]" : "text-[#b45309]"}`}>
-                {topInsight.confidence}%
+              <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider mb-1">Supporting</p>
+              <p className="text-sm font-black text-white">
+                {topInsight.supportingCreators} creators · {topInsight.videoCount} videos
               </p>
-              <p className="text-[9px] text-[#6b8a99] font-mono">{topInsight.confidenceLabel}</p>
             </div>
             <div>
-              <p className="text-[9px] font-mono text-[#6b8a99] uppercase tracking-wider mb-1">Supporting Creators</p>
-              <p className="text-sm font-black text-[#0f2535]">{topInsight.supportingCreators}</p>
-              <p className="text-[9px] text-[#6b8a99] font-mono">independent</p>
+              <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider mb-1">Confidence</p>
+              <p className={`text-sm font-black ${topInsight.confidence >= 70 ? "text-emerald-400" : "text-amber-400"}`}>
+                {topInsight.confidence}% — {topInsight.confidenceLabel}
+              </p>
             </div>
             <div>
-              <p className="text-[9px] font-mono text-[#6b8a99] uppercase tracking-wider mb-1">Supporting Videos</p>
-              <p className="text-sm font-black text-[#0f2535]">{topInsight.videoCount}</p>
-              <p className="text-[9px] text-[#6b8a99] font-mono">{topInsight.topic}</p>
+              <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider mb-1">Theme</p>
+              <p className="text-sm font-black text-blue-300">{topInsight.topic}</p>
             </div>
           </div>
         </div>
       ) : conLoading ? (
-        <div className="bg-[#101520] border border-[#c0d6df] rounded-xl p-6 animate-pulse space-y-4">
-          <div className="h-3 w-52 bg-[#c0d6df] rounded" />
-          <div className="h-5 w-full bg-[#c0d6df] rounded" />
-          <div className="h-4 w-3/4 bg-[#c0d6df] rounded" />
-          <div className="h-3 w-40 bg-[#c0d6df] rounded" />
+        <div className="bg-[#0d1520] border border-slate-800 rounded-2xl p-6 animate-pulse space-y-4">
+          <div className="h-3 w-52 bg-slate-800 rounded" />
+          <div className="h-6 w-full bg-slate-800 rounded" />
+          <div className="h-4 w-3/4 bg-slate-800 rounded" />
         </div>
       ) : null}
 
-      {/* 🚀 NEW OPPORTUNITY DETECTED */}
-      {newOpportunity && (
-        <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-black text-[#0a7a4a] tracking-widest uppercase">🚀 New Opportunity Detected</span>
-              <span className="text-[9px] font-mono font-black px-2 py-0.5 rounded bg-emerald-500/20 text-[#0a7a4a] border border-emerald-500/30 animate-pulse">
-                +{newOpportunity.momentum}% momentum
-              </span>
+      {/* ══════════════════════════════════════════════
+          2. WHAT CHANGED TODAY
+         ══════════════════════════════════════════════ */}
+      {(sinceLastVisit || newOpportunity || biggestChange) && (
+        <div className="space-y-3">
+          <h2 className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest px-1">
+            ↻ What Changed Today
+          </h2>
+
+          {/* Since-last-visit summary chips */}
+          {sinceLastVisit && (
+            <div className="flex flex-wrap gap-2 px-1">
+              {sinceLastVisit.items.map((item, i) => (
+                <span key={i} className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border ${item.color}`}>
+                  {item.label}
+                </span>
+              ))}
             </div>
-            {newOpportunity.confidence !== null && (
-              <span className="text-[9px] font-mono text-[#0a7a4a]">{newOpportunity.confidence}% conf</span>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Biggest theme shift */}
+            {biggestChange && (
+              <div className="bg-[#101520] border border-slate-700/60 rounded-xl p-4 space-y-2">
+                <span className="text-[9px] font-mono font-black text-slate-500 uppercase tracking-widest">
+                  Biggest Shift
+                </span>
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-black text-white flex-1">{biggestChange.topic}</p>
+                  <div className="flex items-center gap-2 text-[11px] font-mono shrink-0">
+                    <span className="text-slate-500">{biggestChange.prevPct}%</span>
+                    <span className="text-slate-600">→</span>
+                    <span className={`font-black ${biggestChange.surging ? "text-emerald-400" : "text-red-400"}`}>
+                      {biggestChange.currPct}% {biggestChange.surging ? "↑" : "↓"}
+                    </span>
+                  </div>
+                </div>
+                {biggestChange.reason && (
+                  <p className="text-[10px] text-slate-500 leading-relaxed pl-3 border-l-2 border-slate-700">
+                    {biggestChange.reason}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* New opportunity */}
+            {newOpportunity && (
+              <div className="bg-emerald-950/30 border border-emerald-500/25 rounded-xl p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-mono font-black text-emerald-400 uppercase tracking-widest">
+                    🚀 New Opportunity
+                  </span>
+                  <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 animate-pulse">
+                    +{newOpportunity.momentum}%
+                  </span>
+                </div>
+                <p className="text-sm font-black text-white">{newOpportunity.topic}</p>
+                <div className="flex items-center gap-4 text-[10px] font-mono text-slate-500">
+                  <span>Was: <span className="text-slate-400 font-bold">{newOpportunity.prevCount} videos</span></span>
+                  <span>→</span>
+                  <span>Now: <span className="text-emerald-400 font-bold">{newOpportunity.currCount} videos</span></span>
+                </div>
+                {newOpportunity.consensus && (
+                  <p className="text-[10px] text-emerald-300/70 leading-relaxed pl-3 border-l-2 border-emerald-500/30">
+                    {newOpportunity.consensus}
+                  </p>
+                )}
+              </div>
             )}
           </div>
-          <p className="text-base font-black text-[#0f2535]">{newOpportunity.topic}</p>
-          <div className="flex items-center gap-6 text-[10px] font-mono">
-            <span className="text-[#6b8a99]">
-              Last visit: <span className="text-[#6b8a99] font-bold">{newOpportunity.prevCount} video{newOpportunity.prevCount !== 1 ? "s" : ""}</span>
-            </span>
-            <span className="text-[#4f6d7a]">→</span>
-            <span className="text-[#6b8a99]">
-              Today: <span className="text-[#0a7a4a] font-bold">{newOpportunity.currCount} video{newOpportunity.currCount !== 1 ? "s" : ""}</span>
-            </span>
-          </div>
-          {newOpportunity.consensus && (
-            <p className="text-xs text-emerald-200/80 leading-relaxed pl-3 border-l-2 border-emerald-500/40">
-              {newOpportunity.consensus}
-            </p>
-          )}
         </div>
       )}
 
-      {/* 📊 BIGGEST CHANGE TODAY */}
-      {biggestChange && (
-        <div className="bg-[#101520] border border-[#a8bfcb]/60 rounded-xl p-5 space-y-3">
-          <span className="text-[10px] font-mono font-black text-[#6b8a99] tracking-widest uppercase">📊 Biggest Change Today</span>
-          <div className="flex items-center gap-4">
-            <p className="text-sm font-black text-[#0f2535] flex-1">{biggestChange.topic}</p>
-            <div className="flex items-center gap-3 shrink-0 text-[11px] font-mono">
-              <span className="text-[#6b8a99]">{biggestChange.prevPct}%</span>
-              <span className="text-[#4f6d7a]">→</span>
-              <span className={`font-black ${biggestChange.surging ? "text-[#0a7a4a]" : "text-[#c0392b]"}`}>
-                {biggestChange.currPct}%
-                <span className="ml-1">{biggestChange.surging ? "↑" : "↓"}</span>
-              </span>
-              <span className={`text-[9px] px-1.5 py-0.5 rounded font-black border ${biggestChange.surging ? "text-[#0a7a4a] bg-emerald-500/10 border-emerald-500/20" : "text-[#c0392b] bg-red-500/10 border-red-500/20"}`}>
-                {biggestChange.change > 0 ? "+" : ""}{biggestChange.change}pp
-              </span>
-            </div>
-          </div>
-          {biggestChange.reason && (
-            <p className="text-xs text-[#6b8a99] leading-relaxed pl-3 border-l-2 border-[#a8bfcb]/50">
-              {biggestChange.reason}
-            </p>
-          )}
-        </div>
-      )}
+      {/* ══════════════════════════════════════════════
+          3. OPPORTUNITY ALERTS
+         ══════════════════════════════════════════════ */}
+      <div className="bg-[#101520] border border-emerald-500/15 rounded-xl p-5 space-y-4">
+        <OpportunityAlertsWidget alerts={opportunityAlerts} loading={aiLoading} />
+      </div>
 
-      {/* CREATOR CONSENSUS — MAIN INTELLIGENCE GRID */}
+      {/* ══════════════════════════════════════════════
+          4. CREATOR CONSENSUS
+         ══════════════════════════════════════════════ */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold text-[#6b8a99] tracking-wider uppercase font-mono">
+          <h2 className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest">
             ⚡ Creator Consensus
           </h2>
-          <span className="text-[10px] text-[#6b8a99] font-mono">
+          <span className="text-[10px] text-slate-600 font-mono">
             {insightCards.filter(c => c.consensus).length} of {insightCards.length} themes synthesized
           </span>
         </div>
         <ConsensusInsightCards cards={insightCards} loading={isLoading && !insightCards.length} />
       </div>
 
-      {/* EVIDENCE ROW */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-[#101520] border border-[#c0d6df]/80 rounded-xl p-5 space-y-4">
-          <OpportunityAlertsWidget alerts={opportunityAlerts} loading={aiLoading} />
-        </div>
-        <div className="bg-[#101520] border border-[#c0d6df]/80 rounded-xl p-5 space-y-4">
-          <CreatorShareOfVoiceWidget creators={creatorVoices} loading={aiLoading} />
-        </div>
-      </div>
-
-      {/* DATA STRIP */}
-      <CorePulseMetrics metrics={coreMetrics} loading={isLoading && !coreMetrics.some(m => m.value !== "0")} />
-
-      {/* DO THIS TODAY */}
+      {/* ══════════════════════════════════════════════
+          5. DO THIS TODAY — ACTIONABLE INTELLIGENCE
+         ══════════════════════════════════════════════ */}
       {(consensusData?.actions?.length ?? 0) > 0 && (
-        <div className="bg-[#101520] border border-blue-500/20 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between border-b border-[#c0d6df] pb-2">
-            <h3 className="text-xs font-bold text-[#6b8a99] tracking-wider uppercase font-mono">
+        <div className="bg-[#101520] border border-blue-500/20 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest">
               🎯 Do This Today
             </h3>
-            <span className="text-[10px] text-[#6b8a99] font-mono">Based on creator consensus</span>
+            <span className="text-[10px] text-slate-600 font-mono">Based on creator consensus</span>
           </div>
-          <ol className="space-y-2.5">
+          <ol className="space-y-3">
             {consensusData!.actions.map((action, i) => (
-              <li key={i} className="flex gap-3 text-xs text-[#6b8a99] leading-relaxed">
-                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-600 text-[#0f2535] font-black text-[9px] flex items-center justify-center mt-0.5">
+              <li key={i} className="flex gap-3 text-sm text-slate-300 leading-relaxed">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[9px] flex items-center justify-center mt-0.5">
                   {i + 1}
                 </span>
                 {action}
@@ -593,6 +593,23 @@ export function MarketIntelligencePulse() {
           </ol>
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════
+          6. CREATOR INFLUENCE
+         ══════════════════════════════════════════════ */}
+      <div className="bg-[#101520] border border-slate-700/60 rounded-xl p-5 space-y-4">
+        <CreatorShareOfVoiceWidget creators={creatorVoices} loading={aiLoading} />
+      </div>
+
+      {/* ══════════════════════════════════════════════
+          7. SIGNAL METRICS — SUPPORTING DATA
+         ══════════════════════════════════════════════ */}
+      <div className="space-y-3">
+        <h2 className="text-[10px] font-mono font-black text-slate-600 uppercase tracking-widest px-1">
+          Signal Metrics
+        </h2>
+        <CorePulseMetrics metrics={coreMetrics} loading={isLoading && !coreMetrics.some(m => m.value !== "0")} />
+      </div>
 
     </div>
   );
