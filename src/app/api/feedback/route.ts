@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     const resend = new Resend(apiKey);
     await resend.emails.send({
       from: "WatchFilter Feedback <onboarding@resend.dev>",
-      to: [process.env.FEEDBACK_EMAIL ?? "abdulrahemt@gmail.com"],
+      to: [process.env.FEEDBACK_EMAIL ?? "hello@watchfilter.app"],
       subject: `[WatchFilter] ${type}`,
       text: `Feedback type: ${type}\n\n${message.trim()}\n\nSent: ${new Date().toLocaleString()}`,
     });

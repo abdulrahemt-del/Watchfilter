@@ -13,6 +13,8 @@ import type {
   TranscriptFetchResult,
   TranscriptSource,
 } from "./types";
+
+export type { TranscriptFetchOverrides };
 import { TranscriptFetchError } from "./types";
 
 async function runStrategy(
@@ -23,20 +25,21 @@ async function runStrategy(
 ): Promise<TranscriptFetchResult> {
   switch (strategy) {
     case "external-api": {
+      // external-api is a bypass service (e.g. Supadata); it doesn't need a proxy
       const segments = await fetchTranscriptViaExternalApi(
         videoId,
         config,
-        proxy,
+        null,
       );
-      return { segments, source: strategy, proxyUsed: proxy };
+      return { segments, source: strategy, proxyUsed: null };
     }
     case "yt-dlp": {
       const segments = await fetchTranscriptViaYtDlp(videoId, config, proxy);
       return { segments, source: strategy, proxyUsed: proxy };
     }
     case "youtube-transcript": {
-      const segments = await fetchTranscriptViaLibrary(videoId, config);
-      return { segments, source: strategy, proxyUsed: null };
+      const segments = await fetchTranscriptViaLibrary(videoId, config, proxy);
+      return { segments, source: strategy, proxyUsed: proxy };
     }
     default:
       throw new Error(`Unknown transcript strategy: ${strategy}`);
@@ -89,10 +92,7 @@ export async function fetchYouTubeTranscriptResilient(
     const skipReason = shouldSkipStrategy(strategy, config);
     if (skipReason) continue;
 
-    const proxiesToTry =
-      strategy === "youtube-transcript"
-        ? [null]
-        : [...proxyAttempts(config.proxies)];
+    const proxiesToTry = [...proxyAttempts(config.proxies)];
 
     for (const proxy of proxiesToTry) {
       try {

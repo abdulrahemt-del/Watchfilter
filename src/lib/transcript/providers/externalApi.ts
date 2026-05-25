@@ -40,7 +40,7 @@ export async function fetchTranscriptViaExternalApi(
   };
 
   if (config.transcriptApiKey) {
-    headers.Authorization = `Bearer ${config.transcriptApiKey}`;
+    headers["x-api-key"] = config.transcriptApiKey;
   }
 
   const response = await fetchWithOptionalProxy(url, {
@@ -60,7 +60,19 @@ export async function fetchTranscriptViaExternalApi(
     payload.segments ??
     payload.transcript ??
     payload.captions ??
+    payload.content ??   // Supadata response shape
     payload.data;
 
-  return normalizeSegments(segmentsRaw);
+  // Supadata (and similar APIs) send offset/duration in ms already.
+  // normalizeSegments treats bare `offset`/`duration` as seconds and multiplies
+  // by 1000, so remap to explicit `offsetMs`/`durationMs` to skip that step.
+  const mapped = Array.isArray(segmentsRaw)
+    ? (segmentsRaw as Record<string, unknown>[]).map((s) => ({
+        text: s.text,
+        offsetMs: (s.offsetMs as number | undefined) ?? (s.offset as number | undefined),
+        durationMs: (s.durationMs as number | undefined) ?? (s.duration as number | undefined),
+      }))
+    : segmentsRaw;
+
+  return normalizeSegments(mapped);
 }

@@ -82,6 +82,17 @@ Podcast | Interview | Market Commentary | Deep Dive | Case Study | Analysis | Tu
 
 Prioritise: Podcast, Interview, Market Commentary, Deep Dive, Case Study, Analysis
 
+━━━ CATEGORIES ━━━
+
+Return 1–3 broad, canonical business categories per video (2–4 words max).
+Consolidate aggressively — prefer one strong category over three weak sub-topics:
+• "AI Business" — not "AI Agencies", "AI Automation", "AI Tools", "AI Employees"
+• "Investing" — not "Value Investing", "Stock Picking", "Index Funds"
+• "Entrepreneurship" — not "Startup Building", "Company Formation", "Founder Journey"
+• "Personal Finance" — not "Money Management", "Financial Planning Basics"
+• "Lead Generation" — not "Lead Gen Strategies", "B2B Leads", "Cold Outreach"
+• "Venture Capital" — not "VC Funding", "Startup Fundraising", "Seed Rounds"
+
 ━━━ EXPLANATION RULE ━━━
 
 score ≥ 60 → explanation: ONE sharp sentence naming the specific business insight, guest, or analytical angle.
@@ -89,8 +100,13 @@ score < 60  → explanation: "".
 
 ━━━ WHY IT MATTERS ━━━
 
-score ≥ 80 → whyItMatters: ONE sentence framing the concrete opportunity, risk, or edge this episode gives a founder or investor. Start with the outcome: "Reveals how...", "Shows why...", "Exposes the risk of...", "Explains the playbook for..."
-score < 80  → whyItMatters: "".
+ALL non-excluded videos → whyItMatters: ONE sentence naming the SPECIFIC opportunity, risk, or edge.
+Must reference what the episode actually covers — not the topic in general.
+Bad: "AI presents opportunities for businesses."
+Bad: "This discusses investing strategies."
+Good: "Reveals how solo operators are replacing 3-person sales teams with AI for under $300/month."
+Good: "Shows why cash-flow businesses are outperforming high-growth startups in the current rate environment."
+If the episode is excluded (topicCategory: "excluded") → whyItMatters: "".
 
 Return ALL videos. Never skip any.`;
 

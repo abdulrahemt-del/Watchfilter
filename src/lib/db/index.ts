@@ -54,6 +54,11 @@ async function ensureSchema(): Promise<void> {
     )`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_analyses_video_id ON analyses (video_id)`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS feed_cache (
+      user_id   TEXT PRIMARY KEY,
+      cached_at TEXT NOT NULL,
+      videos    TEXT NOT NULL
+    )`, args: [] },
   ], "write");
 
   for (const sql of [
@@ -309,6 +314,31 @@ export async function getRefreshToken(userId: string): Promise<string | null> {
     args: [userId],
   });
   return rows.length ? (rows[0].refresh_token as string) : null;
+}
+
+// ── Feed cache ────────────────────────────────────────────────────────────────
+
+export async function getFeedCache(userId: string): Promise<{ cachedAt: Date; videos: unknown[] } | null> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: "SELECT cached_at, videos FROM feed_cache WHERE user_id = ?",
+    args: [userId],
+  });
+  if (!rows.length) return null;
+  return {
+    cachedAt: new Date(rows[0].cached_at as string),
+    videos: JSON.parse(rows[0].videos as string) as unknown[],
+  };
+}
+
+export async function setFeedCache(userId: string, videos: unknown[]): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `INSERT INTO feed_cache (user_id, cached_at, videos)
+          VALUES (?, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET cached_at = excluded.cached_at, videos = excluded.videos`,
+    args: [userId, new Date().toISOString(), JSON.stringify(videos)],
+  });
 }
 
 export async function upsertIntelligenceSnapshot(data: SnapshotUpsertData): Promise<void> {

@@ -11,8 +11,11 @@
     "analyze": "tsx scripts/analyze-cli.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.3",
     "@vercel/blob": "^2.4.0",
+    "lucide-react": "^1.16.0",
     "next": "^15.3.3",
+    "next-auth": "^4.24.14",
     "openai": "^4.104.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

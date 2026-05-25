@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/options";
+import { getFeedCache, setFeedCache } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -51,6 +52,12 @@ export type FeedVideo = {
   description: string; // first 600 chars of video description
 };
 
+// ── Server-side feed cache (2-hour TTL per user) ─────────────────────────────
+// Prevents repeated YouTube API calls within the same server instance.
+// Sits on top of the client 24-hour localStorage cache.
+const SERVER_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const serverFeedCache = new Map<string, { ts: number; videos: FeedVideo[] }>();
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 async function ytGet<T>(path: string, accessToken: string): Promise<T> {
@@ -89,6 +96,29 @@ export async function GET() {
       );
     }
 
+    const DB_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+    const cacheKey = session.user?.email ?? accessToken.slice(0, 16);
+
+    // Tier 1 — in-memory (fastest, survives within same server process)
+    const memCached = serverFeedCache.get(cacheKey);
+    if (memCached && Date.now() - memCached.ts < SERVER_CACHE_TTL_MS) {
+      console.log(`[feed] mem-cache HIT (age ${Math.round((Date.now() - memCached.ts) / 60000)}min)`);
+      return NextResponse.json({ videos: memCached.videos });
+    }
+
+    // Tier 2 — DB cache (survives server restarts and deploys)
+    try {
+      const dbCached = await getFeedCache(cacheKey);
+      if (dbCached && Date.now() - dbCached.cachedAt.getTime() < DB_CACHE_TTL_MS) {
+        console.log(`[feed] db-cache HIT (age ${Math.round((Date.now() - dbCached.cachedAt.getTime()) / 60000)}min)`);
+        const videos = dbCached.videos as FeedVideo[];
+        serverFeedCache.set(cacheKey, { ts: dbCached.cachedAt.getTime(), videos });
+        return NextResponse.json({ videos });
+      }
+    } catch (dbErr) {
+      console.warn("[feed] db-cache lookup failed (non-fatal):", dbErr);
+    }
+
     // 1 — Fetch subscriptions: 1 page = 50 channels (order=relevance picks most-watched)
     const subData = await ytGet<YTSubscriptionPage>(
       `subscriptions?part=snippet&mine=true&maxResults=50&order=relevance`,
@@ -120,7 +150,7 @@ export async function GET() {
     // 3 — Fetch 50 most-recent videos per channel (1 page)
     async function fetchPlaylistVideos(playlistId: string, token: string): Promise<YTPlaylistItem[]> {
       const page1 = await ytGet<{ items?: YTPlaylistItem[] }>(
-        `playlistItems?part=snippet&playlistId=${playlistId}&maxResults=50`,
+        `playlistItems?part=snippet&playlistId=${playlistId}&maxResults=25`,
         token,
       );
       return page1.items ?? [];
@@ -300,6 +330,10 @@ export async function GET() {
       `[feed] metadata resolved: ${metaMap.size}/${rawVideos.length}` +
       ` | after_hard_block+40min: ${videos.length}`,
     );
+
+    // Store in both cache tiers
+    serverFeedCache.set(cacheKey, { ts: Date.now(), videos });
+    setFeedCache(cacheKey, videos).catch((e) => console.warn("[feed] db-cache write failed (non-fatal):", e));
 
     return NextResponse.json({ videos });
   } catch (err) {

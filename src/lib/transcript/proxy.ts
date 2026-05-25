@@ -30,8 +30,7 @@ export async function fetchWithOptionalProxy(
     return fetch(url, requestInit);
   }
 
-  return fetch(url, {
-    ...requestInit,
-    dispatcher: createProxyDispatcher(proxy),
-  });
+  // dispatcher is a Node.js/undici extension not in the DOM RequestInit type
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return fetch(url, { ...requestInit, dispatcher: createProxyDispatcher(proxy) } as any);
 }

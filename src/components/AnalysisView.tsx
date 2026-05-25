@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SavedAnalysis } from "@/lib/client-types";
 
 function youtubeWatchUrl(videoId: string, time?: string): string {
@@ -9,126 +9,33 @@ function youtubeWatchUrl(videoId: string, time?: string): string {
   const parts = time.split(":").map(Number);
   let seconds = 0;
   if (parts.length === 2) seconds = parts[0]! * 60 + parts[1]!;
-  else if (parts.length === 3)
-    seconds = parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
+  else if (parts.length === 3) seconds = parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
   return `${base}&t=${seconds}`;
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-function clickbaitMeta(score: number): { label: string; scoreClass: string } {
-  if (score <= 3) return { label: "Accurate", scoreClass: "score-low" };
-  if (score <= 6) return { label: "Sensationalized", scoreClass: "score-mid" };
-  return { label: "High Clickbait", scoreClass: "score-high" };
+function formatUploadDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-/* ── Audio player ── */
-function AudioPlayer({ src, title }: { src: string; title: string }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-
-  function togglePlay() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (playing) {
-      audio.pause();
-      setPlaying(false);
-    } else {
-      void audio.play();
-      setPlaying(true);
-    }
-  }
-
-  function onTimeUpdate() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    setCurrentTime(audio.currentTime);
-    setProgress(audio.duration ? (audio.currentTime / audio.duration) * 100 : 0);
-  }
-
-  function onLoadedMetadata() {
-    if (audioRef.current) setDuration(audioRef.current.duration);
-  }
-
-  function onEnded() {
-    setPlaying(false);
-    setProgress(0);
-    setCurrentTime(0);
-  }
-
-  function seek(e: React.ChangeEvent<HTMLInputElement>) {
-    const audio = audioRef.current;
-    if (!audio || !audio.duration) return;
-    const pct = Number(e.target.value);
-    audio.currentTime = (pct / 100) * audio.duration;
-    setProgress(pct);
-  }
-
-  function fmt(s: number) {
-    if (!isFinite(s) || isNaN(s)) return "0:00";
-    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-  }
-
-  const downloadName = `watchfilter-${title.slice(0, 40).replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.mp3`;
-
-  return (
-    <div className="audio-player">
-      <audio
-        ref={audioRef}
-        src={src}
-        preload="metadata"
-        onTimeUpdate={onTimeUpdate}
-        onLoadedMetadata={onLoadedMetadata}
-        onEnded={onEnded}
-      />
-      <span className="audio-player__label">🎙 Audio Briefing</span>
-      <div className="audio-player__controls">
-        <button
-          onClick={togglePlay}
-          className="audio-player__btn"
-          aria-label={playing ? "Pause" : "Play"}
-        >
-          {playing ? (
-            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden>
-              <rect x="0" y="0" width="3.5" height="12" rx="1" />
-              <rect x="6.5" y="0" width="3.5" height="12" rx="1" />
-            </svg>
-          ) : (
-            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden>
-              <path d="M0 0l10 6-10 6z" />
-            </svg>
-          )}
-        </button>
-        <span className="audio-player__time">
-          {fmt(currentTime)} / {fmt(duration)}
-        </span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          step="0.1"
-          value={progress}
-          onChange={seek}
-          className="audio-player__progress"
-          aria-label="Seek"
-        />
-        <a href={src} download={downloadName} className="audio-player__download">
-          ⬇ MP3
-        </a>
-      </div>
-    </div>
-  );
+function formatViews(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1).replace(/\.0$/, "")}B views`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M views`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K views`;
+  return `${n.toLocaleString()} views`;
 }
 
-/* ── Email button ── */
+function clickbaitMeta(score: number) {
+  if (score <= 3) return { label: "Accurate", colorClass: "score-ok", barColor: "var(--ok)" };
+  if (score <= 6) return { label: "Sensationalized", colorClass: "score-mid", barColor: "var(--warn)" };
+  return { label: "High Clickbait", colorClass: "score-high", barColor: "var(--danger)" };
+}
+
+/* ── Email Button ── */
 const EMAIL_KEY = "watchfilter_email";
 type EmailState = "idle" | "open" | "sending" | "sent" | "error";
 
@@ -140,10 +47,7 @@ function EmailButton({ analysisId }: { analysisId: string }) {
   const [errorMsg, setErrorMsg] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function open() {
-    setState("open");
-    setTimeout(() => inputRef.current?.focus(), 50);
-  }
+  function open() { setState("open"); setTimeout(() => inputRef.current?.focus(), 50); }
 
   async function send() {
     if (!email.trim()) return;
@@ -167,57 +71,33 @@ function EmailButton({ analysisId }: { analysisId: string }) {
   }
 
   if (state === "idle")
-    return (
-      <button onClick={open} className="btn-email">
-        📧 Email Briefing
-      </button>
-    );
-
+    return <button onClick={open} className="btn-email">📧 Email Briefing</button>;
   if (state === "sent")
-    return (
-      <span className="email-feedback email-feedback--ok">
-        ✅ Sent to {email}
-      </span>
-    );
-
+    return <span className="email-feedback email-feedback--ok">✅ Sent to {email}</span>;
   if (state === "error")
-    return (
-      <span className="email-feedback email-feedback--err">❌ {errorMsg}</span>
-    );
+    return <span className="email-feedback email-feedback--err">❌ {errorMsg}</span>;
 
   return (
     <div className="email-form">
       <input
-        ref={inputRef}
-        type="email"
-        placeholder="you@example.com"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && send()}
-        disabled={state === "sending"}
-        className="email-input"
+        ref={inputRef} type="email" placeholder="you@example.com"
+        value={email} onChange={e => setEmail(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && send()}
+        disabled={state === "sending"} className="email-input"
       />
-      <button
-        onClick={send}
-        disabled={state === "sending" || !email.trim()}
-        className="btn btn-primary"
-      >
+      <button onClick={send} disabled={state === "sending" || !email.trim()} className="btn btn-primary">
         {state === "sending" ? <span className="spinner" /> : "Send"}
       </button>
-      <button
-        onClick={() => setState("idle")}
-        disabled={state === "sending"}
-        className="btn btn-ghost"
-      >
-        ✕
-      </button>
+      <button onClick={() => setState("idle")} disabled={state === "sending"} className="btn btn-ghost">✕</button>
     </div>
   );
 }
 
-/* ── Accordion data card ── */
+/* ── Data point types ── */
 type DataPoint =
-  | { metric_title: string; causal_chain: string; direct_quote: string; credibility_check: string; exact_timestamp: string }
+  | { metric_title: string; speaker_thesis: string; strategic_intent: string; causal_chain: string; direct_quote: string; metric_context_example?: string; credibility_check: string; exact_timestamp: string }
+  | { metric_title: string; speaker_thesis: string; causal_chain: string; direct_quote: string; metric_context_example?: string; credibility_check: string; exact_timestamp: string }
+  | { metric_title: string; causal_chain: string; direct_quote: string; metric_context_example?: string; credibility_check: string; exact_timestamp: string }
   | { metric_title: string; speaker_thesis: string; direct_quote: string; exact_timestamp: string }
   | { metric_value: string; metric_context: string; root_cause: string }
   | { metric: string; root_cause: string }
@@ -225,66 +105,49 @@ type DataPoint =
 
 type ResolvedPoint = {
   title: string;
+  speakerThesis: string | null;
+  strategicIntent: string | null;
   causalChain: string | null;
   quote: string | null;
+  contextExample: string | null;
   credibilityCheck: string | null;
   timestamp: string | null;
 };
 
 function resolveDataPoint(point: DataPoint): ResolvedPoint {
-  if (typeof point === "string") {
-    return { title: point, causalChain: null, quote: null, credibilityCheck: null, timestamp: null };
+  if (typeof point === "string")
+    return { title: point, speakerThesis: null, strategicIntent: null, causalChain: null, quote: null, contextExample: null, credibilityCheck: null, timestamp: null };
+  if ("causal_chain" in point && "speaker_thesis" in point) {
+    const intent = "strategic_intent" in point ? point.strategic_intent : null;
+    const ctx = "metric_context_example" in point ? (point.metric_context_example ?? null) : null;
+    return { title: point.metric_title, speakerThesis: point.speaker_thesis, strategicIntent: intent, causalChain: point.causal_chain, quote: point.direct_quote, contextExample: ctx, credibilityCheck: point.credibility_check, timestamp: point.exact_timestamp };
   }
   if ("causal_chain" in point) {
-    return {
-      title: point.metric_title,
-      causalChain: point.causal_chain,
-      quote: point.direct_quote,
-      credibilityCheck: point.credibility_check,
-      timestamp: point.exact_timestamp,
-    };
+    const ctx = "metric_context_example" in point ? (point.metric_context_example ?? null) : null;
+    return { title: point.metric_title, speakerThesis: null, strategicIntent: null, causalChain: point.causal_chain, quote: point.direct_quote, contextExample: ctx, credibilityCheck: point.credibility_check, timestamp: point.exact_timestamp };
   }
-  if ("speaker_thesis" in point) {
-    // previous schema
-    return {
-      title: point.metric_title,
-      causalChain: point.speaker_thesis,
-      quote: point.direct_quote,
-      credibilityCheck: null,
-      timestamp: point.exact_timestamp,
-    };
-  }
-  if ("metric_context" in point) {
-    return {
-      title: `${point.metric_context} — ${point.metric_value}`,
-      causalChain: point.root_cause,
-      quote: null,
-      credibilityCheck: null,
-      timestamp: null,
-    };
-  }
-  // legacy { metric, root_cause }
-  return { title: point.metric, causalChain: point.root_cause, quote: null, credibilityCheck: null, timestamp: null };
+  if ("speaker_thesis" in point)
+    return { title: point.metric_title, speakerThesis: point.speaker_thesis, strategicIntent: null, causalChain: null, quote: point.direct_quote, contextExample: null, credibilityCheck: null, timestamp: point.exact_timestamp };
+  if ("metric_context" in point)
+    return { title: `${point.metric_context} — ${point.metric_value}`, speakerThesis: null, strategicIntent: null, causalChain: point.root_cause, quote: null, contextExample: null, credibilityCheck: null, timestamp: null };
+  return { title: point.metric, speakerThesis: null, strategicIntent: null, causalChain: point.root_cause, quote: null, contextExample: null, credibilityCheck: null, timestamp: null };
 }
 
 function CausalChain({ text }: { text: string }) {
-  const steps = text.split(/\s*→\s*|\s*->\s*/).map((s) => s.trim()).filter(Boolean);
-  if (steps.length <= 1) {
-    return <p className="data-card__thesis">{text}</p>;
-  }
+  const steps = text.split(/\s*→\s*|\s*->\s*/).map(s => s.trim()).filter(Boolean);
+  if (steps.length <= 1) return <p className="av-thesis">{text}</p>;
   return (
-    <p className="data-card__causal-chain">
+    <p className="av-causal-chain">
       {steps.flatMap((step, i) => [
-        <span key={`s${i}`} className="data-card__causal-step">{step}</span>,
-        i < steps.length - 1
-          ? <span key={`a${i}`} className="data-card__causal-arrow">→</span>
-          : null,
+        <span key={`s${i}`} className="av-causal-step">{step}</span>,
+        i < steps.length - 1 ? <span key={`a${i}`} className="av-causal-arrow">→</span> : null,
       ])}
     </p>
   );
 }
 
-function DataCard({
+/* ── Metric Card ── */
+function MetricCard({
   point,
   videoId,
   defaultOpen,
@@ -294,82 +157,99 @@ function DataCard({
   defaultOpen: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const { title, causalChain, quote, credibilityCheck, timestamp } = resolveDataPoint(point);
-  const hasBody = !!(causalChain || quote || credibilityCheck);
+  const { title, speakerThesis, strategicIntent, causalChain, quote, contextExample, credibilityCheck, timestamp } = resolveDataPoint(point);
+  const hasBody = !!(speakerThesis || strategicIntent || causalChain || quote || contextExample || credibilityCheck);
 
   return (
-    <div className="data-card">
+    <div className={`av-metric-card${open ? " av-metric-card--open" : ""}`}>
       <button
-        onClick={() => hasBody && setOpen((o) => !o)}
+        onClick={() => hasBody && setOpen(o => !o)}
         aria-expanded={open}
-        className="data-card__header"
+        className="av-metric-header"
       >
-        <p className="data-card__metric">{title}</p>
-        {timestamp && (
-          <a
-            href={youtubeWatchUrl(videoId, timestamp)}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="ts-pill"
-          >
-            ▶ {timestamp}
-          </a>
-        )}
-        {hasBody && (
-          <svg
-            className={`chevron ${open ? "chevron--open" : ""}`}
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            fill="none"
-            aria-hidden
-          >
-            <path
-              d="M3 5l4 4 4-4"
-              stroke="currentColor"
-              strokeWidth="1.75"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+        <p className="av-metric-title">{title}</p>
+
+        {(timestamp || hasBody) && (
+          <div className="av-metric-footer">
+            {timestamp && (
+              <a
+                href={youtubeWatchUrl(videoId, timestamp)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="av-ts-badge"
+              >
+                ▶ {timestamp}
+              </a>
+            )}
+            {hasBody && (
+              <svg
+                className={`av-chevron${open ? " av-chevron--open" : ""}`}
+                style={{ marginLeft: "auto" }}
+                width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden
+              >
+                <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
         )}
       </button>
 
       {hasBody && (
-        <div className={`accordion-body ${open ? "accordion-body--open" : ""}`}>
-          <div className="accordion-inner">
+        <div className={`av-drawer${open ? " av-drawer--open" : ""}`}>
+          <div className="av-drawer-inner">
+            <div className="av-drawer-bg">
 
-            {causalChain && (
-              <div className="data-card__tier">
-                <p className="data-card__tier-label">Causal Chain</p>
-                <CausalChain text={causalChain} />
-              </div>
-            )}
-
-            {quote && (
-              <div className="data-card__tier">
-                <p className="data-card__tier-label">
-                  <svg width="13" height="10" viewBox="0 0 13 10" fill="currentColor" aria-hidden>
-                    <path d="M0 10V6.2C0 3.7 1.4 1.7 4.3.4L5.1 2C3.3 2.8 2.4 4 2.3 5.6H4.8V10H0zm7.2 0V6.2c0-2.5 1.4-4.5 4.3-5.8L12.3 2c-1.8.8-2.7 2-2.8 3.6H12V10H7.2z"/>
-                  </svg>
-                  Direct Quote
-                </p>
-                <div className="data-card__quote-block">
-                  <p className="data-card__quote-text">"{quote}"</p>
+              {quote && (
+                <div className="av-tier">
+                  <p className="av-tier-label">
+                    <svg width="13" height="10" viewBox="0 0 13 10" fill="currentColor" aria-hidden>
+                      <path d="M0 10V6.2C0 3.7 1.4 1.7 4.3.4L5.1 2C3.3 2.8 2.4 4 2.3 5.6H4.8V10H0zm7.2 0V6.2c0-2.5 1.4-4.5 4.3-5.8L12.3 2c-1.8.8-2.7 2-2.8 3.6H12V10H7.2z" />
+                    </svg>
+                    Direct Quote
+                  </p>
+                  <blockquote className="av-blockquote">"{quote}"</blockquote>
                 </div>
-              </div>
-            )}
+              )}
 
-            {credibilityCheck && (
-              <div className="data-card__tier">
-                <p className="data-card__tier-label data-card__tier-label--amber">
-                  ⚖ Credibility Check
-                </p>
-                <p className="data-card__credibility">{credibilityCheck}</p>
-              </div>
-            )}
+              {speakerThesis && (
+                <div className="av-tier">
+                  <p className="av-tier-label">Speaker Narrative</p>
+                  <p className="av-speaker-thesis">{speakerThesis}</p>
+                </div>
+              )}
 
+              {strategicIntent && (
+                <div className="av-tier">
+                  <p className="av-tier-label">🎯 Strategic Intent</p>
+                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-3.5 mt-2 text-[#4f6d7a] text-sm leading-relaxed">
+                    {strategicIntent}
+                  </div>
+                </div>
+              )}
+
+              {causalChain && (
+                <div className="av-tier">
+                  <p className="av-tier-label">Causal Chain</p>
+                  <CausalChain text={causalChain} />
+                </div>
+              )}
+
+              {contextExample && (
+                <div className="av-tier">
+                  <p className="av-tier-label">💡 Context &amp; Real-World Illustration</p>
+                  <div className="av-context-example">{contextExample}</div>
+                </div>
+              )}
+
+              {credibilityCheck && (
+                <div className="av-tier">
+                  <p className="av-tier-label av-tier-label--amber">⚖ Credibility Check</p>
+                  <p className="av-credibility">{credibilityCheck}</p>
+                </div>
+              )}
+
+            </div>
           </div>
         </div>
       )}
@@ -377,162 +257,303 @@ function DataCard({
   );
 }
 
-/* ── Main component ── */
-export function AnalysisView({ analysis }: { analysis: SavedAnalysis }) {
+/* ── Worth-Watching Card ── */
+type WorthWatching = NonNullable<SavedAnalysis["worth_watching"]>;
+
+function wwScoreColor(score: number): string {
+  if (score >= 8) return "var(--ok)";
+  if (score >= 6) return "#84cc16";
+  if (score >= 4) return "var(--warn)";
+  return "var(--danger)";
+}
+
+function wwBarColor(value: number, invert = false): string {
+  const effective = invert ? 11 - value : value;
+  if (effective >= 8) return "var(--ok)";
+  if (effective >= 6) return "#84cc16";
+  if (effective >= 4) return "var(--warn)";
+  return "var(--danger)";
+}
+
+const WW_DIMS: { key: keyof WorthWatching; label: string; invert?: boolean }[] = [
+  { key: "educational_value", label: "Educational" },
+  { key: "uniqueness", label: "Uniqueness" },
+  { key: "practicality", label: "Practical" },
+  { key: "fluff_ratio", label: "Fluff", invert: true },
+  { key: "time_sensitivity", label: "Urgency" },
+];
+
+function timestampToSeconds(t: string): number {
+  const parts = t.split(":").map(Number);
+  if (parts.length === 3) return parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
+  return parts[0]! * 60 + (parts[1] ?? 0);
+}
+
+function WorthWatchingCard({
+  ww,
+  videoId,
+}: {
+  ww: WorthWatching;
+  videoId: string;
+}) {
+  const color = wwScoreColor(ww.score);
+  const skipTo = ww.skip_to && timestampToSeconds(ww.skip_to) >= 30 ? ww.skip_to : null;
+  return (
+    <div className="av-ww-card">
+      <div className="av-ww-top">
+        <div className="av-ww-score">
+          <span className="av-ww-num" style={{ color }}>{ww.score.toFixed(1)}</span>
+          <span className="av-ww-denom">/10</span>
+        </div>
+        <p className="av-ww-verdict">{ww.verdict}</p>
+      </div>
+
+      {skipTo && (
+        <a
+          href={youtubeWatchUrl(videoId, skipTo)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="av-ww-skip"
+        >
+          ⏩ Skip to good part · {skipTo}
+        </a>
+      )}
+
+      <div className="av-ww-bars">
+        {WW_DIMS.map(({ key, label, invert }) => {
+          const raw = ww[key] as number;
+          const displayPct = (raw / 10) * 100;
+          const barColor = wwBarColor(raw, invert);
+          return (
+            <div key={key} className="av-ww-bar-row">
+              <span className="av-ww-bar-label">{label}</span>
+              <div className="av-ww-bar-track">
+                <div
+                  className="av-ww-bar-fill"
+                  style={{ width: `${displayPct}%`, background: barColor }}
+                />
+              </div>
+              <span className="av-ww-bar-val">{raw}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Enhance Button — auto-fires on mount, regenerates audio after backfill ── */
+type EnhanceState = "idle" | "loading" | "done" | "error";
+
+function EnhanceButton({ analysisId, onRefresh }: { analysisId: string; onRefresh: () => void }) {
+  const [state, setState] = useState<EnhanceState>("idle");
+  const ranRef = useRef(false);
+
+  async function enhance() {
+    if (ranRef.current) return;
+    ranRef.current = true;
+    setState("loading");
+    try {
+      // 1. Backfill: generates nuggets + context examples
+      const res = await fetch(`/api/backfill/${analysisId}`, { method: "POST" });
+      if (!res.ok) throw new Error("Backfill failed");
+
+      // 2. Regenerate audio so nuggets are included in the briefing
+      await fetch("/api/regenerate-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysisId, voice: "onyx" }),
+      }).catch(() => { /* audio regen is best-effort */ });
+
+      setState("done");
+      onRefresh();
+    } catch {
+      ranRef.current = false; // allow retry on manual click
+      setState("error");
+      setTimeout(() => setState("idle"), 3000);
+    }
+  }
+
+  // Auto-trigger silently on mount — no user action needed
+  useEffect(() => { void enhance(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (state === "done") return null;
+  return (
+    <button
+      onClick={() => void enhance()}
+      disabled={state === "loading"}
+      className="btn-enhance"
+    >
+      {state === "loading" ? <><span className="spinner" /> Enhancing…</> : state === "error" ? "❌ Failed — retry" : "✨ Enhance Report"}
+    </button>
+  );
+}
+
+/* ── Main Component ── */
+export function AnalysisView({ analysis, onRefresh }: {
+  analysis: SavedAnalysis;
+  onRefresh?: () => void;
+}) {
+  const needsEnhancement = !analysis.off_script_nuggets?.length;
   const displayTitle = analysis.title ?? `Video ${analysis.videoId}`;
-  const { label: cbLabel, scoreClass } = clickbaitMeta(analysis.clickbait_score);
+  const { label: cbLabel, colorClass, barColor } = clickbaitMeta(analysis.clickbait_score);
 
   return (
-    <article className="analysis-card">
+    <>
+    <article className="av-root">
 
-      {/* ── Header ── */}
-      <header className="analysis-header">
-        <h2 className="analysis-title">
-          <a
-            href={analysis.youtubeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+      {/* ── Header Card ── */}
+      <div className="av-header-card">
+        <h2 className="av-title">
+          <a href={analysis.youtubeUrl} target="_blank" rel="noopener noreferrer">
             {displayTitle}
           </a>
         </h2>
-        {analysis.audioPath && (
-          <AudioPlayer src={analysis.audioPath} title={displayTitle} />
+
+        {(analysis.channelName || analysis.viewCount != null || analysis.uploadDate) && (
+          <div className="av-video-meta">
+            {analysis.channelName && (
+              <span className="av-video-meta__channel">{analysis.channelName}</span>
+            )}
+            {analysis.viewCount != null && (
+              <span className="av-video-meta__item">{formatViews(analysis.viewCount)}</span>
+            )}
+            {analysis.uploadDate && (
+              <span className="av-video-meta__item">{formatUploadDate(analysis.uploadDate)}</span>
+            )}
+          </div>
         )}
-        <div className="analysis-title-actions">
+
+        <div className="av-score-section">
+          <p className="av-score-key">Clickbait Score</p>
+          <div className="av-score-top">
+            <span className={`av-score-num ${colorClass}`}>{analysis.clickbait_score}/10</span>
+            <span className={`av-score-label ${colorClass}`}>{cbLabel}</span>
+          </div>
+          <div className="av-score-track">
+            <div className="av-score-fill" style={{ width: `${analysis.clickbait_score * 10}%`, background: barColor }} />
+          </div>
+        </div>
+
+        <div className="av-snapshot-row">
+          <div className="av-snapshot-item av-snapshot-item--wide">
+            <span className="av-snapshot-key">Primary Subject</span>
+            <span className="av-snapshot-val">{analysis.primary_subject}</span>
+          </div>
+          <div className="av-snapshot-item">
+            <span className="av-snapshot-key">Data Density</span>
+            <span className="av-snapshot-val">{analysis.hard_data_points.length} metrics</span>
+          </div>
+        </div>
+
+        {analysis.worth_watching && (
+          <div>
+            <p className="av-score-key" style={{ marginBottom: "0.5rem" }}>Worth-Watching Score</p>
+            <WorthWatchingCard ww={analysis.worth_watching} videoId={analysis.videoId} />
+          </div>
+        )}
+
+        <div className="av-controls-row">
           <EmailButton analysisId={analysis.id} />
-        </div>
-      </header>
-
-      {/* ── Executive Snapshot ── */}
-      <section className="section">
-        <p className="section-label">Executive Snapshot</p>
-        <div className="snapshot-table">
-          <div className="snapshot-cell">
-            <span className="snapshot-key">Clickbait Score</span>
-            <span className={`snapshot-score ${scoreClass}`}>
-              <span className="clickbait-score">
-                {analysis.clickbait_score}/10
-              </span>
-              <span className="snapshot-score-label">{cbLabel}</span>
-            </span>
-          </div>
-          <div className="snapshot-cell snapshot-cell--subject">
-            <span className="snapshot-key">Primary Subject</span>
-            <span className="snapshot-value">{analysis.primary_subject}</span>
-          </div>
-          <div className="snapshot-cell">
-            <span className="snapshot-key">Data Density</span>
-            <span className="snapshot-value">
-              {analysis.hard_data_points.length} metrics
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Two-column dashboard ── */}
-      <div className="dashboard-grid">
-
-        {/* Main column — Hard Data */}
-        <div>
-          {analysis.hard_data_points.length > 0 && (
-            <section className="section">
-              <p className="section-label">📊 Hard Data &amp; Analysis</p>
-              <div className="data-cards">
-                {analysis.hard_data_points.map((point, i) => (
-                  <DataCard key={i} point={point} videoId={analysis.videoId} defaultOpen={i === 0} />
-                ))}
-              </div>
-            </section>
+          {needsEnhancement && onRefresh && (
+            <EnhanceButton analysisId={analysis.id} onRefresh={onRefresh} />
           )}
-        </div>
-
-        {/* Sidebar — Playbook + Timestamps */}
-        <div className="dashboard-sidebar">
-
-          {/* Tactical Playbook */}
-          <section className="section">
-            <p className="section-label">🚀 Tactical Playbook</p>
-            <ol className="playbook">
-              {analysis.actionable_takeaways.map((takeaway, index) => {
-                const strategy =
-                  typeof takeaway === "string" ? takeaway : takeaway.strategy;
-                const steps =
-                  typeof takeaway === "string"
-                    ? []
-                    : (takeaway.execution_steps ?? []);
-                const ts = analysis.timestamps.find(
-                  (t) => t.takeaway_index === index
-                );
-                return (
-                  <li key={index} className="playbook-item">
-                    <p className="playbook-priority">Priority {index + 1}</p>
-                    <p className="playbook-strategy">{strategy}</p>
-                    {steps.length > 0 && (
-                      <ul className="playbook-steps">
-                        {steps.map((step, si) => (
-                          <li key={si} className="playbook-step">
-                            <span className="step-arrow">→</span>
-                            {step}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {ts && (
-                      <a
-                        href={youtubeWatchUrl(analysis.videoId, ts.time)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ts-pill"
-                      >
-                        ▶ {ts.time}
-                        {ts.label ? ` · ${ts.label}` : ""}
-                      </a>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-          </section>
-
-          {/* Timestamp Index */}
-          {analysis.timestamps.length > 0 && (
-            <section className="section">
-              <p className="section-label">⏱️ Timestamp Index</p>
-              <div className="ts-index">
-                {analysis.timestamps.map((ts, i) => {
-                  const takeaway =
-                    analysis.actionable_takeaways[ts.takeaway_index];
-                  const label =
-                    ts.label ||
-                    (typeof takeaway === "string"
-                      ? takeaway
-                      : takeaway?.strategy) ||
-                    "";
-                  return (
-                    <a
-                      key={i}
-                      href={youtubeWatchUrl(analysis.videoId, ts.time)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ts-pill ts-pill--index"
-                    >
-                      <span className="ts-pill__time">▶ {ts.time}</span>
-                      {label && (
-                        <span className="ts-pill__label">{label}</span>
-                      )}
-                    </a>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
         </div>
       </div>
 
+      {/* ── Metrics Grid ── */}
+      {analysis.hard_data_points.length > 0 && (
+        <section className="av-section">
+          <p className="av-section-label">📊 Hard Data &amp; Analysis</p>
+          <div className="av-metrics-grid">
+            {analysis.hard_data_points.map((point, i) => (
+              <MetricCard key={i} point={point} videoId={analysis.videoId} defaultOpen={i === 0} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Off-Script Golden Nuggets ── */}
+      {analysis.off_script_nuggets && analysis.off_script_nuggets.length > 0 && (
+        <section className="av-section">
+          <p className="av-section-label">🧠 Off-Script Golden Nuggets</p>
+          <div className="av-nuggets">
+            <ul className="av-nuggets__list">
+              {analysis.off_script_nuggets.map((nugget, i) => (
+                <li key={i} className="av-nuggets__item">{nugget}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* ── Tactical Playbook ── */}
+      <section className="av-section">
+        <p className="av-section-label">🚀 Tactical Playbook</p>
+        <div className="av-playbook">
+          {analysis.actionable_takeaways.map((takeaway, index) => {
+            const strategy = typeof takeaway === "string" ? takeaway : takeaway.strategy;
+            const steps = typeof takeaway === "string" ? [] : (takeaway.execution_steps ?? []);
+            const ts = analysis.timestamps.find(t => t.takeaway_index === index);
+            return (
+              <div key={index} className="av-playbook-item">
+                <p className="av-playbook-num">Priority {index + 1}</p>
+                <p className="av-playbook-strategy">{strategy}</p>
+                {steps.length > 0 && (
+                  <ul className="av-playbook-steps">
+                    {steps.map((step, si) => (
+                      <li key={si} className="av-playbook-step">
+                        <span className="av-step-arrow">→</span>
+                        {step}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {ts && (
+                  <a
+                    href={youtubeWatchUrl(analysis.videoId, ts.time)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="av-ts-pill"
+                  >
+                    <span className="av-ts-pill__time">▶ {ts.time}</span>
+                    {ts.label && <span className="av-ts-pill__label">{ts.label}</span>}
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── Timestamp Index ── */}
+      {analysis.timestamps.length > 0 && (
+        <section className="av-section">
+          <p className="av-section-label">⏱️ Timestamp Index</p>
+          <div className="av-ts-index">
+            {analysis.timestamps.map((ts, i) => {
+              const takeaway = analysis.actionable_takeaways[ts.takeaway_index];
+              const label =
+                ts.label || (typeof takeaway === "string" ? takeaway : takeaway?.strategy) || "";
+              return (
+                <a
+                  key={i}
+                  href={youtubeWatchUrl(analysis.videoId, ts.time)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="av-ts-pill"
+                >
+                  <span className="av-ts-pill__time">▶ {ts.time}</span>
+                  {label && <span className="av-ts-pill__label">{label}</span>}
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* ── Footer ── */}
-      <footer className="analysis-meta">
+      <footer className="av-footer">
         <span>Saved {formatDate(analysis.createdAt)}</span>
         <span>Source: {analysis.transcriptSource}</span>
         <span>{analysis.transcriptCharCount.toLocaleString()} transcript chars</span>
@@ -542,5 +563,6 @@ export function AnalysisView({ analysis }: { analysis: SavedAnalysis }) {
       </footer>
 
     </article>
+    </>
   );
 }
