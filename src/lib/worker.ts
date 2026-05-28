@@ -103,7 +103,7 @@ async function fetchFeed(accessToken: string): Promise<FeedVideo[]> {
       duration: metaMap.get(v.videoId)?.duration ?? "",
       description: metaMap.get(v.videoId)?.description ?? "",
     }))
-    .filter(v => v.duration && isoToSecs(v.duration) >= 2400);
+    .filter(v => v.duration && isoToSecs(v.duration) >= 600);
 }
 
 // ── AI scoring ────────────────────────────────────────────────────────────────

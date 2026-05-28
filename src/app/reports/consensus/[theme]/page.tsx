@@ -97,11 +97,11 @@ async function synthesizeReport(
 
   for (const a of analyses) {
     for (const p of a.hard_data_points ?? []) {
-      const pt = p as Record<string, string>;
+      const pt = p as Record<string, unknown>;
       rawEvidence.push({
         ref: `REF:${a.id}`, source: a.channelName ?? "Unknown",
         analysisId: a.id, youtubeUrl: a.youtubeUrl ?? "", audioPath: a.audioPath ?? "",
-        metric: pt.metric_title ?? "", quote: pt.direct_quote ?? "", timestamp: pt.exact_timestamp ?? "",
+        metric: (pt.metric_title as string) ?? "", quote: (pt.direct_quote as string) ?? "", timestamp: (pt.exact_timestamp as string) ?? "",
       });
     }
     for (const n of a.off_script_nuggets ?? []) {
@@ -207,8 +207,8 @@ export default async function ConsensusReportPage({ params }: Props) {
   const allPoints     = analyses.flatMap((a) => a.hard_data_points ?? []);
   const insightCount  = allPoints.length;
   const hardDataCount = allPoints.filter((p) => {
-    const pt = p as Record<string, string>;
-    return hasHardData(pt.direct_quote ?? "") || hasHardData(pt.metric_title ?? "");
+    const pt = p as Record<string, unknown>;
+    return hasHardData((pt.direct_quote as string) ?? "") || hasHardData((pt.metric_title as string) ?? "");
   }).length;
   const evidenceStrength: EvidenceStrength = calcEvidenceStrength(creatorCount, videoCount, insightCount, hardDataCount);
   const report = analyses.length >= 2 ? await synthesizeReport(themeName, analyses) : null;
@@ -435,14 +435,14 @@ const allQuotes  = report?.clusters.flatMap((c) => c.supportingQuotes ?? []) ?? 
                 <RawEvidenceLog
                   items={analyses.flatMap((a) =>
                     (a.hard_data_points ?? []).map((pt, i): EvidenceItem => {
-                      const p = pt as Record<string, string>;
+                      const p = pt as Record<string, unknown>;
                       return {
                         id: `${a.id}-${i}`,
-                        metricLabel: p.metric_title ?? "(no metric)",
-                        verbatimQuote: p.direct_quote ?? "",
+                        metricLabel: (p.metric_title as string) ?? "(no metric)",
+                        verbatimQuote: (p.direct_quote as string) ?? "",
                         sourceChannel: a.channelName ?? "Unknown",
-                        timestampMark: p.exact_timestamp ?? "",
-                        youtubeUrl: p.exact_timestamp ? youtubeWatchUrl(a.videoId, p.exact_timestamp) : undefined,
+                        timestampMark: (p.exact_timestamp as string) ?? "",
+                        youtubeUrl: p.exact_timestamp ? youtubeWatchUrl(a.videoId, p.exact_timestamp as string) : undefined,
                         analysisId: a.id,
                       };
                     })

@@ -2,6 +2,7 @@
 
 import React, { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Search, Sparkles, Compass, History, MessageSquare } from "lucide-react";
+import { track } from "@/lib/analytics";
 import { AnalysisView } from "./AnalysisView";
 import { ConsensusView } from "./ConsensusView";
 import { AppSidebar, type NavItem } from "./AppSidebar";
@@ -451,6 +452,11 @@ export function WatchFilterApp() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeNav, setActiveNav] = useState<NavItem>("dashboard");
+
+  function handleNav(nav: NavItem) {
+    setActiveNav(nav);
+    if (nav === "dashboard") track("dashboard_viewed");
+  }
   const [globalAudio, setGlobalAudio] = useState<{
     src: string; title: string; analysisId: string; autoPlay?: boolean;
   } | null>(null);
@@ -555,6 +561,7 @@ export function WatchFilterApp() {
       setAnalysis(data);
       setActiveId(data.id);
       setUrl("");
+      track("video_analyzed", { videoId: data.videoId, analysisId: data.id, label: data.title ?? data.videoId });
       await loadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed");
@@ -583,6 +590,7 @@ export function WatchFilterApp() {
       if (!res.ok) throw new Error((data as ApiErrorBody).error ?? "Consensus analysis failed");
       setConsensus(data);
       setView("consensus");
+      track("consensus_opened", { label: `${ids.length} analyses` });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Consensus analysis failed");
     } finally {
@@ -636,7 +644,7 @@ export function WatchFilterApp() {
     <div className="app-shell">
       <AppSidebar
         active={activeNav}
-        onNav={setActiveNav}
+        onNav={handleNav}
         analysisCount={history.length}
       />
 
@@ -721,6 +729,12 @@ export function WatchFilterApp() {
               <AnalysisView
                 analysis={analysis}
                 onRefresh={() => void loadAnalysis(analysis.id)}
+                onPlayAudio={analysis.audioPath ? () => setGlobalAudio({
+                  src: analysis.audioPath!,
+                  title: analysis.title ?? analysis.videoId,
+                  analysisId: analysis.id,
+                  autoPlay: true,
+                }) : undefined}
               />
             )}
           </>

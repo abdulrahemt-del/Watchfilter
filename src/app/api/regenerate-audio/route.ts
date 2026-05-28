@@ -5,7 +5,7 @@ import { getAnalysisById, updateAudioPath } from "@/lib/db";
 import { buildPodcastScript, generateSpeechFile } from "@/lib/tts";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const VALID_VOICES = ["onyx", "nova", "echo", "fable", "shimmer", "alloy"] as const;
 

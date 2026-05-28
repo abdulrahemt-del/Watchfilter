@@ -352,7 +352,7 @@ export const HARD_TITLE_BLOCKS = [
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const LONGFORM_MIN_SECS        = 2400; // 40 min
+export const LONGFORM_MIN_SECS        = 1500; // 25 min
 export const AFFINITY_PASS_THRESHOLD  = 70;   // trusted business channel — structural pass
 export const AFFINITY_BLOCK_THRESHOLD = -80;  // hard block threshold
 export const UNKNOWN_AI_THRESHOLD     = 85;   // AI businessRelevance gate for unknown channels
@@ -389,7 +389,7 @@ export function detectPrimaryTopic(title: string, desc: string): string {
 //
 // Whitelist-first pipeline:
 //   1. Hard blocks (all modes)        — known bad channels + banned title words
-//   2. Duration gate                  — 40 min minimum (active modes)
+//   2. Duration gate                  — 25 min minimum (active modes)
 //   3. Trusted channel gate           — business/founder: only affinity ≥ 70 passes
 //
 // Unknown channels (affinity 0–69) are NOT returned here.
@@ -400,25 +400,28 @@ export function useFilteredFeed(rawVideos: FeedVideo[], mode: FeedMode): FeedVid
   return useMemo(() => {
     if (!rawVideos?.length) return [];
 
-    // ── Step 1: Hard blocks — every mode ────────────────────────────────────
+    // ── Step 1: Hard blocks + duration gate — every mode ───────────────────
+    // 25 min minimum applies universally. "off" mode disables topic/trust gates
+    // but never the duration floor — sub-25min videos are always excluded.
     const hardPassed: FeedVideo[] = [];
     for (const video of rawVideos) {
       if (getChannelAffinity(video.channelTitle) <= AFFINITY_BLOCK_THRESHOLD) continue;
       const ti = video.title.toLowerCase();
       if (HARD_TITLE_BLOCKS.some((p) => ti.includes(p))) continue;
+      if (isoToSeconds(video.duration) < LONGFORM_MIN_SECS) continue;
       hardPassed.push(video);
     }
 
     // ── Step 2: mode="off" returns hard-filtered set only ───────────────────
     if (mode === "off") return hardPassed;
 
-    // ── Step 3: Duration gate — 40 min minimum ──────────────────────────────
-    const durationPassed = hardPassed.filter(
-      (v) => isoToSeconds(v.duration) >= LONGFORM_MIN_SECS,
-    );
+    // ── Step 3: Longform — hard blocks already applied, no topic gate ───────
+    if (mode === "longform") {
+      return hardPassed;
+    }
 
-    // ── Step 4: Longform — all long-form after hard blocks, no topic gate ───
-    if (mode === "longform") return durationPassed;
+    // ── Step 4: Active modes — hard blocks + duration gate already applied ──
+    const durationPassed = hardPassed;
 
     // ── Step 5: Business / Founder — trusted bypass + inclusion gate ────────
     // Trusted channels (affinity ≥ 70): pass without an inclusion check.

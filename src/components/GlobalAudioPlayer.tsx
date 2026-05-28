@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { track } from "@/lib/analytics";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -127,6 +128,7 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     setWordTimings([]);
     setActiveWordIdx(-1);
     setTimingScale(1);
+    hasTrackedPlay.current = false;
   }, [analysisId]);
 
   // Calibrate timing scale once we have both actual duration and estimated timings
@@ -168,11 +170,22 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     setDragging(true);
   }
 
+  const hasTrackedPlay = useRef(false);
+
   function togglePlay() {
     const audio = audioRef.current;
     if (!audio) return;
-    if (playing) { audio.pause(); setPlaying(false); }
-    else { void audio.play(); setPlaying(true); }
+    if (playing) {
+      audio.pause();
+      setPlaying(false);
+    } else {
+      void audio.play();
+      setPlaying(true);
+      if (!hasTrackedPlay.current) {
+        hasTrackedPlay.current = true;
+        track("audio_played", { analysisId, label: title });
+      }
+    }
   }
 
   function onTimeUpdate() {

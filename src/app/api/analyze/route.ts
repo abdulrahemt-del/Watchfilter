@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import { analyzeYouTubeVideo, TranscriptFetchError } from "@/lib/analyzeVideo";
-import { saveAnalysis, getLatestAnalysisByVideoId, updateAudioPath } from "@/lib/db";
-import { buildPodcastScript, generateSpeechFile } from "@/lib/tts";
+import { saveAnalysis, getLatestAnalysisByVideoId } from "@/lib/db";
 import { extractYouTubeVideoId } from "@/lib/youtube";
 import type { TranscriptFetchOverrides } from "@/lib/youtube";
 
@@ -99,25 +98,8 @@ export async function POST(request: Request) {
     const analysisId = crypto.randomUUID();
 
     // Save immediately — no audio yet — so the client gets the analysis fast.
+    // Audio is generated after backfill (EnhanceButton) so nuggets are always included.
     const saved = await saveAnalysis(url, result, { id: analysisId });
-
-    // Generate TTS in the background; update DB when done.
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (apiKey) {
-      const rawVoice = readStringField(body, "voice") ?? "onyx";
-      const voice = (["onyx", "nova", "echo", "fable", "shimmer", "alloy"].includes(rawVoice)
-        ? rawVoice
-        : "onyx") as "onyx" | "nova" | "echo" | "fable" | "shimmer" | "alloy";
-      void (async () => {
-        try {
-          const script = buildPodcastScript({ ...result, title: result.title });
-          const audioPath = await generateSpeechFile(script, `${analysisId}.mp3`, apiKey, voice);
-          await updateAudioPath(analysisId, audioPath);
-        } catch (ttsErr) {
-          console.error("[TTS] Failed (non-fatal):", ttsErr);
-        }
-      })();
-    }
 
     return NextResponse.json(saved);
   } catch (error) {

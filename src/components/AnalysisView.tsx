@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SavedAnalysis } from "@/lib/client-types";
+import { track } from "@/lib/analytics";
 
 function youtubeWatchUrl(videoId: string, time?: string): string {
   const base = `https://www.youtube.com/watch?v=${videoId}`;
@@ -376,7 +377,7 @@ function MetricCard({
                         </div>
                       )}
                       {opportunityPotential !== null && (
-                        <div className="av-tier">
+                        <div className="av-tier" onClick={() => track("opportunity_clicked", { analysisId: videoId, label: String(opportunityPotential) })}>
                           <p className="av-tier-label" style={{ color: opportunityPotential >= 80 ? "var(--ok)" : opportunityPotential >= 50 ? "var(--warn)" : "var(--muted)" }}>
                             Opportunity Potential
                           </p>
@@ -616,6 +617,64 @@ function EnhanceButton({ analysisId, onRefresh }: { analysisId: string; onRefres
   );
 }
 
+/* ── Quick Feedback ── */
+type FeedbackState = "idle" | "sending" | "done";
+
+function QuickFeedback({ analysisId, videoTitle }: { analysisId: string; videoTitle: string }) {
+  const [state, setState] = useState<FeedbackState>("idle");
+  const [choice, setChoice] = useState<"helpful" | "not_helpful" | null>(null);
+
+  async function submit(value: "helpful" | "not_helpful") {
+    if (state !== "idle") return;
+    setChoice(value);
+    setState("sending");
+    track("feedback_submitted", { analysisId, label: value });
+    try {
+      await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: `analysis_feedback_${value}`,
+          message: `${value === "helpful" ? "👍 Helpful" : "👎 Not Helpful"} — ${videoTitle} (${analysisId})`,
+        }),
+      });
+    } catch {
+      // non-blocking — don't surface errors for feedback
+    }
+    setState("done");
+  }
+
+  if (state === "done") {
+    return (
+      <div className="av-quick-feedback av-quick-feedback--done">
+        {choice === "helpful" ? "👍 Thanks for the feedback!" : "👎 Noted — we'll keep improving."}
+      </div>
+    );
+  }
+
+  return (
+    <div className="av-quick-feedback">
+      <span className="av-quick-feedback__label">Was this analysis helpful?</span>
+      <button
+        onClick={() => void submit("helpful")}
+        disabled={state === "sending"}
+        className="av-quick-feedback__btn av-quick-feedback__btn--yes"
+        aria-label="Helpful"
+      >
+        👍 Helpful
+      </button>
+      <button
+        onClick={() => void submit("not_helpful")}
+        disabled={state === "sending"}
+        className="av-quick-feedback__btn av-quick-feedback__btn--no"
+        aria-label="Not helpful"
+      >
+        👎 Not Helpful
+      </button>
+    </div>
+  );
+}
+
 /* ── Main Component ── */
 export function AnalysisView({ analysis, onRefresh, onPlayAudio }: {
   analysis: SavedAnalysis;
@@ -839,6 +898,9 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio }: {
           </div>
         </section>
       )}
+
+      {/* ── Quick Feedback ── */}
+      <QuickFeedback analysisId={analysis.id} videoTitle={displayTitle} />
 
       {/* ── Footer ── */}
       <footer className="av-footer">

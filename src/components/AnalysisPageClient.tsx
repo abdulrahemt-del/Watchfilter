@@ -25,27 +25,6 @@ export function AnalysisPageClient({ analysis: initial }: { analysis: SavedAnaly
     });
   }, [analysis.audioPath, analysis.id, analysis.title, analysis.videoId]);
 
-  // Poll for audioPath when it isn't set yet (TTS runs in background after analysis saves)
-  useEffect(() => {
-    if (analysis.audioPath) return;
-    let tries = 0;
-    const MAX_TRIES = 18; // ~90 seconds
-    const id = setInterval(async () => {
-      tries++;
-      try {
-        const res = await fetch(`/api/analyses/${analysis.id}`);
-        if (!res.ok) return;
-        const data = (await res.json()) as SavedAnalysis;
-        if (data.audioPath) {
-          setAnalysis((prev) => ({ ...prev, audioPath: data.audioPath }));
-          clearInterval(id);
-        }
-      } catch { /* ignore, keep polling */ }
-      if (tries >= MAX_TRIES) clearInterval(id);
-    }, 5000);
-    return () => clearInterval(id);
-  }, [analysis.id, analysis.audioPath]);
-
   function handleRefresh() {
     // Re-fetch the updated analysis from the server after backfill/enhance
     fetch(`/api/analyses/${analysis.id}`)
@@ -54,9 +33,14 @@ export function AnalysisPageClient({ analysis: initial }: { analysis: SavedAnaly
       .catch(() => router.refresh());
   }
 
+  function handlePlayAudio() {
+    if (!analysis.audioPath) return;
+    setGlobalAudio({ src: analysis.audioPath, title: analysis.title ?? analysis.videoId, analysisId: analysis.id });
+  }
+
   return (
     <>
-      <AnalysisView analysis={analysis} onRefresh={handleRefresh} />
+      <AnalysisView analysis={analysis} onRefresh={handleRefresh} onPlayAudio={handlePlayAudio} />
       {globalAudio && (
         <GlobalAudioPlayer
           src={globalAudio.src}

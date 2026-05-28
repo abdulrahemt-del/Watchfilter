@@ -17,8 +17,8 @@ export default async function AnalysisPage({ params }: Props) {
 
   const allPoints     = analysis.hard_data_points ?? [];
   const hardDataCount = allPoints.filter((p) => {
-    const pt = p as Record<string, string>;
-    return hasHardData(pt.direct_quote ?? "") || hasHardData(pt.metric_title ?? "");
+    const pt = p as Record<string, unknown>;
+    return hasHardData((pt.direct_quote as string) ?? "") || hasHardData((pt.metric_title as string) ?? "");
   }).length;
   const evidenceStrength = calcEvidenceStrength(1, 1, allPoints.length, hardDataCount);
   const topicSlug = encodeURIComponent((analysis.primary_subject ?? "").toLowerCase().replace(/\s+/g, "-"));
