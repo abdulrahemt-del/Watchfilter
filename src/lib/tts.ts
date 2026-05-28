@@ -32,129 +32,180 @@ function credibilityLabel(s: string | null): string {
   return last.length > 5 ? capAtWord(last, 100) : capAtWord(firstSentence(s), 100);
 }
 
-// Split a long script into chunks ≤ CHUNK_MAX chars at natural boundaries
+// Extract complete sentences up to maxChars. Falls back to capAtWord if no boundary found.
+function takeCompleteSentences(s: string, maxChars: number): string {
+  const sentences = s.match(/[^.!?]+[.!?]+/g)?.map(x => x.trim()).filter(Boolean) ?? [];
+  if (sentences.length === 0) return capAtWord(s, maxChars);
+  const result: string[] = [];
+  let len = 0;
+  for (const sentence of sentences) {
+    const cost = len === 0 ? sentence.length : 1 + sentence.length;
+    if (len + cost > maxChars) break;
+    result.push(sentence);
+    len += cost;
+  }
+  return result.length > 0 ? result.join(" ") : capAtWord(s, maxChars);
+}
+
+// Strip ID3v2 header from MP3 buffer so multi-chunk files can be cleanly concatenated.
+function stripId3Header(buffer: Buffer): Buffer {
+  if (buffer.length >= 10 && buffer.subarray(0, 3).toString("ascii") === "ID3") {
+    const size =
+      ((buffer[6]! & 0x7f) << 21) |
+      ((buffer[7]! & 0x7f) << 14) |
+      ((buffer[8]! & 0x7f) << 7) |
+       (buffer[9]! & 0x7f);
+    return buffer.subarray(10 + size);
+  }
+  return buffer;
+}
+
+// Split a long script into chunks ≤ CHUNK_MAX chars, always cutting at sentence boundaries.
 function chunkScript(text: string): string[] {
   if (text.length <= CHUNK_MAX) return [text];
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   const chunks: string[] = [];
-  let remaining = text.trim();
-  while (remaining.length > CHUNK_MAX) {
-    const slice = remaining.slice(0, CHUNK_MAX);
-    // Prefer cutting at a blank line, then a sentence end, then hard limit
-    const lastBlank = slice.lastIndexOf("\n\n");
-    const lastNewline = slice.lastIndexOf("\n");
-    const lastSentence = Math.max(
-      slice.lastIndexOf(". "),
-      slice.lastIndexOf("! "),
-      slice.lastIndexOf("? "),
-    );
-    const cut =
-      lastBlank > CHUNK_MAX * 0.5
-        ? lastBlank
-        : lastNewline > CHUNK_MAX * 0.55
-          ? lastNewline
-          : lastSentence > CHUNK_MAX * 0.45
-            ? lastSentence + 1
-            : CHUNK_MAX;
-    chunks.push(remaining.slice(0, cut).trim());
-    remaining = remaining.slice(cut).trim();
+  let current = "";
+  for (const sentence of sentences) {
+    if (!current) {
+      current = sentence;
+    } else if (current.length + 1 + sentence.length <= CHUNK_MAX) {
+      current += " " + sentence;
+    } else {
+      chunks.push(current.trim());
+      current = sentence;
+    }
   }
-  if (remaining) chunks.push(remaining);
-  return chunks;
+  if (current) chunks.push(current.trim());
+  return chunks.filter(Boolean);
 }
 
 /**
- * Build the full podcast script with NO budget cap.
- * All data points are included. Chunking in generateSpeechFile handles the 4096-char API limit.
+ * Synthesize one data point as a compact analyst paragraph.
+ * Mirrors the default card view: Core Insight → Why It Matters → Actionable → Confidence caveat.
+ * No section labels — natural prose only.
+ */
+function synthesizeDataPointParagraph(
+  title: string,
+  quote: string | null,
+  speakerThesis: string | null,
+  secondOrderImplications: string | null,
+  contrarianView: string | null,
+  actionableTakeaway: string | null,
+): string {
+  const parts: string[] = [];
+
+  // Title
+  parts.push(title.replace(/\.$/, "") + ".");
+
+  // Direct Quote — full text
+  if (quote) {
+    parts.push(`"${quote}"`);
+  }
+
+  // Core Insight — full text
+  if (speakerThesis) {
+    parts.push(speakerThesis);
+  }
+
+  // Second-Order Implications — full text
+  if (secondOrderImplications) {
+    parts.push(secondOrderImplications);
+  }
+
+  // Contrarian View — full text
+  if (contrarianView) {
+    parts.push(contrarianView);
+  }
+
+  // Actionable Takeaway — full text
+  if (actionableTakeaway) {
+    parts.push(actionableTakeaway);
+  }
+
+  return parts.filter(Boolean).join(" ");
+}
+
+/**
+ * Build a compressed intelligence briefing script.
+ * Target: 4–5 minutes of audio (~520–650 words).
+ * Top 3 insights, 1 nugget, 2 priorities — analyst prose, no section narration.
  */
 export function buildPodcastScript(
   analysis: VideoAnalysis & { title: string | null; channelName?: string | null }
 ): string {
   const title = analysis.title ?? "Untitled Video";
-  const speakerName = analysis.speaker_name ?? analysis.channelName ?? "the speaker";
   const scoreLabel =
     analysis.clickbait_score <= 3 ? "Accurate" :
     analysis.clickbait_score <= 6 ? "Sensationalized" :
     "High Clickbait";
 
   const lines: string[] = [
-    "WatchFilter Audio Briefing.", "",
+    "WatchFilter briefing.", "",
     `${title}.`, "",
-    `Clickbait rating: ${analysis.clickbait_score} out of 10. ${scoreLabel}.`,
-    `Core subject: ${analysis.primary_subject}.`, "",
+    `Clickbait rating: ${analysis.clickbait_score} out of 10 — ${scoreLabel}.`,
+    `Subject: ${analysis.primary_subject}.`, "",
   ];
 
-  // ── All data points — no truncation ──────────────────────────────
-  if (analysis.hard_data_points.length > 0) {
-    lines.push("Key Data Points.", "");
-
-    for (let i = 0; i < analysis.hard_data_points.length; i++) {
-      const point = analysis.hard_data_points[i];
-
-      let pointTitle = "";
-      let pointThesis: string | null = null;
-      let pointStrategicIntent: string | null = null;
-      let pointCausalChain: string | null = null;
-      let pointDirectQuote: string | null = null;
-      let pointContextExample: string | null = null;
-      let pointCredibility: string | null = null;
-
-      if (typeof point === "string") {
-        pointTitle = point;
-      } else if ("metric_title" in point) {
-        const p = point as Record<string, unknown>;
-        pointTitle = p.metric_title as string;
-        pointThesis = "speaker_thesis" in p ? (p.speaker_thesis as string) : null;
-        pointStrategicIntent = "strategic_intent" in p ? (p.strategic_intent as string) : null;
-        pointCausalChain = "causal_chain" in p ? (p.causal_chain as string) : null;
-        pointDirectQuote = "direct_quote" in p ? (p.direct_quote as string) : null;
-        pointContextExample = "metric_context_example" in p ? (p.metric_context_example as string) : null;
-        pointCredibility = "credibility_check" in p ? (p.credibility_check as string) : null;
-      } else if ("metric_context" in point) {
-        const p = point as Record<string, unknown>;
-        pointTitle = `${p.metric_context as string}: ${p.metric_value as string}`;
-      } else {
-        pointTitle = (point as Record<string, unknown>).metric as string;
-      }
-
-      lines.push(`${i + 1}. ${pointTitle}.`);
-      const quote = firstSentence(pointDirectQuote);
-      if (quote) lines.push(`Direct quote: ${quote}`);
-      const thesis = capAtWord(pointThesis ?? "", 380);
-      if (thesis) lines.push(`${speakerName}: ${thesis}`);
-      const intent = capAtWord(pointStrategicIntent ?? "", 340);
-      if (intent) lines.push(`Strategic intent: ${intent}`);
-      const chain = pointCausalChain ? pointCausalChain.trim() : "";
-      if (chain) lines.push(`Causal chain: ${chain}`);
-      const context = firstSentence(pointContextExample);
-      if (context) lines.push(`Real-world illustration: ${context}`);
-      const cred = credibilityLabel(pointCredibility);
-      if (cred) lines.push(`Credibility: ${cred}.`);
-      lines.push("");
-    }
+  if (analysis.worth_watching) {
+    const ww = analysis.worth_watching;
+    const worthIt = ww.score >= 6;
+    lines.push(
+      `${worthIt ? "Worth watching" : "Not recommended"}. Score: ${ww.score.toFixed(1)} out of 10.`,
+      ww.verdict,
+      ""
+    );
   }
 
-  // ── Off-Script Golden Nuggets ─────────────────────────────────────
-  // Placed before tactical playbook so it is never cut off in long scripts.
+  // ── Top 3 data points by signal strength ──────────────────────────
+  const SIGNAL_RANK: Record<string, number> = {
+    "Very High": 4, "High": 3, "Medium": 2, "Low": 1,
+  };
+
+  const ranked = [...analysis.hard_data_points]
+    .map(point => {
+      const rank = typeof point === "string" ? 0
+        : SIGNAL_RANK[((point as Record<string, unknown>).signal_strength as string) ?? ""] ?? 1;
+      return { point, rank };
+    })
+    .sort((a, b) => b.rank - a.rank);
+
+  for (const { point } of ranked) {
+    if (typeof point === "string") { lines.push(point, ""); continue; }
+    const p = point as Record<string, unknown>;
+    const para = "metric_title" in p
+      ? synthesizeDataPointParagraph(
+          String(p.metric_title ?? ""),
+          (p.direct_quote as string) ?? null,
+          (p.speaker_thesis as string) ?? null,
+          (p.second_order_implications as string) ?? null,
+          (p.contrarian_view as string) ?? null,
+          (p.actionable_takeaway as string) ?? null,
+        )
+      : "metric_context" in p
+        ? `${(p.metric_context as string)}: ${(p.metric_value as string)}.`
+        : String((p as Record<string, unknown>).metric ?? "");
+    if (para) lines.push(para, "");
+  }
+
+  // ── All off-script golden nuggets ─────────────────────────────────
   const nuggets = analysis.off_script_nuggets ?? [];
   if (nuggets.length > 0) {
-    lines.push("Off-Script Golden Nuggets. These are the unexpected moments most viewers miss.", "");
-    nuggets.forEach((nugget, i) => {
-      lines.push(`Nugget ${i + 1}: ${nugget}`);
-      lines.push("");
-    });
+    lines.push("Off-Script Golden Nuggets.", "");
+    nuggets.forEach(n => { lines.push(n); lines.push(""); });
   }
 
-  // ── Tactical Playbook ─────────────────────────────────────────────
-  lines.push("Tactical Playbook.", "");
-  analysis.actionable_takeaways.forEach((takeaway, i) => {
-    const strategy = typeof takeaway === "string" ? takeaway : takeaway.strategy;
-    const steps = typeof takeaway === "string" ? [] : (takeaway.execution_steps ?? []);
-    lines.push(`Priority ${i + 1}: ${capAtWord(strategy, 220)}.`);
-    steps.forEach((step, si) => lines.push(`Step ${si + 1}: ${capAtWord(step, 160)}`));
+  // ── Top 3 action priorities — all execution steps ─────────────────
+  lines.push("Top priorities.", "");
+  analysis.actionable_takeaways.slice(0, 3).forEach((t, i) => {
+    const strategy = typeof t === "string" ? t : t.strategy;
+    const steps = typeof t !== "string" ? (t.execution_steps ?? []) : [];
+    lines.push(`${i + 1}: ${strategy}.`);
+    steps.forEach(step => { lines.push(`  → ${step}.`); });
     lines.push("");
   });
 
-  lines.push("End of WatchFilter briefing.");
+  lines.push("", "End of WatchFilter briefing.");
 
   return lines.join("\n");
 }
@@ -186,7 +237,9 @@ export async function generateSpeechFile(
     })
   );
 
-  const buffer = Buffer.concat(audioBuffers);
+  // Strip ID3 headers from all chunks after the first — raw concatenation of full MP3 files
+  // embeds metadata frames mid-stream, causing pops and choppiness during playback.
+  const buffer = Buffer.concat(audioBuffers.map((buf, i) => i === 0 ? buf : stripId3Header(buf)));
 
   const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
   if (blobToken) {

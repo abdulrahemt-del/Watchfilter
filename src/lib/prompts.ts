@@ -14,6 +14,14 @@ primary_subject: One concise phrase naming the real core topic — not the hype 
 
 hard_data_points: You are a forensic data auditor. Your job is to find EVERY number spoken in this transcript — no exceptions. Work through the transcript from beginning to end, timestamp by timestamp. Every time you see a number — a dollar amount, a percentage, a time duration, a count, a multiplier (e.g. "10x"), a rank, a ratio, a measurement — stop and extract it as a data point. Do NOT editorialize about whether a number is "important enough." If a speaker said it with a number attached, extract it.
 
+ANTI-REPETITION MANDATE: Each field must serve a UNIQUE purpose. If you catch yourself writing the same idea in different words across multiple fields, stop and rewrite. The purpose of each field is non-negotiable:
+  - direct_quote: Shows WHAT was said (verbatim evidence only — no interpretation)
+  - speaker_thesis: Extracts THE LESSON (what does this number reveal? — no restatement of the quote)
+  - strategic_intent: Analyzes COMMUNICATION STRATEGY (why did the speaker deploy this here? — no content summary)
+  - why_it_matters: Connects to REAL-WORLD APPLICATION (what does this mean for a founder today? — not a restatement)
+  - actionable_takeaway: Tells the user WHAT TO DO (one specific verb-led action — not an observation)
+A 5-field response where every field says "persistence matters" is a failure. Make each field earn its place.
+
 MANDATORY MINIMUMS — failure to meet these is a critical error:
   - Videos under 15 minutes: minimum 3 data points
   - Videos 15–45 minutes: minimum 5 data points
@@ -28,21 +36,41 @@ You must also specifically capture:
   - Personal anecdotes involving exact numbers: time-vs-money comparisons, individual portfolio values, personal income milestones, specific contract terms (e.g. "I made $300k in a single call", "spent 6 hours and walked away with $2M").
   - Any quantitative claim the speaker uses to establish authority, justify a price, or prove a point — even if it is a single personal transaction rather than a published study.
 
-If a speaker names a dollar amount, a time figure paired with money, or any specific number used to make an argument, it is a hard data point. Extract it. For EACH one return six fields:
+If a speaker names a dollar amount, a time figure paired with money, or any specific number used to make an argument, it is a hard data point. Extract it. For EACH one return these fields:
 
   - metric_title: A complete, self-explanatory statement including the number AND what it measures (e.g. "Stories are 22x more memorable than statistics alone"). Never a bare number.
 
-  - speaker_thesis: A 3-to-4 sentence conversational paragraph summarizing exactly how the speaker explains this data point, their logic, and the context in which they present it. Write using the speaker's actual name throughout — e.g. "Alex argues...", "Steven explains...", "Matthew believes..." — never write "the speaker". Write in a natural, narrative voice — like a brilliant friend explaining the key idea to you. Capture their unique framing, the "why it matters" in their argument, and any relevant context from the surrounding discussion. This must feel human and insightful, not robotic.
-
-  - strategic_intent: A razor-sharp 2-to-3 sentence breakdown of the speaker's exact psychological or structural motive for deploying this specific metric. Go beyond paraphrasing — identify the underlying persuasion mechanic. Examples: Are they using a massive number to anchor their own authority before pitching? Citing a verified statistic to pre-empt skepticism about an unconventional claim? Weaponizing urgency/scarcity to push a buy decision? Using a personal revenue figure to justify a premium price point? Framing a loss to trigger loss-aversion in the audience? Name the specific leverage strategy. Avoid generic phrases like "to prove their point" — that tells us nothing. Be precise, be clinical.
-
-  - causal_chain: A crisp, step-by-step logical breakdown of how the speaker connects the video's core premise to this specific data point. Format strictly as: Premise → Mechanism → Outcome → Metric. Each node must be a short phrase (3-6 words). Be specific to the speaker's actual argument — not a generic description of the topic.
-
   - direct_quote: The single most high-impact verbatim quote or highly accurate transcript extract from the speaker at the exact moment they explain this statistic. Use quotation marks. Never invent or generalize — pull the actual words.
 
-  - metric_context_example: A concrete real-world illustration, analogy, or comparison that immediately grounds this number for the viewer. Write 1–2 sentences: a scenario, historical parallel, or practical example that conveys the true scale and significance of the statistic — something like "To put this in perspective, $30B under management is larger than the GDP of Iceland" or "That's the equivalent of working every waking hour for 11 years without a day off." Make it visceral and memorable, not generic.
+  - speaker_thesis: KEY INSIGHT — what does this data point REVEAL? Do NOT summarize what was said. Interpret: what does this number tell a founder or investor about the speaker's business model, market dynamics, or strategic position? 3-4 sentences written as a business analyst, not a narrator. Use the speaker's actual name. Example: instead of "Alex says revenue grew to $30M", write "The $30M figure reveals that Alex's model is leverage-dependent — the jump required no headcount expansion, indicating the offer, not execution capacity, was the binding constraint."
 
-  - credibility_check: 1-to-2 sentences of objective context. Explicitly state whether this claim is: (a) a verified historical or economic fact supported by cited research, (b) an active institutional or policy statistic from a named source, or (c) a speculative forward-looking prediction made by the speaker. Call out any hedging language the speaker used.
+  - strategic_intent: 3-4 sentences in two distinct parts. PART 1 — CONTEXT (1-2 sentences): What was the speaker discussing immediately before introducing this metric? What story, personal experience, question, or topic thread led to this exact moment? Give enough narrative that a reader who has not watched the video understands the setup — name the specific situation, not just the general topic. Example: "Alex had just finished describing how his first business failed because the offer was unclear, when he pivoted to his current company." PART 2 — RHETORICAL ANALYSIS (2 sentences): WHY the speaker deployed this metric at this exact point. Name the specific persuasion mechanic precisely — anchoring a success outcome before presenting the method? Using a loss statistic to trigger loss-aversion before a pitch? Citing a personal revenue figure to justify a premium price? State exactly what the speaker is doing and why it works. BANNED PHRASES — never write: "establishes credibility", "positions themselves", "highlights the importance", "demonstrates expertise", "emphasizes success". These are lazy — replace with specific observations.
+
+  - causal_chain: Reconstruct the actual business logic. Format strictly as linked steps: Premise → Mechanism → Outcome → Metric. Each step = 3-6 word phrase describing a real mechanism. BAD: "Hard Work → Success → $30M Revenue". GOOD: "Weak Offer Redesigned → Conversion Rate Improved → CAC Dropped → Revenue Scaled → $30M Annual". Be specific to this speaker's actual argument.
+
+  - metric_context_example: A concrete real-world illustration, analogy, or comparison that grounds this number in visceral reality. 1–2 sentences: a scenario, historical parallel, or practical example — e.g. "To put this in perspective, $30B under management is larger than the GDP of Iceland" or "That's the equivalent of working every waking hour for 11 years without a day off." Make it memorable, not generic.
+
+  - why_it_matters: 2-3 sentences on the business implication for a founder, operator, or investor reading this TODAY. This is not a restatement — it is a genuine interpretation of what the data point reveals about competitive dynamics, market timing, or business logic. Write like a McKinsey analyst briefing a client: direct, specific, and grounded in the evidence.
+
+  - actionable_takeaway: One specific action the reader should take based on THIS data point specifically. Start with a concrete verb. Never "consider" or "think about" or "explore". Example: "Audit your current offer and test one change to value delivery before increasing ad spend this quarter." or "Pull your last 90 days of lead data and calculate your actual cost-per-appointment before comparing to the benchmark cited."
+
+  - signal_strength: Rate the evidentiary quality of this claim as "Very High", "High", "Medium", or "Low". Very High = first-person experience with specific numbers AND independently corroborated by a named external source or widely-known verifiable fact. High = first-person experience with specific numbers, or independently verified data from a named source. Medium = plausible claim from a credible speaker, no external verification provided. Low = speculation, vague assertion, or opinion without supporting evidence.
+
+  - signal_reason: One sentence explaining the signal strength. Reference the specific evidence type (e.g., "First-person revenue figure stated by the speaker with no external source cited" or "Cited academic study from a named institution with a specific year").
+
+  - verification_status: Classify this claim as exactly one of: "Verified", "Partially Verified", "Unverified", "Opinion", or "Speculation". Verified = independently confirmable from named external sources. Partially Verified = specific but unconfirmed claim (plausible but not validated here). Unverified = no supporting evidence. Opinion = speaker's view or interpretation, not objectively verifiable fact. Speculation = forward-looking prediction.
+
+  - verification_reason: One sentence explaining the classification. Be specific about what evidence exists or what is missing.
+
+  - viewer_blind_spot: What most viewers will focus on vs. what is actually more important. Open with "Most viewers will focus on [the obvious surface claim]." Then pivot: "The more important insight is [the non-obvious reading]." 2–3 sentences. This should feel like insider intelligence — what a Bloomberg analyst would catch that a casual viewer misses.
+
+  - second_order_implications: What happens next if this data point is true? Think one level deeper. Format strictly: "If [this claim] is true, then [first-order consequence], which means [second-order consequence for a founder/investor]." Be specific to this speaker's actual argument — avoid generic conclusions like "this could affect markets."
+
+  - contrarian_view: One credible, specific alternative explanation that challenges THIS data point's interpretation. Requirements: (1) acknowledge the exact data or claim, (2) propose a different causal explanation or limiting condition that actually fits the evidence, (3) never write generic disclaimers or "another perspective exists." BAD: "Alternative view: Some experts may disagree with this approach." BAD: "Alternative view: Results may vary." GOOD: "Alternative view: The $30M revenue spike coincides with 2021's historically low ad CPMs — replicating these results at current rates would require 40–50% higher conversion efficiency than the speaker demonstrates." GOOD: "Alternative view: The speaker attributes growth to offer redesign, but the simultaneous addition of a VSL and major media appearance makes it impossible to isolate which lever drove the change." Return null only if no credible counter-argument exists for this specific claim.
+
+  - opportunity_potential: Score 0–100. 80–100 = high demand, low saturation, strong multi-creator consensus, time-sensitive opportunity. 50–79 = moderate, some evidence. 0–49 = speculative, generic, or saturated. Base this on the specific data point's business signal, not the video's general topic.
+
+  - opportunity_reason: 2–3 bullet factors explaining the score, joined with · (e.g. "Growing creator consensus · Low market saturation · First-mover timing window open"). Be specific — reference the actual evidence.
 
   - exact_timestamp: The M:SS or H:MM:SS timestamp from the bracketed transcript markers at the moment the speaker is actively articulating this specific point.
 
@@ -64,7 +92,15 @@ worth_watching: Rate the video across five dimensions (1–10 each), then comput
 
   skip_to: ONLY provide a timestamp if there is a genuinely significant block of filler at the start — a long intro, extended sponsor segment, or drawn-out recap that lasts at least 30 seconds before real content begins. The timestamp must be at least 0:30. If content starts immediately or within the first 30 seconds, return null. Do not return 0:01 or any value under 0:30 — that is always null.
 
-off_script_nuggets: After completing all other fields, re-read the transcript one final time hunting specifically for moments where the speaker goes OFF-SCRIPT — unexpected personal admissions, counterintuitive beliefs, throwaway lines containing profound wisdom, or raw personal stories unrelated to the video's primary thesis or any extracted data point. These are the gems most viewers miss because they're buried between structured talking points. Extract exactly 2–3 of the highest-value ones. Each nugget must be a single complete sentence that stands alone — something a viewer could screenshot, quote, or act on without any surrounding context. Do NOT repeat anything already captured as a hard_data_point or actionable_takeaway.
+off_script_nuggets: After completing all other fields, re-read the transcript one final time hunting specifically for moments where the speaker goes OFF-SCRIPT — unexpected personal admissions, counterintuitive beliefs, throwaway lines containing profound wisdom, or raw personal stories unrelated to the video's primary thesis or any extracted data point. These are the gems most viewers miss because they're buried between structured talking points. Extract 5–7 of the highest-value ones. Each nugget must be a single complete sentence that stands alone — something a viewer could screenshot, quote, or act on without any surrounding context. Do NOT repeat anything already captured as a hard_data_point or actionable_takeaway.
+
+who_should_care: Identify who gets the most real value from this specific content. most_relevant_for: 1–4 specific role/context labels. Be precise — not "Entrepreneurs" but "Bootstrapped founders pre-product-market-fit" or "B2B SaaS operators with $500K–$5M ARR". less_relevant_for: up to 3 roles where this content adds limited value (omit if broadly applicable). Think: would a hedge fund PM get anything from this? Would a solopreneur? A CMO at a Fortune 500? Only include roles where the answer is genuinely non-obvious.
+
+analysis_confidence: Rate your own confidence in the reliability of this specific analysis. score: 0–100. 90+ = the transcript was detailed and specific, claims were traceable, speaker was named. 70–89 = good quality with some vague sections or minor gaps. 50–69 = moderate uncertainty — claims were general, transcript was sparse, or speaker context was unclear. Below 50 = significant gaps. factors: 2–3 concise factors joined with · (e.g. "Detailed transcript · Named speaker with verifiable track record · Specific figures cited" or "Sparse transcript · Vague assertions · No named source").
+
+ANTI-AI-SPEAK MANDATE: Never use these phrases anywhere in your response — they signal lazy, generic output:
+  BANNED: "establish credibility" / "establishes credibility" / "leverag[e/ing] opportunities" / "optimiz[e/ing] outcomes" / "improv[e/ing] decision-making" / "maximiz[e/ing] growth" / "position[s/ing] themselves" / "highlight[s/ing] the importance" / "demonstrat[e/ing] expertise" / "emphasiz[e/ing] success" / "driv[e/ing] engagement" / "unlock[s/ing] potential" / "actionable insights" (as a standalone phrase).
+  Replace each with a specific observation: instead of "establishes credibility," write what the speaker actually does — "deploys a personal failure story to pre-empt skepticism about the high price point."
 
 Respond only with JSON matching the required schema.`;
 

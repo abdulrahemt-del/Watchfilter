@@ -8,7 +8,7 @@ import type { AIScore } from "@/app/api/youtube/filter/route";
 import type { ConsensusResult } from "@/app/api/youtube/consensus/route";
 import { CorePulseMetrics } from "./widgets/CorePulseMetrics";
 import { OpportunityAlertsWidget, type OpportunityAlert } from "./widgets/OpportunityAlertsWidget";
-import { ConsensusInsightCards, type InsightCard } from "./widgets/ConsensusInsightCards";
+import { CollapsibleSignalCards, type EmergingSignalTheme } from "./widgets/CollapsibleSignalCards";
 import { CreatorShareOfVoiceWidget, type CreatorVoice } from "./widgets/CreatorShareOfVoiceWidget";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -31,22 +31,55 @@ function timeAgo(ts: number): string {
   return `${Math.floor(h / 24)} day${Math.floor(h / 24) !== 1 ? "s" : ""} ago`;
 }
 
+// ── Cache helpers ─────────────────────────────────────────────────────────────
+
+const AI_TTL  = 12 * 60 * 60 * 1000; // 12 hours — reduces cold-start frequency
+const CON_TTL = 12 * 60 * 60 * 1000;
+
+function getLastEmail(): string {
+  try { return localStorage.getItem("wf_last_email") ?? "anon"; } catch { return "anon"; }
+}
+
+function readCacheSync<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch { return null; }
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function MarketIntelligencePulse() {
   const { data: session, status } = useSession();
   const email = session?.user?.email ?? "anon";
 
-  const [feedVideos, setFeedVideos]       = useState<FeedVideo[]>([]);
-  const [aiScores, setAiScores]           = useState<Record<string, AIScore>>({});
-  const [consensusData, setConsensus]     = useState<ConsensusResult | null>(null);
+  // Read all caches synchronously on first render — content appears without a blank flash
+  const [feedVideos, setFeedVideos] = useState<FeedVideo[]>(() => {
+    const e = getLastEmail();
+    return readCacheSync<{ ts: number; videos: FeedVideo[] }>(`wf_feed_${e}`)?.videos ?? [];
+  });
+  const [aiScores, setAiScores] = useState<Record<string, AIScore>>(() => {
+    const e = getLastEmail();
+    const c = readCacheSync<{ ts: number; scores: Record<string, AIScore> }>(`wf_ai_${e}`);
+    if (c && Date.now() - c.ts < AI_TTL && Object.keys(c.scores).length > 0) return c.scores;
+    return {};
+  });
+  const [consensusData, setConsensus] = useState<ConsensusResult | null>(() => {
+    const e = getLastEmail();
+    const c = readCacheSync<{ ts: number; data: ConsensusResult }>(`wf_consensus_${e}`);
+    if (c && Date.now() - c.ts < CON_TTL && c.data) return c.data;
+    return null;
+  });
   const [prevSnapshot, setPrevSnapshot]   = useState<{
     themes: { topic: string; count: number }[];
     vettedCount?: number;
     timeSavedHours?: number;
   } | null>(null);
   const [feedMissing, setFeedMissing]     = useState(false);
-  const [feedTs, setFeedTs]               = useState<number | null>(null);
+  const [feedTs, setFeedTs]               = useState<number | null>(() => {
+    const e = getLastEmail();
+    return readCacheSync<{ ts: number; videos: FeedVideo[] }>(`wf_feed_${e}`)?.ts ?? null;
+  });
   const [aiLoading, setAiLoading]         = useState(false);
   const [conLoading, setConLoading]       = useState(false);
 
@@ -59,20 +92,12 @@ export function MarketIntelligencePulse() {
     const snapshotKey = `wf_snapshot_${email}`;
     const visitKey    = `wf_visit_${email}`;
 
+    // Persist email so synchronous state initializers can read the right keys next visit
+    try { localStorage.setItem("wf_last_email", email); } catch { /* ignore */ }
+
     try {
       const rawSnap = localStorage.getItem(snapshotKey);
       if (rawSnap) setPrevSnapshot(JSON.parse(rawSnap));
-    } catch { /* ignore */ }
-
-    // Restore cached consensus (2-hour TTL) so the page loads instantly on repeat visits
-    const conKey = `wf_consensus_${email}`;
-    const CON_TTL = 2 * 60 * 60 * 1000;
-    try {
-      const rawCon = localStorage.getItem(conKey);
-      if (rawCon) {
-        const { ts, data } = JSON.parse(rawCon) as { ts: number; data: ConsensusResult };
-        if (Date.now() - ts < CON_TTL && data) setConsensus(data);
-      }
     } catch { /* ignore */ }
 
     // Update last visit
@@ -83,10 +108,13 @@ export function MarketIntelligencePulse() {
       if (!raw) { setFeedMissing(true); return; }
       const cached = JSON.parse(raw) as { ts: number; videos: FeedVideo[] };
       if (!cached.videos?.length) { setFeedMissing(true); return; }
-      setFeedVideos(cached.videos);
-      setFeedTs(cached.ts);
+      if (!feedVideos.length) setFeedVideos(cached.videos);
+      if (!feedTs) setFeedTs(cached.ts);
 
-      const AI_TTL = 2 * 60 * 60 * 1000;
+      // Skip AI pipeline if scores are already loaded from synchronous init
+      if (Object.keys(aiScores).length > 0) return;
+
+      // Check AI cache freshness (may have different email than last-email key)
       try {
         const rawAI = localStorage.getItem(aiKey);
         if (rawAI) {
@@ -103,7 +131,7 @@ export function MarketIntelligencePulse() {
   }, [status, email]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function runAIPipeline(videos: FeedVideo[], aiKey: string) {
-    const eligible = videos.filter(v => isoToSeconds(v.duration) >= 1200).slice(0, 100);
+    const eligible = videos.filter(v => isoToSeconds(v.duration) >= 1200).slice(0, 50);
     if (!eligible.length) return;
 
     setAiLoading(true);
@@ -111,28 +139,33 @@ export function MarketIntelligencePulse() {
     const batches: FeedVideo[][] = [];
     for (let i = 0; i < eligible.length; i += 25) batches.push(eligible.slice(i, i + 25));
 
-    const scanBatch = (batch: FeedVideo[]) =>
-      fetch("/api/youtube/filter", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          videos: batch.map(v => ({
-            videoId: v.videoId, title: v.title,
-            channelTitle: v.channelTitle,
-            description: smartTruncate(v.description),
-          })),
-        }),
-      })
-        .then(r => r.json() as Promise<{ results?: AIScore[] }>)
-        .then(d => d.results ?? [])
-        .catch(() => [] as AIScore[]);
+    const accumulated: Record<string, AIScore> = {};
 
-    const allResults = await Promise.all(batches.map(scanBatch));
-    const newScores: Record<string, AIScore> = {};
-    allResults.flat().forEach(r => { newScores[r.videoId] = r; });
+    const scanBatch = async (batch: FeedVideo[]): Promise<void> => {
+      try {
+        const res = await fetch("/api/youtube/filter", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videos: batch.map(v => ({
+              videoId: v.videoId, title: v.title,
+              channelTitle: v.channelTitle,
+              description: smartTruncate(v.description),
+            })),
+          }),
+        });
+        const data = await res.json() as { results?: AIScore[] };
+        (data.results ?? []).forEach(r => { accumulated[r.videoId] = r; });
+        // Render progressively — don't wait for all batches
+        setAiScores({ ...accumulated });
+      } catch { /* silent — partial results still render */ }
+    };
 
-    setAiScores(newScores);
-    try { localStorage.setItem(aiKey, JSON.stringify({ ts: Date.now(), scores: newScores })); } catch { /* ignore */ }
+    await Promise.all(batches.map(scanBatch));
+
+    const finalScores = { ...accumulated };
+    setAiScores(finalScores);
+    try { localStorage.setItem(aiKey, JSON.stringify({ ts: Date.now(), scores: finalScores })); } catch { /* ignore */ }
     setAiLoading(false);
   }
 
@@ -230,62 +263,155 @@ export function MarketIntelligencePulse() {
       const type: OpportunityAlert["type"] = isNew ? "Emerging" : i === 0 ? "Critical" : "Stable";
       const prevCount = prevSnapshot?.themes?.find(p => p.topic.toLowerCase() === t.topic.toLowerCase())?.count;
       const delta = prevCount !== undefined
-        ? t.count > prevCount ? `+${t.count - prevCount}` : prevCount > t.count ? `-${prevCount - t.count}` : "Steady"
-        : isNew ? "New Track" : "Steady";
-      const whyItMatters = t.insights[0] ?? undefined;
-      if (!isRisk) alerts.push({ id: i + 1, type, label: t.topic, delta, creators: t.creators, videos: t.count, evidenceCount: t.insights.length, whyItMatters });
+        ? t.count > prevCount ? `+${t.count - prevCount} videos` : prevCount > t.count ? `-${prevCount - t.count} videos` : "Steady"
+        : isNew ? "New Signal" : "Steady";
+      const ct = consensusData?.themes?.find(c => c.topic.toLowerCase() === t.topic.toLowerCase());
+      if (!isRisk) alerts.push({
+        id: i + 1, type, label: t.topic, delta,
+        creators: t.creators, videos: t.count, evidenceCount: t.insights.length,
+        whyItMatters: ct?.whyItMatters || t.insights[0] || undefined,
+        whyNow: ct?.whyItMatters || consensusData?.topOpportunity?.reason || undefined,
+        riskFactors: ct?.contrarianView || undefined,
+        suggestedAction: ct?.recommendedActions?.[0] || undefined,
+      });
     });
-    // fill with consensus opportunity if available
     if (consensusData?.topOpportunity && alerts.length < 3) {
       const already = alerts.some(a => a.label.toLowerCase() === consensusData.topOpportunity!.topic.toLowerCase());
-      if (!already) alerts.push({ id: alerts.length + 1, type: "Emerging", label: consensusData.topOpportunity.topic, delta: `${consensusData.topOpportunity.confidence}% conf`, creators: undefined, videos: undefined, whyItMatters: consensusData.topOpportunity.reason ?? undefined });
+      if (!already) {
+        const ct = consensusData.themes?.find(c => c.topic.toLowerCase() === consensusData.topOpportunity!.topic.toLowerCase());
+        alerts.push({
+          id: alerts.length + 1, type: "Emerging",
+          label: consensusData.topOpportunity.topic,
+          delta: `${consensusData.topOpportunity.confidence}% confidence`,
+          whyNow: consensusData.topOpportunity.reason ?? undefined,
+          riskFactors: ct?.contrarianView || undefined,
+          suggestedAction: ct?.recommendedActions?.[0] || undefined,
+        });
+      }
     }
     return alerts.slice(0, 4);
   }, [todaysThemes, prevSnapshot, consensusData]);
 
-  const insightCards = useMemo((): InsightCard[] => {
-    const prevMap = new Map(
-      (prevSnapshot?.themes ?? []).map(t => [t.topic.toLowerCase(), t.count])
-    );
-    return todaysThemes.slice(0, 6).map(t => {
-      const consensusTheme = consensusData?.themes?.find(
-        c => c.topic.toLowerCase() === t.topic.toLowerCase()
-      ) ?? null;
-      const prevCount = prevMap.get(t.topic.toLowerCase());
-      const isNew = prevCount === undefined;
-      const deltaPercent = !isNew && prevCount > 0
-        ? Math.round(((t.count - prevCount) / prevCount) * 100)
-        : null;
+  const emergingSignalThemes = useMemo((): EmergingSignalTheme[] => {
+    return todaysThemes.slice(0, 6).map((theme, i) => {
+      const ct = consensusData?.themes?.find(c => c.topic.toLowerCase() === theme.topic.toLowerCase()) ?? null;
+      const topicVideos = filteredVideos
+        .filter(v => {
+          const ai = aiScores[v.videoId];
+          if (!ai) return false;
+          const topicLower = theme.topic.toLowerCase();
+          const firstWord  = topicLower.split(" ")[0];
+          return ai.categories.some(cat => {
+            const catLower = cat.toLowerCase();
+            return catLower === topicLower || catLower.includes(firstWord) || topicLower.includes(catLower.split(" ")[0]);
+          });
+        })
+        .slice(0, 6);
+
+      const citations = topicVideos.map((v, j) => {
+        const ai = aiScores[v.videoId];
+        const timeSavedMins = Math.round(isoToSeconds(v.duration) * 0.6 / 60);
+        return {
+          id: `${theme.topic}-cit-${j}`,
+          creatorChannel: v.channelTitle,
+          videoTitle: v.title,
+          videoId: v.videoId,
+          evidenceText: ai?.explanation || ai?.whyItMatters || "",
+          timeSavedMins: timeSavedMins > 0 ? timeSavedMins : null,
+        };
+      });
+
+      const conf = ct?.confidence ?? Math.min(40 + theme.creators * 10, 92);
+      const strength: EmergingSignalTheme["evidenceStrength"] =
+        theme.count >= 5 || conf >= 75 ? "High" : theme.count >= 3 || conf >= 55 ? "Medium" : "Low";
+
       return {
-        topic:        t.topic,
-        consensus:    consensusTheme?.consensus ?? null,
-        confidence:   consensusTheme?.confidence ?? null,
-        creators:     t.creators,
-        videoCount:   t.count,
-        channelNames: t.channelNames,
-        deltaPercent,
-        isNew,
+        id:                  `theme-${i}`,
+        rankIndex:           `#${i + 1}`,
+        topicTitle:          theme.topic,
+        macroTakeaway:       ct?.consensus || theme.insights[0] || "",
+        agreementPercentage: conf,
+        evidenceStrength:    strength,
+        totalCreatorsCount:  theme.creators,
+        totalVideosLinked:   theme.count,
+        citationsList:       citations,
+        trendDirection:      ct?.trendDirection ?? "stable",
+        whyItMatters:        ct?.whyItMatters ?? "",
+        recommendedActions:  ct?.recommendedActions ?? [],
+        contrarianView:      ct?.contrarianView ?? "",
+        opportunitySignal:   ct?.opportunitySignal ?? "Low",
       };
     });
-  }, [todaysThemes, consensusData, prevSnapshot]);
+  }, [todaysThemes, filteredVideos, aiScores, consensusData]);
 
-  const newOpportunity = useMemo(() => {
-    if (!prevSnapshot?.themes?.length || !todaysThemes.length) return null;
-    const prevMap = new Map(prevSnapshot.themes.map(t => [t.topic.toLowerCase(), t.count]));
-    const best = todaysThemes.reduce<{
-      topic: string; prevCount: number; currCount: number; momentum: number;
-    } | null>((acc, t) => {
+  // ── What Changed Today ────────────────────────────────────────────────────
+
+  type ChangeType = "new" | "rank_up" | "rank_down" | "accelerating" | "declining";
+  interface ChangeEvent {
+    topic: string; type: ChangeType;
+    prevRank?: number; currRank?: number;
+    prevCount?: number; currCount?: number;
+    pctChange?: number; rankChange?: number;
+    creators: number; channelNames: string[];
+    whyItMatters?: string; consensus?: string;
+    trendDirection?: "growing" | "stable" | "declining";
+  }
+
+  const whatChangedToday = useMemo((): ChangeEvent[] => {
+    if (!prevSnapshot?.themes?.length || !todaysThemes.length) return [];
+    const prevMap = new Map(prevSnapshot.themes.map((t, i) => [t.topic.toLowerCase(), { count: t.count, rank: i + 1 }]));
+    const events: ChangeEvent[] = [];
+
+    todaysThemes.forEach((t, i) => {
+      const currRank = i + 1;
       const prev = prevMap.get(t.topic.toLowerCase());
-      if (!prev || prev === 0) return acc;
-      const momentum = Math.round(((t.count - prev) / prev) * 100);
-      if (momentum <= 50) return acc;
-      return !acc || momentum > acc.momentum
-        ? { topic: t.topic, prevCount: prev, currCount: t.count, momentum }
-        : acc;
-    }, null);
-    if (!best) return null;
-    const match = consensusData?.themes?.find(t => t.topic.toLowerCase() === best.topic.toLowerCase()) ?? null;
-    return { ...best, confidence: match?.confidence ?? null, consensus: match?.consensus ?? null };
+      const ct = consensusData?.themes?.find(c => c.topic.toLowerCase() === t.topic.toLowerCase());
+
+      if (!prev) {
+        events.push({
+          topic: t.topic, type: "new", currRank, currCount: t.count,
+          creators: t.creators, channelNames: t.channelNames,
+          whyItMatters: ct?.whyItMatters || t.insights[0] || undefined,
+          consensus: ct?.consensus || undefined,
+          trendDirection: ct?.trendDirection,
+        });
+      } else {
+        const pctChange  = prev.count > 0 ? Math.round(((t.count - prev.count) / prev.count) * 100) : 0;
+        const rankChange = prev.rank - currRank;
+        if (Math.abs(pctChange) >= 10 || Math.abs(rankChange) >= 1) {
+          const type: ChangeType =
+            pctChange >= 50 ? "accelerating" :
+            (pctChange > 0 || rankChange > 0) ? "rank_up" :
+            pctChange <= -20 ? "declining" : "rank_down";
+          events.push({
+            topic: t.topic, type, prevRank: prev.rank, currRank,
+            prevCount: prev.count, currCount: t.count,
+            pctChange, rankChange,
+            creators: t.creators, channelNames: t.channelNames,
+            whyItMatters: ct?.whyItMatters || t.insights[0] || undefined,
+            consensus: ct?.consensus || undefined,
+            trendDirection: ct?.trendDirection,
+          });
+        }
+      }
+    });
+
+    prevSnapshot.themes.slice(0, 8).forEach((pt, i) => {
+      const stillPresent = todaysThemes.some(t => t.topic.toLowerCase() === pt.topic.toLowerCase());
+      if (!stillPresent && pt.count > 1) {
+        events.push({
+          topic: pt.topic, type: "declining", prevRank: i + 1, prevCount: pt.count,
+          currCount: 0, pctChange: -100, creators: 0, channelNames: [],
+        });
+      }
+    });
+
+    return events.sort((a, b) => {
+      if (a.type === "new" && b.type !== "new") return -1;
+      if (b.type === "new" && a.type !== "new") return 1;
+      const score = (e: ChangeEvent) => Math.abs(e.pctChange ?? 0) + Math.abs(e.rankChange ?? 0) * 15;
+      return score(b) - score(a);
+    }).slice(0, 7);
   }, [prevSnapshot, todaysThemes, consensusData]);
 
   const creatorVoices = useMemo((): CreatorVoice[] => {
@@ -304,53 +430,6 @@ export function MarketIntelligencePulse() {
       }));
   }, [filteredVideos]);
 
-  // ── Live-feel derived state ────────────────────────────────────────────────
-
-  const sinceLastVisit = useMemo(() => {
-    if (!prevSnapshot) return null;
-    const currentHours = Math.round(
-      filteredVideos.reduce((a, v) => a + isoToSeconds(v.duration), 0) * 0.6 / 3600
-    );
-    const newAlerts = opportunityAlerts.filter(a => a.type === "Emerging").length;
-    const newShifts = insightCards.filter(c => c.isNew || (c.deltaPercent !== null && c.deltaPercent > 50)).length;
-    const newVetted = prevSnapshot.vettedCount !== undefined
-      ? Math.max(0, filteredVideos.length - prevSnapshot.vettedCount)
-      : 0;
-    const newHours  = prevSnapshot.timeSavedHours !== undefined
-      ? Math.max(0, currentHours - prevSnapshot.timeSavedHours)
-      : 0;
-
-    const items: { label: string; color: string }[] = [];
-    if (newAlerts > 0) items.push({ label: `+${newAlerts} opportunity alert${newAlerts !== 1 ? "s" : ""}`,  color: "text-[#0a7a4a] bg-emerald-500/10 border-emerald-500/20" });
-    if (newShifts > 0) items.push({ label: `+${newShifts} consensus shift${newShifts !== 1 ? "s" : ""}`,   color: "text-[#4a6fa5] bg-blue-500/10 border-blue-500/20" });
-    if (newVetted > 0) items.push({ label: `+${newVetted} new vetted video${newVetted !== 1 ? "s" : ""}`,  color: "text-[#6b4fbb] bg-purple-500/10 border-purple-500/20" });
-    if (newHours  > 0) items.push({ label: `+${newHours}h of content analyzed`,                            color: "text-[#b45309] bg-amber-500/10 border-amber-500/20" });
-    return items.length > 0 ? { items } : null;
-  }, [prevSnapshot, opportunityAlerts, insightCards, filteredVideos]);
-
-  const biggestChange = useMemo(() => {
-    if (!prevSnapshot?.themes?.length || !todaysThemes.length) return null;
-    const prevMap   = new Map(prevSnapshot.themes.map(t => [t.topic.toLowerCase(), t.count]));
-    const prevTotal = prevSnapshot.themes.reduce((a, t) => a + t.count, 0) || 1;
-    const currTotal = todaysThemes.reduce((a, t) => a + t.count, 0) || 1;
-
-    type BestEntry = { topic: string; prevCount: number; currCount: number; delta: number };
-    const best = todaysThemes.reduce<BestEntry | null>((acc, t) => {
-      const prev = prevMap.get(t.topic.toLowerCase());
-      if (prev === undefined) return acc;
-      const delta = Math.abs(t.count - prev);
-      return !acc || delta > acc.delta ? { topic: t.topic, prevCount: prev, currCount: t.count, delta } : acc;
-    }, null);
-    if (!best) return null;
-
-    const prevPct = Math.round((best.prevCount / prevTotal) * 100);
-    const currPct = Math.round((best.currCount / currTotal) * 100);
-    const surging = best.currCount > best.prevCount;
-    const match   = consensusData?.themes?.find(t => t.topic.toLowerCase() === best!.topic.toLowerCase())
-                 ?? consensusData?.themes?.[0]
-                 ?? null;
-    return { topic: best.topic, prevPct, currPct, change: currPct - prevPct, surging, reason: match?.consensus ?? null };
-  }, [prevSnapshot, todaysThemes, consensusData]);
 
   const topInsight = useMemo(() => {
     if (!consensusData?.themes?.length || !todaysThemes.length) return null;
@@ -360,12 +439,16 @@ export function MarketIntelligencePulse() {
     const matchTheme = todaysThemes.find(t => t.topic.toLowerCase() === top.topic.toLowerCase()) ?? todaysThemes[0];
     const conf = top.confidence;
     return {
-      statement:         top.consensus,
-      topic:             top.topic,
-      confidence:        conf,
-      confidenceLabel:   conf >= 85 ? "Very High" : conf >= 70 ? "High" : conf >= 55 ? "Medium" : "Emerging",
+      statement:          top.consensus,
+      topic:              top.topic,
+      confidence:         conf,
+      confidenceLabel:    conf >= 85 ? "Very High" : conf >= 70 ? "High" : conf >= 55 ? "Medium" : "Emerging",
       supportingCreators: matchTheme.creators,
-      videoCount:        matchTheme.count,
+      videoCount:         matchTheme.count,
+      whyItMatters:       top.whyItMatters ?? "",
+      suggestedAction:    top.recommendedActions?.[0] ?? "",
+      contrarianView:     top.contrarianView ?? "",
+      trendDirection:     top.trendDirection ?? "stable",
     };
   }, [consensusData, todaysThemes]);
 
@@ -408,7 +491,8 @@ export function MarketIntelligencePulse() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-8 bg-[#0d1117] min-h-screen text-slate-100 font-sans antialiased">
+    <div className="bg-[#0d1117] min-h-screen text-slate-100 font-sans antialiased">
+    <div className="w-full px-4 md:px-6 py-6 space-y-8">
 
       {/* ── HEADER ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-4 gap-4">
@@ -438,19 +522,30 @@ export function MarketIntelligencePulse() {
       </div>
 
       {/* ══════════════════════════════════════════════
-          1. IF YOU ONLY READ ONE THING TODAY — HERO
+          1. HIGHEST CONVICTION SIGNAL — HERO
          ══════════════════════════════════════════════ */}
       {topInsight ? (
         <div className="bg-gradient-to-br from-[#0d1f3c] via-[#0d1520] to-[#130d2a] border border-blue-500/30 rounded-2xl p-6 shadow-[0_0_48px_rgba(59,130,246,0.07)] space-y-4">
-          <div className="flex items-center gap-2 text-[10px] font-mono text-blue-400 font-black uppercase tracking-widest">
-            🎯 If You Only Read One Thing Today
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-[10px] font-mono text-blue-400 font-black uppercase tracking-widest">
+              🎯 Highest Conviction Signal Today
+            </div>
+            {topInsight.trendDirection && (
+              <span className={`text-[10px] font-mono font-black ${
+                topInsight.trendDirection === "growing"  ? "text-emerald-400" :
+                topInsight.trendDirection === "declining" ? "text-red-400" : "text-slate-400"
+              }`}>
+                {topInsight.trendDirection === "growing" ? "↑ Growing" : topInsight.trendDirection === "declining" ? "↓ Declining" : "→ Stable"}
+              </span>
+            )}
           </div>
-          <p className="text-lg font-bold text-white leading-relaxed">
-            {topInsight.statement}
-          </p>
+          <p className="text-lg font-bold text-white leading-relaxed">{topInsight.statement}</p>
+          {topInsight.whyItMatters && (
+            <p className="text-sm text-blue-200/70 leading-relaxed">{topInsight.whyItMatters}</p>
+          )}
           <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-blue-500/20">
             <div>
-              <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider mb-1">Supporting</p>
+              <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider mb-1">Evidence</p>
               <p className="text-sm font-black text-white">
                 {topInsight.supportingCreators} creators · {topInsight.videoCount} videos
               </p>
@@ -466,6 +561,18 @@ export function MarketIntelligencePulse() {
               <p className="text-sm font-black text-blue-300">{topInsight.topic}</p>
             </div>
           </div>
+          {topInsight.suggestedAction && (
+            <div className="flex items-start gap-2 bg-blue-500/5 border border-blue-500/15 rounded-lg px-4 py-3">
+              <span className="text-blue-400 shrink-0">→</span>
+              <p className="text-xs text-slate-300 leading-relaxed">{topInsight.suggestedAction}</p>
+            </div>
+          )}
+          {topInsight.contrarianView && (
+            <div className="flex items-start gap-2 bg-amber-500/5 border border-amber-500/15 rounded-lg px-4 py-2.5">
+              <span className="text-amber-400 shrink-0 text-xs">⚡</span>
+              <p className="text-[11px] font-mono text-slate-400 italic leading-relaxed">{topInsight.contrarianView}</p>
+            </div>
+          )}
         </div>
       ) : conLoading ? (
         <div className="bg-[#0d1520] border border-slate-800 rounded-2xl p-6 animate-pulse space-y-4">
@@ -478,72 +585,74 @@ export function MarketIntelligencePulse() {
       {/* ══════════════════════════════════════════════
           2. WHAT CHANGED TODAY
          ══════════════════════════════════════════════ */}
-      {(sinceLastVisit || newOpportunity || biggestChange) && (
+      {whatChangedToday.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest px-1">
-            ↻ What Changed Today
-          </h2>
-
-          {/* Since-last-visit summary chips */}
-          {sinceLastVisit && (
-            <div className="flex flex-wrap gap-2 px-1">
-              {sinceLastVisit.items.map((item, i) => (
-                <span key={i} className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border ${item.color}`}>
-                  {item.label}
-                </span>
-              ))}
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <h2 className="text-sm font-black font-mono tracking-wider text-slate-200 uppercase">↻ What Changed Today</h2>
+              <p className="text-xs text-slate-500 font-mono mt-0.5">Daily momentum shifts across your creator network</p>
             </div>
-          )}
+            <span className="text-[10px] font-mono text-slate-500">{whatChangedToday.length} signals</span>
+          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Biggest theme shift */}
-            {biggestChange && (
-              <div className="bg-[#101520] border border-slate-700/60 rounded-xl p-4 space-y-2">
-                <span className="text-[9px] font-mono font-black text-slate-500 uppercase tracking-widest">
-                  Biggest Shift
-                </span>
-                <div className="flex items-center gap-3">
-                  <p className="text-sm font-black text-white flex-1">{biggestChange.topic}</p>
-                  <div className="flex items-center gap-2 text-[11px] font-mono shrink-0">
-                    <span className="text-slate-500">{biggestChange.prevPct}%</span>
-                    <span className="text-slate-600">→</span>
-                    <span className={`font-black ${biggestChange.surging ? "text-emerald-400" : "text-red-400"}`}>
-                      {biggestChange.currPct}% {biggestChange.surging ? "↑" : "↓"}
-                    </span>
+          <div className="space-y-2">
+            {whatChangedToday.map((event, i) => {
+              const isNew        = event.type === "new";
+              const isAccel      = event.type === "accelerating";
+              const isUp         = event.type === "rank_up";
+              const isDown       = event.type === "rank_down";
+              const isDecline    = event.type === "declining";
+              return (
+                <div key={i} className={`flex items-start gap-3 p-3.5 rounded-xl border transition-colors ${
+                  isNew     ? "bg-blue-500/5 border-blue-500/20 hover:border-blue-500/30" :
+                  isAccel   ? "bg-emerald-500/5 border-emerald-500/20 hover:border-emerald-500/30" :
+                  isUp      ? "bg-[#101520] border-slate-800/60 hover:border-slate-700" :
+                  isDecline ? "bg-red-500/5 border-red-500/15 hover:border-red-500/25" :
+                  "bg-[#101520] border-slate-800/60 hover:border-slate-700"
+                }`}>
+                  {/* Direction pill */}
+                  <div className="shrink-0 pt-0.5">
+                    {isNew     && <span className="text-[9px] font-mono font-black text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-1 rounded">NEW</span>}
+                    {isAccel   && <span className="text-emerald-400 font-black text-base leading-none">↑↑</span>}
+                    {isUp      && <span className="text-emerald-400 font-black text-base leading-none">↑</span>}
+                    {isDown    && <span className="text-amber-400 font-black text-base leading-none">↓</span>}
+                    {isDecline && <span className="text-red-400 font-black text-base leading-none">↓</span>}
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-black text-white">{event.topic}</span>
+                      {event.prevRank && event.currRank && event.prevRank !== event.currRank && (
+                        <span className="text-[10px] font-mono text-slate-500">
+                          #{event.prevRank} → <span className={isUp || isAccel ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>#{event.currRank}</span>
+                        </span>
+                      )}
+                      {event.pctChange !== undefined && event.pctChange !== 0 && (
+                        <span className={`text-[10px] font-mono font-black ${event.pctChange > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {event.pctChange > 0 ? "+" : ""}{event.pctChange}%
+                        </span>
+                      )}
+                      {isNew && <span className="text-[10px] font-mono text-slate-500 italic">Appears in creator consensus for the first time</span>}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 flex-wrap">
+                      {event.creators > 0 && (
+                        <span className="text-[10px] font-mono text-slate-500">{event.creators} creator{event.creators !== 1 ? "s" : ""}</span>
+                      )}
+                      {event.currCount !== undefined && event.currCount > 0 && (
+                        <span className="text-[10px] font-mono text-slate-500">{event.currCount} video{event.currCount !== 1 ? "s" : ""}</span>
+                      )}
+                      {event.channelNames.slice(0, 2).map((ch, j) => (
+                        <span key={j} className="text-[9px] font-mono bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">{ch}</span>
+                      ))}
+                    </div>
+                    {event.whyItMatters && (
+                      <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{event.whyItMatters}</p>
+                    )}
                   </div>
                 </div>
-                {biggestChange.reason && (
-                  <p className="text-[10px] text-slate-500 leading-relaxed pl-3 border-l-2 border-slate-700">
-                    {biggestChange.reason}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* New opportunity */}
-            {newOpportunity && (
-              <div className="bg-emerald-950/30 border border-emerald-500/25 rounded-xl p-4 space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-mono font-black text-emerald-400 uppercase tracking-widest">
-                    🚀 New Opportunity
-                  </span>
-                  <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 animate-pulse">
-                    +{newOpportunity.momentum}%
-                  </span>
-                </div>
-                <p className="text-sm font-black text-white">{newOpportunity.topic}</p>
-                <div className="flex items-center gap-4 text-[10px] font-mono text-slate-500">
-                  <span>Was: <span className="text-slate-400 font-bold">{newOpportunity.prevCount} videos</span></span>
-                  <span>→</span>
-                  <span>Now: <span className="text-emerald-400 font-bold">{newOpportunity.currCount} videos</span></span>
-                </div>
-                {newOpportunity.consensus && (
-                  <p className="text-[10px] text-emerald-300/70 leading-relaxed pl-3 border-l-2 border-emerald-500/30">
-                    {newOpportunity.consensus}
-                  </p>
-                )}
-              </div>
-            )}
+              );
+            })}
           </div>
         </div>
       )}
@@ -556,18 +665,23 @@ export function MarketIntelligencePulse() {
       </div>
 
       {/* ══════════════════════════════════════════════
-          4. CREATOR CONSENSUS
+          4. CREATOR CONSENSUS ENGINE
          ══════════════════════════════════════════════ */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest">
-            ⚡ Creator Consensus
-          </h2>
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div>
+            <h2 className="text-sm font-black font-mono tracking-wider text-slate-300 uppercase">
+              📂 Creator Consensus Engine
+            </h2>
+            <p className="text-xs text-slate-500 font-mono mt-0.5">
+              Click a signal card to expand verifiable source data trails
+            </p>
+          </div>
           <span className="text-[10px] text-slate-600 font-mono">
-            {insightCards.filter(c => c.consensus).length} of {insightCards.length} themes synthesized
+            {emergingSignalThemes.filter(t => t.macroTakeaway).length} of {emergingSignalThemes.length} synthesized
           </span>
         </div>
-        <ConsensusInsightCards cards={insightCards} loading={isLoading && !insightCards.length} />
+        <CollapsibleSignalCards themes={emergingSignalThemes} loading={isLoading && !emergingSignalThemes.length} />
       </div>
 
       {/* ══════════════════════════════════════════════
@@ -611,6 +725,7 @@ export function MarketIntelligencePulse() {
         <CorePulseMetrics metrics={coreMetrics} loading={isLoading && !coreMetrics.some(m => m.value !== "0")} />
       </div>
 
+    </div>
     </div>
   );
 }

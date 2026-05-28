@@ -25,17 +25,17 @@ export const videoAnalysisSchema = z.object({
         speaker_thesis: z
           .string()
           .describe(
-            "A 3-to-4 sentence conversational paragraph summarizing exactly how the speaker explains this data point, their logic, and the context in which they present it. Write in a natural narrative voice — capture the speaker's framing, the 'why it matters' in their argument, and any surrounding context from the video.",
+            "KEY INSIGHT — what does this data point REVEAL about the speaker's business model, market position, or strategy? 3-4 sentences of interpretation. Do NOT restate the quote or paraphrase what was said. Instead: what does this number mean? What does it tell a founder or investor about competitive dynamics or business logic? Use the speaker's actual name throughout. Write as a business analyst extracting insight, not a narrator describing what was said.",
           ),
         strategic_intent: z
           .string()
           .describe(
-            "A razor-sharp 2-to-3 sentence breakdown of the speaker's exact psychological or structural motive for using this specific metric. Identify the underlying persuasion mechanic: are they anchoring authority, validating a personal sales funnel, shielding against criticism, building urgency or fear, or justifying a premium valuation? Avoid generic descriptions — name the specific leverage strategy at play.",
+            "3-4 sentences in two parts. PART 1 — CONTEXT (1-2 sentences): What was the speaker discussing immediately before introducing this metric? What story, personal experience, question, or topic thread led to this exact moment? Give enough narrative that a reader who hasn't watched the video understands the setup — name the situation, not just the topic. PART 2 — RHETORICAL ANALYSIS (2 sentences): WHY the speaker deployed this metric at this exact point. Name the specific persuasion mechanic precisely: anchoring a success outcome before presenting the method? Using a loss statistic to trigger loss-aversion before a pitch? Citing a personal revenue figure to justify a premium price point? State exactly what the speaker is doing and why it works psychologically. BANNED PHRASES: 'establishes credibility', 'positions themselves', 'highlights the importance', 'demonstrates expertise', 'emphasizes success'.",
           ),
         causal_chain: z
           .string()
           .describe(
-            "Step-by-step logical chain showing exactly how the speaker connects their premise to this data point. Format: Step A → Result B → Core Metric. Specific to this video's argument.",
+            "Reconstruct the actual business logic the speaker asserts. Format strictly as linked steps: Premise → Mechanism → Outcome → Metric. Each step must be a 3-6 word phrase describing a real mechanism, not just an outcome. BAD: 'Hard Work → Success → $30M Revenue'. GOOD: 'Weak Offer Redesigned → Conversion Rate Improved → CAC Dropped → Revenue Scaled → $30M Annual'. Specific to this speaker's actual argument — not a generic description of the topic.",
           ),
         direct_quote: z
           .string()
@@ -49,9 +49,77 @@ export const videoAnalysisSchema = z.object({
           ),
         credibility_check: z
           .string()
+          .optional()
+          .describe("Legacy field — superseded by verification_status and verification_reason."),
+        why_it_matters: z
+          .string()
           .describe(
-            "1-to-2 sentences objectively assessing whether this claim is: a verified historical/economic fact, an active policy/institutional statistic, or a speculative prediction by the speaker. Be precise and honest.",
+            "2-3 sentences on the business implication. What does this data point mean for a founder, operator, or investor TODAY? Not a restatement — a genuine interpretation of market dynamics, competitive positioning, or business logic. Write like a McKinsey analyst briefing a client.",
           ),
+        actionable_takeaway: z
+          .string()
+          .describe(
+            "One specific action a founder or operator should take based on THIS data point. Start with a concrete verb. Never 'consider' or 'think about'. Example: 'Audit your current offer and test one change to value delivery before increasing ad spend this quarter.'",
+          ),
+        signal_strength: z
+          .enum(["Very High", "High", "Medium", "Low"])
+          .describe(
+            "Evidence quality rating. High = first-person experience with specific numbers, or independently verified data from a named source. Medium = plausible claim from a credible speaker, but no external verification. Low = speculation, vague assertion, or opinion without supporting evidence.",
+          ),
+        signal_reason: z
+          .string()
+          .describe(
+            "One sentence explaining the signal strength assignment. Reference the specific evidence type (e.g., 'First-person revenue figure stated by the speaker with no external source cited' or 'Cited academic study from a named institution').",
+          ),
+        verification_status: z
+          .enum(["Verified", "Partially Verified", "Unverified", "Opinion", "Speculation"])
+          .describe(
+            "Verified = independently confirmable fact or data from a named external source. Partially Verified = specific claim that is plausible but not independently confirmed in this video. Unverified = assertion with no supporting evidence. Opinion = speaker's view presented as insight, not objectively verifiable. Speculation = forward-looking prediction.",
+          ),
+        verification_reason: z
+          .string()
+          .describe(
+            "One sentence explaining the verification status. Be specific about what evidence exists or is missing.",
+          ),
+
+        viewer_blind_spot: z
+          .string()
+          .optional()
+          .describe(
+            "What most viewers will focus on vs. what is actually more important. Start with 'Most viewers will focus on...' then pivot: 'The more important insight is...' 2–3 sentences of insider intelligence — the non-obvious reading a sophisticated analyst would catch.",
+          ),
+
+        second_order_implications: z
+          .string()
+          .optional()
+          .describe(
+            "What happens next if this data point is true? Format: 'If [claim] is true, then [first-order consequence], which means [second-order consequence].' 2–3 sentences. Avoid generic phrasing — be specific to this speaker's argument.",
+          ),
+
+        contrarian_view: z
+          .string()
+          .optional()
+          .describe(
+            "One credible alternative explanation or counter-argument. Start with 'Alternative view:'. Return null if no credible counter-argument exists.",
+          ),
+
+        opportunity_potential: z
+          .number()
+          .int()
+          .min(0)
+          .max(100)
+          .optional()
+          .describe(
+            "0–100 score for actionable business or investment opportunity this data point signals. 80–100 = high demand, low saturation, strong consensus, time-sensitive. 50–79 = moderate. 0–49 = speculative or generic.",
+          ),
+
+        opportunity_reason: z
+          .string()
+          .optional()
+          .describe(
+            "2–3 bullet factors explaining the score, joined with · (e.g. 'Growing creator consensus · Low market saturation · First-mover window open').",
+          ),
+
         exact_timestamp: z
           .string()
           .describe(
@@ -102,11 +170,41 @@ export const videoAnalysisSchema = z.object({
     ),
   off_script_nuggets: z
     .array(z.string())
-    .min(2)
-    .max(3)
+    .min(5)
     .describe(
-      "2–3 unexpected, high-value pieces of advice, personal anecdotes, or standalone golden nuggets the speaker drops that do NOT fit neatly within the primary thesis or hard data points — the off-the-cuff insights and mental models that are often the most memorable and immediately usable moments in the video. Each must be a complete, standalone sentence a viewer could quote or act on immediately.",
+      "5–7 unexpected, high-value pieces of advice, personal anecdotes, or standalone golden nuggets the speaker drops that do NOT fit neatly within the primary thesis or hard data points — the off-the-cuff insights and mental models that are often the most memorable and immediately usable moments in the video. Each must be a complete, standalone sentence a viewer could quote or act on immediately.",
     ),
+
+  who_should_care: z
+    .object({
+      most_relevant_for: z
+        .array(z.string())
+        .min(1)
+        .max(4)
+        .describe("Specific roles or contexts that get the most value (e.g. 'DTC brand founders', 'Early-stage SaaS operators', 'Crypto investors'). Be specific — not 'Entrepreneurs' but 'Founders scaling past $1M revenue'."),
+      less_relevant_for: z
+        .array(z.string())
+        .max(3)
+        .optional()
+        .describe("Roles or contexts where this content adds limited value. Omit if broadly relevant."),
+    })
+    .optional()
+    .describe("Audience relevance filter — who specifically gets the most from this content"),
+
+  analysis_confidence: z
+    .object({
+      score: z
+        .number()
+        .int()
+        .min(0)
+        .max(100)
+        .describe("0–100. 90+ = detailed transcript, specific verifiable claims. 70–89 = good with minor gaps. 50–69 = moderate uncertainty. Below 50 = significant gaps in transcript or evidence."),
+      factors: z
+        .string()
+        .describe("2–3 factors joined with · explaining the score (e.g. 'Detailed transcript · Specific figures cited · No external source verification' or 'Sparse transcript · Vague claims · Speaker unnamed')."),
+    })
+    .optional()
+    .describe("Analyst self-assessment of interpretation reliability"),
 
   worth_watching: z
     .object({

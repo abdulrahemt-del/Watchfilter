@@ -103,6 +103,9 @@ type DataPoint =
   | { metric: string; root_cause: string }
   | string;
 
+type SignalStrength = "Very High" | "High" | "Medium" | "Low";
+type VerificationStatus = "Verified" | "Partially Verified" | "Unverified" | "Opinion" | "Speculation";
+
 type ResolvedPoint = {
   title: string;
   speakerThesis: string | null;
@@ -112,25 +115,63 @@ type ResolvedPoint = {
   contextExample: string | null;
   credibilityCheck: string | null;
   timestamp: string | null;
+  whyItMatters: string | null;
+  actionableTakeaway: string | null;
+  signalStrength: SignalStrength | null;
+  signalReason: string | null;
+  verificationStatus: VerificationStatus | null;
+  verificationReason: string | null;
+  viewerBlindSpot: string | null;
+  secondOrderImplications: string | null;
+  contrarianView: string | null;
+  opportunityPotential: number | null;
+  opportunityReason: string | null;
+};
+
+const EMPTY_RESOLVED: ResolvedPoint = {
+  title: "", speakerThesis: null, strategicIntent: null, causalChain: null,
+  quote: null, contextExample: null, credibilityCheck: null, timestamp: null,
+  whyItMatters: null, actionableTakeaway: null, signalStrength: null,
+  signalReason: null, verificationStatus: null, verificationReason: null,
+  viewerBlindSpot: null, secondOrderImplications: null, contrarianView: null,
+  opportunityPotential: null, opportunityReason: null,
 };
 
 function resolveDataPoint(point: DataPoint): ResolvedPoint {
-  if (typeof point === "string")
-    return { title: point, speakerThesis: null, strategicIntent: null, causalChain: null, quote: null, contextExample: null, credibilityCheck: null, timestamp: null };
-  if ("causal_chain" in point && "speaker_thesis" in point) {
-    const intent = "strategic_intent" in point ? point.strategic_intent : null;
-    const ctx = "metric_context_example" in point ? (point.metric_context_example ?? null) : null;
-    return { title: point.metric_title, speakerThesis: point.speaker_thesis, strategicIntent: intent, causalChain: point.causal_chain, quote: point.direct_quote, contextExample: ctx, credibilityCheck: point.credibility_check, timestamp: point.exact_timestamp };
+  if (typeof point === "string") return { ...EMPTY_RESOLVED, title: point };
+
+  // All metric_title shapes — handled generically to support both old and new field sets
+  if ("metric_title" in point) {
+    const p = point as Record<string, unknown>;
+    return {
+      title:                   String(p.metric_title ?? ""),
+      speakerThesis:           (p.speaker_thesis as string | undefined) ?? null,
+      strategicIntent:         (p.strategic_intent as string | undefined) ?? null,
+      causalChain:             (p.causal_chain as string | undefined) ?? null,
+      quote:                   (p.direct_quote as string | undefined) ?? null,
+      contextExample:          (p.metric_context_example as string | undefined) ?? null,
+      credibilityCheck:        (p.credibility_check as string | undefined) ?? null,
+      timestamp:               (p.exact_timestamp as string | undefined) ?? null,
+      whyItMatters:            (p.why_it_matters as string | undefined) ?? null,
+      actionableTakeaway:      (p.actionable_takeaway as string | undefined) ?? null,
+      signalStrength:          (p.signal_strength as SignalStrength | undefined) ?? null,
+      signalReason:            (p.signal_reason as string | undefined) ?? null,
+      verificationStatus:      (p.verification_status as VerificationStatus | undefined) ?? null,
+      verificationReason:      (p.verification_reason as string | undefined) ?? null,
+      viewerBlindSpot:         (p.viewer_blind_spot as string | undefined) ?? null,
+      secondOrderImplications: (p.second_order_implications as string | undefined) ?? null,
+      contrarianView:          (p.contrarian_view as string | undefined) ?? null,
+      opportunityPotential:    (p.opportunity_potential as number | undefined) ?? null,
+      opportunityReason:       (p.opportunity_reason as string | undefined) ?? null,
+    };
   }
-  if ("causal_chain" in point) {
-    const ctx = "metric_context_example" in point ? (point.metric_context_example ?? null) : null;
-    return { title: point.metric_title, speakerThesis: null, strategicIntent: null, causalChain: point.causal_chain, quote: point.direct_quote, contextExample: ctx, credibilityCheck: point.credibility_check, timestamp: point.exact_timestamp };
+
+  if ("metric_context" in point) {
+    const p = point as { metric_context: string; metric_value: string; root_cause: string };
+    return { ...EMPTY_RESOLVED, title: `${p.metric_context} — ${p.metric_value}`, causalChain: p.root_cause };
   }
-  if ("speaker_thesis" in point)
-    return { title: point.metric_title, speakerThesis: point.speaker_thesis, strategicIntent: null, causalChain: null, quote: point.direct_quote, contextExample: null, credibilityCheck: null, timestamp: point.exact_timestamp };
-  if ("metric_context" in point)
-    return { title: `${point.metric_context} — ${point.metric_value}`, speakerThesis: null, strategicIntent: null, causalChain: point.root_cause, quote: null, contextExample: null, credibilityCheck: null, timestamp: null };
-  return { title: point.metric, speakerThesis: null, strategicIntent: null, causalChain: point.root_cause, quote: null, contextExample: null, credibilityCheck: null, timestamp: null };
+  const p = point as { metric: string; root_cause: string };
+  return { ...EMPTY_RESOLVED, title: p.metric, causalChain: p.root_cause };
 }
 
 function CausalChain({ text }: { text: string }) {
@@ -147,18 +188,59 @@ function CausalChain({ text }: { text: string }) {
 }
 
 /* ── Metric Card ── */
+const SIGNAL_STYLES: Record<SignalStrength, string> = {
+  "Very High": "av-signal-badge av-signal-badge--very-high",
+  High:        "av-signal-badge av-signal-badge--high",
+  Medium:      "av-signal-badge av-signal-badge--medium",
+  Low:         "av-signal-badge av-signal-badge--low",
+};
+
+const SIGNAL_LABEL: Record<SignalStrength, string> = {
+  "Very High": "HIGH SIGNAL",
+  "High":      "HIGH SIGNAL",
+  "Medium":    "MEDIUM SIGNAL",
+  "Low":       "EMERGING SIGNAL",
+};
+
+const VERIFICATION_STYLES: Record<VerificationStatus, string> = {
+  "Verified":           "av-verification-badge av-verification-badge--verified",
+  "Partially Verified": "av-verification-badge av-verification-badge--partial",
+  "Unverified":         "av-verification-badge av-verification-badge--unverified",
+  "Opinion":            "av-verification-badge av-verification-badge--opinion",
+  "Speculation":        "av-verification-badge av-verification-badge--speculation",
+};
+
+function parseTakeawayBullets(text: string): string[] {
+  const byNewline = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  if (byNewline.length > 1) return byNewline;
+  const sentences = text.match(/[^.!?]*[.!?]+\s*/g)?.map(s => s.trim()).filter(s => s.length > 10) ?? [];
+  return sentences.length > 1 ? sentences : [text];
+}
+
 function MetricCard({
   point,
   videoId,
   defaultOpen,
+  rank,
 }: {
   point: DataPoint;
   videoId: string;
   defaultOpen: boolean;
+  rank?: number;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const { title, speakerThesis, strategicIntent, causalChain, quote, contextExample, credibilityCheck, timestamp } = resolveDataPoint(point);
-  const hasBody = !!(speakerThesis || strategicIntent || causalChain || quote || contextExample || credibilityCheck);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const {
+    title, speakerThesis, strategicIntent, causalChain, quote, contextExample,
+    credibilityCheck, timestamp,
+    whyItMatters, actionableTakeaway, signalStrength, signalReason,
+    verificationStatus, verificationReason,
+    viewerBlindSpot, secondOrderImplications, contrarianView,
+    opportunityPotential, opportunityReason,
+  } = resolveDataPoint(point);
+  const hasBody = !!(speakerThesis || whyItMatters || actionableTakeaway || verificationStatus || credibilityCheck || quote || viewerBlindSpot || opportunityPotential !== null || secondOrderImplications || contrarianView || strategicIntent || causalChain || contextExample);
+  const hasAdvanced = !!(whyItMatters || viewerBlindSpot || opportunityPotential !== null || strategicIntent || causalChain || contextExample);
+  const takeawayBullets = actionableTakeaway ? parseTakeawayBullets(actionableTakeaway) : [];
 
   return (
     <div className={`av-metric-card${open ? " av-metric-card--open" : ""}`}>
@@ -169,8 +251,11 @@ function MetricCard({
       >
         <p className="av-metric-title">{title}</p>
 
-        {(timestamp || hasBody) && (
+        {(timestamp || hasBody || signalStrength || rank) && (
           <div className="av-metric-footer">
+            {rank && rank <= 3 && (
+              <span className="av-rank-badge">#{rank} Insight</span>
+            )}
             {timestamp && (
               <a
                 href={youtubeWatchUrl(videoId, timestamp)}
@@ -181,6 +266,11 @@ function MetricCard({
               >
                 ▶ {timestamp}
               </a>
+            )}
+            {signalStrength && (
+              <span className={SIGNAL_STYLES[signalStrength]} title={signalReason ?? undefined}>
+                {SIGNAL_LABEL[signalStrength]}
+              </span>
             )}
             {hasBody && (
               <svg
@@ -200,6 +290,8 @@ function MetricCard({
           <div className="av-drawer-inner">
             <div className="av-drawer-bg">
 
+              {/* ── Default: Direct Quote / Core Insight / Second-Order / Contrarian / Takeaway / Confidence ── */}
+
               {quote && (
                 <div className="av-tier">
                   <p className="av-tier-label">
@@ -214,38 +306,113 @@ function MetricCard({
 
               {speakerThesis && (
                 <div className="av-tier">
-                  <p className="av-tier-label">Speaker Narrative</p>
+                  <p className="av-tier-label">Core Insight</p>
                   <p className="av-speaker-thesis">{speakerThesis}</p>
                 </div>
               )}
 
-              {strategicIntent && (
+              {secondOrderImplications && (
                 <div className="av-tier">
-                  <p className="av-tier-label">🎯 Strategic Intent</p>
-                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-3.5 mt-2 text-[#4f6d7a] text-sm leading-relaxed">
-                    {strategicIntent}
-                  </div>
+                  <p className="av-tier-label">⚡ Second-Order Implications</p>
+                  <p className="av-speaker-thesis" style={{ borderLeftColor: "#8b5cf6", borderLeftWidth: 3 }}>{secondOrderImplications}</p>
                 </div>
               )}
 
-              {causalChain && (
+              {contrarianView && (
                 <div className="av-tier">
-                  <p className="av-tier-label">Causal Chain</p>
-                  <CausalChain text={causalChain} />
+                  <p className="av-tier-label av-tier-label--amber">⚡ Contrarian View</p>
+                  <p className="av-speaker-thesis" style={{ borderLeftColor: "#8b5cf6", borderLeftWidth: 3 }}>{contrarianView}</p>
                 </div>
               )}
 
-              {contextExample && (
+              {takeawayBullets.length > 0 && (
                 <div className="av-tier">
-                  <p className="av-tier-label">💡 Context &amp; Real-World Illustration</p>
-                  <div className="av-context-example">{contextExample}</div>
+                  <p className="av-tier-label" style={{ color: "var(--ok)" }}>✓ Actionable Takeaway</p>
+                  <ul className="av-takeaway-bullets">
+                    {takeawayBullets.map((b, i) => (
+                      <li key={i} className="av-takeaway-bullet">{b.replace(/^[✓•\-*]\s*/, "")}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
 
-              {credibilityCheck && (
+              {(verificationStatus || credibilityCheck) && (
                 <div className="av-tier">
-                  <p className="av-tier-label av-tier-label--amber">⚖ Credibility Check</p>
-                  <p className="av-credibility">{credibilityCheck}</p>
+                  <p className="av-tier-label av-tier-label--amber">⚖ Confidence</p>
+                  {verificationStatus ? (
+                    <div className="flex flex-col gap-2 mt-1">
+                      <span className={VERIFICATION_STYLES[verificationStatus]}>{verificationStatus}</span>
+                      {verificationReason && <p className="av-credibility" style={{ marginTop: 0 }}>{verificationReason}</p>}
+                    </div>
+                  ) : (
+                    <p className="av-credibility">{credibilityCheck}</p>
+                  )}
+                </div>
+              )}
+
+              {/* ── Deep Analysis — hidden by default ── */}
+
+              {hasAdvanced && (
+                <div className="av-advanced">
+                  <button
+                    onClick={() => setAdvancedOpen(o => !o)}
+                    className="av-advanced-toggle"
+                    aria-expanded={advancedOpen}
+                  >
+                    {advancedOpen ? "▲ Hide Deep Analysis" : "▼ View Deep Analysis"}
+                  </button>
+                  {advancedOpen && (
+                    <div className="av-advanced-body">
+                      {whyItMatters && (
+                        <div className="av-tier">
+                          <p className="av-tier-label">Why It Matters</p>
+                          <p className="av-speaker-thesis" style={{ borderLeftColor: "var(--accent)", borderLeftWidth: 3 }}>{whyItMatters}</p>
+                        </div>
+                      )}
+                      {viewerBlindSpot && (
+                        <div className="av-tier">
+                          <p className="av-tier-label">🔍 What Most Viewers Missed</p>
+                          <div className="av-blind-spot">{viewerBlindSpot}</div>
+                        </div>
+                      )}
+                      {opportunityPotential !== null && (
+                        <div className="av-tier">
+                          <p className="av-tier-label" style={{ color: opportunityPotential >= 80 ? "var(--ok)" : opportunityPotential >= 50 ? "var(--warn)" : "var(--muted)" }}>
+                            Opportunity Potential
+                          </p>
+                          <div className="av-opportunity-score-row">
+                            <span className="av-opportunity-score" style={{
+                              color: opportunityPotential >= 80 ? "var(--ok)" : opportunityPotential >= 50 ? "var(--warn)" : "var(--muted)",
+                              borderColor: opportunityPotential >= 80 ? "color-mix(in srgb,var(--ok) 30%,transparent)" : opportunityPotential >= 50 ? "color-mix(in srgb,var(--warn) 30%,transparent)" : "var(--border)",
+                            }}>
+                              {opportunityPotential}/100
+                            </span>
+                            {opportunityReason && <p className="av-opportunity-reason">{opportunityReason}</p>}
+                          </div>
+                        </div>
+                      )}
+                      {strategicIntent && (
+                        <div className="av-tier">
+                          <p className="av-tier-label">Why The Speaker Said This</p>
+                          <div className="bg-slate-50 border border-slate-100 rounded-lg p-3.5 mt-2 text-[#4f6d7a] text-sm leading-relaxed">
+                            {strategicIntent}
+                          </div>
+                        </div>
+                      )}
+                      {causalChain && (
+                        <div className="av-tier">
+                          <p className="av-tier-label">Causal Chain</p>
+                          <CausalChain text={causalChain} />
+                        </div>
+                      )}
+                      {contextExample && (
+                        <div className="av-tier">
+                          <p className="av-tier-label">💡 Context &amp; Real-World Illustration</p>
+                          <div className="av-context-example">{contextExample}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -375,6 +542,42 @@ function WorthWatchingCard({
   );
 }
 
+/* ── Generate Audio Button — shown when audioPath is missing after enhancement ── */
+type AudioGenState = "idle" | "loading" | "done" | "error";
+
+function GenerateAudioButton({ analysisId, onRefresh }: { analysisId: string; onRefresh: () => void }) {
+  const [state, setState] = useState<AudioGenState>("idle");
+
+  async function generate() {
+    setState("loading");
+    try {
+      const res = await fetch("/api/regenerate-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysisId, voice: "onyx" }),
+      });
+      if (!res.ok) throw new Error("Audio generation failed");
+      setState("done");
+      onRefresh();
+    } catch {
+      setState("error");
+      setTimeout(() => setState("idle"), 3000);
+    }
+  }
+
+  return (
+    <button
+      onClick={() => void generate()}
+      disabled={state === "loading"}
+      className="btn-email"
+    >
+      {state === "loading" ? <><span className="spinner" /> Generating Audio…</> :
+       state === "error" ? "❌ Failed — retry" :
+       "🎙 Generate Audio"}
+    </button>
+  );
+}
+
 /* ── Enhance Button — auto-fires on mount, regenerates audio after backfill ── */
 type EnhanceState = "idle" | "loading" | "done" | "error";
 
@@ -387,21 +590,12 @@ function EnhanceButton({ analysisId, onRefresh }: { analysisId: string; onRefres
     ranRef.current = true;
     setState("loading");
     try {
-      // 1. Backfill: generates nuggets + context examples
       const res = await fetch(`/api/backfill/${analysisId}`, { method: "POST" });
       if (!res.ok) throw new Error("Backfill failed");
-
-      // 2. Regenerate audio so nuggets are included in the briefing
-      await fetch("/api/regenerate-audio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ analysisId, voice: "onyx" }),
-      }).catch(() => { /* audio regen is best-effort */ });
-
       setState("done");
       onRefresh();
     } catch {
-      ranRef.current = false; // allow retry on manual click
+      ranRef.current = false;
       setState("error");
       setTimeout(() => setState("idle"), 3000);
     }
@@ -423,9 +617,10 @@ function EnhanceButton({ analysisId, onRefresh }: { analysisId: string; onRefres
 }
 
 /* ── Main Component ── */
-export function AnalysisView({ analysis, onRefresh }: {
+export function AnalysisView({ analysis, onRefresh, onPlayAudio }: {
   analysis: SavedAnalysis;
   onRefresh?: () => void;
+  onPlayAudio?: () => void;
 }) {
   const needsEnhancement = !analysis.off_script_nuggets?.length;
   const displayTitle = analysis.title ?? `Video ${analysis.videoId}`;
@@ -479,6 +674,47 @@ export function AnalysisView({ analysis, onRefresh }: {
           </div>
         </div>
 
+        {analysis.who_should_care && (
+          <div className="av-who-cares">
+            <div className="av-who-cares__section">
+              <span className="av-who-cares__label">Most Relevant For</span>
+              <div className="av-who-cares__pills">
+                {analysis.who_should_care.most_relevant_for.map((r, i) => (
+                  <span key={i} className="av-who-cares__pill av-who-cares__pill--for">{r}</span>
+                ))}
+              </div>
+            </div>
+            {(analysis.who_should_care.less_relevant_for ?? []).length > 0 && (
+              <div className="av-who-cares__section">
+                <span className="av-who-cares__label">Less Relevant For</span>
+                <div className="av-who-cares__pills">
+                  {(analysis.who_should_care.less_relevant_for ?? []).map((r, i) => (
+                    <span key={i} className="av-who-cares__pill av-who-cares__pill--against">{r}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {analysis.analysis_confidence && (
+          <div className="av-confidence">
+            <span className="av-confidence__label">Analysis Confidence</span>
+            <div className="av-confidence__body">
+              <span className="av-confidence__score" style={{
+                color: analysis.analysis_confidence.score >= 80 ? "var(--ok)"
+                     : analysis.analysis_confidence.score >= 60 ? "var(--warn)"
+                     : "var(--danger)",
+              }}>
+                {analysis.analysis_confidence.score}/100
+              </span>
+              {analysis.analysis_confidence.factors && (
+                <span className="av-confidence__factors">{analysis.analysis_confidence.factors}</span>
+              )}
+            </div>
+          </div>
+        )}
+
         {analysis.worth_watching && (
           <div>
             <WorthWatchingCard
@@ -492,6 +728,12 @@ export function AnalysisView({ analysis, onRefresh }: {
 
         <div className="av-controls-row">
           <EmailButton analysisId={analysis.id} />
+          {analysis.audioPath && onPlayAudio && (
+            <button onClick={onPlayAudio} className="btn-email">🎙 Audio Briefing</button>
+          )}
+          {!analysis.audioPath && !needsEnhancement && analysis.worth_watching && onRefresh && (
+            <GenerateAudioButton analysisId={analysis.id} onRefresh={onRefresh} />
+          )}
           {needsEnhancement && onRefresh && (
             <EnhanceButton analysisId={analysis.id} onRefresh={onRefresh} />
           )}
@@ -501,11 +743,20 @@ export function AnalysisView({ analysis, onRefresh }: {
       {/* ── Metrics Grid ── */}
       {analysis.hard_data_points.length > 0 && (
         <section className="av-section">
-          <p className="av-section-label">📊 Hard Data &amp; Analysis</p>
+          <p className="av-section-label">📊 Intelligence — Ranked by Signal Priority</p>
           <div className="av-metrics-grid">
-            {analysis.hard_data_points.map((point, i) => (
-              <MetricCard key={i} point={point} videoId={analysis.videoId} defaultOpen={i === 0} />
-            ))}
+            {(() => {
+              const RANK: Record<string, number> = { "Very High": 4, "High": 3, "Medium": 2, "Low": 1 };
+              return [...analysis.hard_data_points]
+                .sort((a, b) => {
+                  const ra = typeof a === "object" && a !== null && "signal_strength" in a ? RANK[(a as Record<string, unknown>).signal_strength as string] ?? 1 : 0;
+                  const rb = typeof b === "object" && b !== null && "signal_strength" in b ? RANK[(b as Record<string, unknown>).signal_strength as string] ?? 1 : 0;
+                  return rb - ra;
+                })
+                .map((point, i) => (
+                  <MetricCard key={i} point={point} videoId={analysis.videoId} defaultOpen={i === 0} rank={i + 1} />
+                ));
+            })()}
           </div>
         </section>
       )}
@@ -528,7 +779,7 @@ export function AnalysisView({ analysis, onRefresh }: {
       <section className="av-section">
         <p className="av-section-label">🚀 Tactical Playbook</p>
         <div className="av-playbook">
-          {analysis.actionable_takeaways.map((takeaway, index) => {
+          {analysis.actionable_takeaways.slice(0, 3).map((takeaway, index) => {
             const strategy = typeof takeaway === "string" ? takeaway : takeaway.strategy;
             const steps = typeof takeaway === "string" ? [] : (takeaway.execution_steps ?? []);
             const ts = analysis.timestamps.find(t => t.takeaway_index === index);

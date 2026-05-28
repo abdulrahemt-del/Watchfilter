@@ -13,7 +13,7 @@ export const maxDuration = 60;
 
 const backfillSchema = z.object({
   illustrations: z.array(z.string()),
-  nuggets: z.array(z.string()).min(2).max(3),
+  nuggets: z.array(z.string()).min(5),
 });
 
 async function generateEnhancements(apiKey: string, analysis: SavedAnalysis) {
@@ -56,7 +56,7 @@ ${takeawaySummaries}
 
 Generate:
 1. illustrations — exactly ${analysis.hard_data_points.length} strings in the same order as the data points. Each is a concrete real-world analogy or comparison that makes the statistic visceral: 1–2 sentences, vivid and memorable. Examples of the style: "That's larger than the GDP of Iceland" or "Equivalent to working every waking hour for 8 years without a day off."
-2. nuggets — 2–3 standalone golden insights from this video's themes: unexpected wisdom, counterintuitive truths, or memorable mental models that go beyond the structured data. Each must stand alone as a complete sentence someone could immediately act on or share.`,
+2. nuggets — 5–7 standalone golden insights from this video's themes: unexpected wisdom, counterintuitive truths, or memorable mental models that go beyond the structured data. Each must stand alone as a complete sentence someone could immediately act on or share.`,
       },
     ],
     response_format: zodResponseFormat(backfillSchema, "backfill"),

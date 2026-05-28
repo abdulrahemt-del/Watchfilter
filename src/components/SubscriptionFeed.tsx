@@ -16,12 +16,30 @@ import {
 } from "@/hooks/useFilteredSubscriptionFeed";
 import { FluffAnalyzerDrawer, categoryChipClass } from "@/components/FluffAnalyzerDrawer";
 
-const DEBUG_BADGES = true;
+const DEBUG_BADGES = false;
 
 // ── Consensus types ───────────────────────────────────────────────────────────
 
-interface ConsensusTheme { topic: string; consensus: string; confidence: number; }
+interface ConsensusTheme {
+  topic: string;
+  consensus: string;
+  confidence: number;
+  trendDirection?: 'growing' | 'stable' | 'declining';
+  opportunitySignal?: 'High' | 'Medium' | 'Low';
+  whyItMatters?: string;
+  recommendedActions?: string[];
+  contrarianView?: string;
+}
+interface MostImportantInsight {
+  insight: string;
+  whyItMatters: string;
+  creatorCount: number;
+  videoCount: number;
+  referenceCount: number;
+  topCreators: string[];
+}
 interface ConsensusResult {
+  mostImportantInsight: MostImportantInsight | null;
   executiveBrief: string[];
   themes:         ConsensusTheme[];
   topOpportunity: { topic: string; reason: string; confidence: number } | null;
@@ -29,11 +47,28 @@ interface ConsensusResult {
   actions:        string[];
 }
 
+function trackEvent(name: string, props?: Record<string, unknown>) {
+  if (typeof window === 'undefined') return;
+  console.debug('[WF Analytics]', name, props ?? {});
+  // Wire to posthog/mixpanel/gtag here when ready
+}
+
 interface Props {
   onAnalyze: (youtubeUrl: string) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Topic matching: exact (case-insensitive) first, then substring fallback for
+// cases where the AI slightly renames the topic despite being told not to.
+function findConsensusTheme<T extends { topic: string }>(themes: T[] | undefined, topic: string): T | undefined {
+  if (!themes?.length) return undefined;
+  const t = topic.toLowerCase();
+  return (
+    themes.find(ct => ct.topic.toLowerCase() === t) ??
+    themes.find(ct => { const c = ct.topic.toLowerCase(); return c.includes(t) || t.includes(c); })
+  );
+}
 
 function smartTruncateDescription(desc: string, maxChars = 500): string {
   if (!desc || desc.length <= maxChars) return desc;
@@ -140,12 +175,12 @@ const MODE_META: Record<"business" | "founder" | "finance", { label: string; ban
   },
   founder: {
     label: "🎙 Founder & Investing",
-    banner: "🎙 Founder & Investing — Premium: founder interviews, podcasts & market analysis (40 min+)",
+    banner: "🎙 Founder & Investing — Premium: founder interviews, podcasts & market analysis",
     empty: "No founder/investing content found. Try Business Intelligence mode.",
   },
   finance: {
     label: "💰 Finance",
-    banner: "💰 Finance — Personal finance, wealth management & market intelligence (40 min+)",
+    banner: "💰 Finance — Personal finance, wealth management & market intelligence",
     empty: "No finance content found. Try Business Intelligence mode.",
   },
 };
@@ -210,6 +245,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   const [consensusData, setConsensusData]         = useState<ConsensusResult | null>(null);
   const [consensusLoading, setConsensusLoading]   = useState(false);
   const [selectedConsensusTheme, setSelectedConsensusTheme] = useState<string | null>(null);
+  const [showAllSources, setShowAllSources] = useState(false);
 
   // ── Structural filter ──────────────────────────────────────────────────────
   // business/founder: all 40-min+ videos with ≥1 business keyword in title,
@@ -218,11 +254,11 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   // off:              all after hard blocks only.
   const structuralFilter = useFilteredFeed(videos, mode);
 
-  // ── Scan target: all structurally-passed videos (capped at 200) ────────────
+  // ── Scan target: unscored videos only (capped at 100) ───────────────────────
   const scanTarget = useMemo<FeedVideo[]>(() => {
     if (mode === "off" || mode === "longform") return [];
-    return structuralFilter.slice(0, 200);
-  }, [structuralFilter, mode]);
+    return structuralFilter.filter(v => !aiResults[v.videoId]).slice(0, 100);
+  }, [structuralFilter, mode, aiResults]);
 
   // ── Final display list ─────────────────────────────────────────────────────
   // Shows structural results immediately while AI loads.
@@ -270,6 +306,19 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
   const cacheKey = `wf_feed_${session?.user?.email ?? "anon"}`;
 
+  // AI score cache — 24h TTL. Reused across sessions so already-scored videos skip the API.
+  function loadAiCache(): Record<string, AIScore> {
+    try {
+      const aiKey = `wf_ai_${session?.user?.email ?? "anon"}`;
+      const raw = localStorage.getItem(aiKey);
+      if (raw) {
+        const cached = JSON.parse(raw) as { ts: number; scores: Record<string, AIScore> };
+        if (Date.now() - cached.ts < 24 * 60 * 60 * 1000 && cached.scores) return cached.scores;
+      }
+    } catch { /* corrupt */ }
+    return {};
+  }
+
   function loadFeed(forceRefresh = false) {
     if (!forceRefresh) {
       try {
@@ -279,7 +328,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
           if (Date.now() - cached.ts < CACHE_TTL_MS && cached.videos?.length) {
             setVideos(cached.videos);
             setCacheAge(new Date(cached.ts));
-            setAiResults({});
+            setAiResults(loadAiCache());
             setAiScanEnabled(false);
             setConsensusData(null);
             setSelectedConsensusTheme(null);
@@ -298,7 +347,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
         const vids = data.videos ?? [];
         setVideos(vids);
         setCacheAge(new Date());
-        setAiResults({});
+        setAiResults(forceRefresh ? {} : loadAiCache());
         setAiScanEnabled(false);
         setConsensusData(null);
         setSelectedConsensusTheme(null);
@@ -358,7 +407,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             videoId:      v.videoId,
             title:        v.title,
             channelTitle: v.channelTitle,
-            description:  smartTruncateDescription(v.description),
+            description:  smartTruncateDescription(v.description, 200),
           })),
         }),
         signal: controller.signal,
@@ -372,17 +421,27 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     setConsensusData(null);
     setSelectedConsensusTheme(null);
 
-    Promise.all(batches.map(scanBatch))
-      .then((batchResults) => {
-        const map: Record<string, AIScore> = {};
-        batchResults.flat().forEach((r) => { map[r.videoId] = r; });
-        console.log(`[AI-scan] scored ${Object.keys(map).length} videos`);
-        setAiResults(map);
-        // Share scores with IntelligenceDashboard so it skips re-scoring
-        try {
-          const aiKey = `wf_ai_${session?.user?.email ?? "anon"}`;
-          localStorage.setItem(aiKey, JSON.stringify({ ts: Date.now(), scores: map }));
-        } catch { /* storage full */ }
+    // Progressive: update state as each batch completes so videos appear immediately
+    const batchPromises = batches.map(batch =>
+      scanBatch(batch).then(results => {
+        if (!results.length) return;
+        const batchScores: Record<string, AIScore> = {};
+        results.forEach(r => { batchScores[r.videoId] = r; });
+        console.log(`[AI-scan] batch done: ${results.length} videos`);
+        setAiResults(prev => ({ ...prev, ...batchScores }));
+      })
+    );
+
+    // After all batches: persist the full merged set to localStorage
+    Promise.allSettled(batchPromises)
+      .then(() => {
+        setAiResults(prev => {
+          try {
+            const aiKey = `wf_ai_${session?.user?.email ?? "anon"}`;
+            localStorage.setItem(aiKey, JSON.stringify({ ts: Date.now(), scores: prev }));
+          } catch { /* storage full */ }
+          return prev;
+        });
       })
       .finally(() => setAiLoading(false));
   }, [scanTarget, aiScanEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -435,7 +494,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     }
     const sorted = [...map.entries()]
       .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 6);
+      .slice(0, 4);
 
     // Each channel may appear in pills exactly once across all 6 cards.
     // Top themes get first pick; lower-ranked themes surface different sources.
@@ -520,23 +579,39 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
 
   // Per-theme creator list + insight snippets (used to build consensus API payload)
   const themeDataMap = useMemo(() => {
-    if (!aiReady) return new Map<string, { creators: string[]; insights: string[] }>();
-    const map = new Map<string, { creators: Set<string>; insights: string[] }>();
+    if (!aiReady) return new Map<string, { creators: string[]; insights: { creator: string; text: string }[]; totalMentions: number }>();
+    const map = new Map<string, { creators: Set<string>; insights: { creator: string; text: string }[]; totalMentions: number }>();
     for (const video of filteredVideos) {
       const ai = aiResults[video.videoId];
       if (!ai || ai.topicCategory === "excluded") continue;
       const insight = ai.whyItMatters || ai.explanation;
       for (const cat of ai.categories ?? []) {
         if (cat.length <= 3) continue;
-        if (!map.has(cat)) map.set(cat, { creators: new Set(), insights: [] });
+        if (!map.has(cat)) map.set(cat, { creators: new Set(), insights: [], totalMentions: 0 });
         const e = map.get(cat)!;
         e.creators.add(video.channelTitle);
-        if (insight && e.insights.length < 5) e.insights.push(insight);
+        e.totalMentions++;
+        if (insight && e.insights.length < 5) e.insights.push({ creator: video.channelTitle, text: insight });
       }
     }
-    const out = new Map<string, { creators: string[]; insights: string[] }>();
-    for (const [k, v] of map) out.set(k, { creators: [...v.creators], insights: v.insights });
+    const out = new Map<string, { creators: string[]; insights: { creator: string; text: string }[]; totalMentions: number }>();
+    for (const [k, v] of map) out.set(k, { creators: [...v.creators], insights: v.insights, totalMentions: v.totalMentions });
     return out;
+  }, [filteredVideos, aiResults, aiReady]);
+
+  // Per-theme video list (for Emerging card thumbnails)
+  const themeVideoMap = useMemo(() => {
+    if (!aiReady) return new Map<string, FeedVideo[]>();
+    const map = new Map<string, FeedVideo[]>();
+    for (const video of filteredVideos) {
+      const cats = aiResults[video.videoId]?.categories ?? [];
+      for (const cat of cats) {
+        if (cat.length <= 3) continue;
+        if (!map.has(cat)) map.set(cat, []);
+        map.get(cat)!.push(video);
+      }
+    }
+    return map;
   }, [filteredVideos, aiResults, aiReady]);
 
   // Consensus API payload — stable after AI scan completes
@@ -548,17 +623,25 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     return {
       themes: todaysThemes.map(({ topic, count }) => {
         const d = themeDataMap.get(topic);
-        return { topic, count, creators: (d?.creators ?? []).slice(0, 4), insights: (d?.insights ?? []).slice(0, 3) };
+        return {
+          topic,
+          count,
+          creators: (d?.creators ?? []).slice(0, 4),
+          insights: (d?.insights ?? []).slice(0, 3).map(i => i.text),
+          referenceCount: d?.totalMentions ?? count,
+        };
       }),
       topOpportunity: biggestOpportunity
         ? { topic: biggestOpportunity.topic, count: biggestOpportunity.mentions,
             creators: sectionedVideos.opportunities.slice(0, 4).map((v) => v.channelTitle),
-            insights: sectionInsights(sectionedVideos.opportunities) }
+            insights: sectionInsights(sectionedVideos.opportunities),
+            referenceCount: themeDataMap.get(biggestOpportunity.topic)?.totalMentions ?? biggestOpportunity.mentions }
         : null,
       topRisk: topRisk
         ? { topic: topRisk.topic, count: topRisk.mentions,
             creators: sectionedVideos.risks.slice(0, 4).map((v) => v.channelTitle),
-            insights: sectionInsights(sectionedVideos.risks) }
+            insights: sectionInsights(sectionedVideos.risks),
+            referenceCount: themeDataMap.get(topRisk.topic)?.totalMentions ?? topRisk.mentions }
         : null,
     };
   }, [aiReady, todaysThemes, themeDataMap, biggestOpportunity, topRisk, sectionedVideos, aiResults]);
@@ -579,7 +662,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     const basedOn = todaysThemes.slice(0, 3).map((t) => t.topic);
     const recommended = todaysThemes
       .filter((t) => {
-        const ct = consensusData?.themes.find((c) => c.topic.toLowerCase() === t.topic.toLowerCase());
+        const ct = findConsensusTheme(consensusData?.themes, t.topic);
         return (ct?.confidence ?? Math.min(92, 40 + t.creators * 14)) >= 65;
       })
       .slice(0, 3)
@@ -618,6 +701,26 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     return null;
   }, [filteredVideos, aiResults, aiReady]);
 
+  // Creator influence: top creators ranked by topic breadth × video contribution
+  const creatorInfluence = useMemo(() => {
+    if (!aiReady) return [];
+    const map = new Map<string, { topics: Set<string>; videos: number; topInsight: string | null }>();
+    for (const video of filteredVideos) {
+      const ai = aiResults[video.videoId];
+      if (!ai || ai.topicCategory === 'excluded') continue;
+      const ch = video.channelTitle;
+      if (!map.has(ch)) map.set(ch, { topics: new Set(), videos: 0, topInsight: null });
+      const e = map.get(ch)!;
+      e.videos++;
+      for (const cat of ai.categories ?? []) { if (cat.length > 3) e.topics.add(cat); }
+      if (!e.topInsight) e.topInsight = ai.whyItMatters || ai.explanation || null;
+    }
+    return [...map.entries()]
+      .map(([name, d]) => ({ name, topics: [...d.topics].slice(0, 3), videos: d.videos, topInsight: d.topInsight, score: d.topics.size * 15 + d.videos * 8 }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
+  }, [filteredVideos, aiResults, aiReady]);
+
   // Watch time saved estimate (60% of filtered videos' total runtime)
   const savedTimeStr = useMemo(() => {
     if (!filteredVideos.length) return "";
@@ -628,13 +731,14 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
 
   // Videos shown in the proof grid — filtered to selected consensus theme when one is active
   const displayVideos = useMemo(() => {
-    if (!selectedConsensusTheme || !aiReady) return filteredVideos;
-    return filteredVideos.filter((v) =>
+    const pool = showAllSources ? structuralFilter : filteredVideos;
+    if (!selectedConsensusTheme || !aiReady) return pool;
+    return pool.filter((v) =>
       aiResults[v.videoId]?.categories?.some(
         (c) => c.toLowerCase() === selectedConsensusTheme.toLowerCase()
       )
     );
-  }, [filteredVideos, selectedConsensusTheme, aiResults, aiReady]);
+  }, [filteredVideos, structuralFilter, showAllSources, selectedConsensusTheme, aiResults, aiReady]);
 
   const userName     = session?.user?.name?.split(" ")[0] ?? session?.user?.email?.split("@")[0] ?? "there";
   const hour         = new Date().getHours();
@@ -813,25 +917,6 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
         </div>
       )}
 
-      {analyticsMetrics && (
-        <div className="feed-analytics-header">
-          <div className="feed-analytics-header__pulse">
-            <span className="feed-analytics-header__ping" />
-            <span className="feed-analytics-header__dot" />
-          </div>
-          <span className="feed-analytics-header__stat">
-            🛡️ <strong>{analyticsMetrics.pct}%</strong> fluff deflected
-          </span>
-          <span className="feed-analytics-header__divider">·</span>
-          <span className="feed-analytics-header__stat">
-            ⏳ <strong>~{analyticsMetrics.savedHrs}h</strong> of noise removed
-          </span>
-          <span className="feed-analytics-header__divider">·</span>
-          <span className="feed-analytics-header__stat">
-            📺 <strong>{analyticsMetrics.shown}</strong> of {analyticsMetrics.total} videos approved
-          </span>
-        </div>
-      )}
 
       {loading && <div className="feed-state-msg"><span className="spinner" /> Fetching your subscriptions…</div>}
       {error && <p className="feed-error">⚠ {error}</p>}
@@ -885,6 +970,76 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                 </div>
               </div>
 
+              {/* ── Hero Insight: Most Important Insight Today ── */}
+              {todaysThemes.length > 0 && (() => {
+                const hero = todaysThemes[0];
+                const ct = findConsensusTheme(consensusData?.themes, hero.topic);
+                const mii = consensusData?.mostImportantInsight;
+                const creatorCount = mii?.creatorCount ?? hero.creators;
+                const videoCount   = mii?.videoCount   ?? hero.count;
+                const confidence = ct?.confidence ?? Math.min(92, 40 + hero.creators * 14);
+                const confidenceLabel = confidence >= 80 ? 'High' : confidence >= 60 ? 'Medium' : 'Low';
+                const confidenceColor = confidence >= 80
+                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25'
+                  : confidence >= 60
+                    ? 'text-amber-400 bg-amber-500/10 border-amber-500/25'
+                    : 'text-slate-400 bg-slate-800/60 border-slate-700/40';
+                const heroAction = ct?.recommendedActions?.[0] ?? consensusData?.actions?.[0];
+                const insightText = mii?.insight ?? ct?.consensus;
+                const whyText = mii?.whyItMatters ?? ct?.whyItMatters;
+                return (
+                  <div className="border border-[#1e2d45] rounded-xl p-6 space-y-4" style={{ background: 'linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)', boxShadow: '0 4px 32px #0000002e,inset 0 1px #ffffff08' }}>
+                    <p className="text-[9px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">🔥 Most Important Insight Today</p>
+
+                    {insightText ? (
+                      <p className="text-base text-white font-semibold leading-relaxed">{insightText}</p>
+                    ) : consensusLoading ? (
+                      <div className="space-y-2">
+                        <div className="h-4 bg-slate-800/60 animate-pulse rounded" style={{ width: '90%' }} />
+                        <div className="h-4 bg-slate-800/60 animate-pulse rounded" style={{ width: '70%' }} />
+                      </div>
+                    ) : (
+                      <p className="text-base text-white font-semibold leading-relaxed">{hero.topic}</p>
+                    )}
+
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className={`text-[10px] font-mono font-black px-2.5 py-1 rounded border uppercase tracking-wider ${confidenceColor}`}>
+                        Confidence: {confidenceLabel}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        Sources: <span className="text-white font-bold">{creatorCount}</span> creator{creatorCount !== 1 ? 's' : ''} · <span className="text-white font-bold">{videoCount}</span> video{videoCount !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+
+                    {(whyText || heroAction) && (
+                      <div className="space-y-3 pt-3 border-t border-slate-800/50">
+                        {whyText && (
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-mono font-black text-slate-500 uppercase tracking-widest block">Why It Matters</span>
+                            <p className="text-xs text-slate-300 leading-relaxed">{whyText}</p>
+                          </div>
+                        )}
+                        {heroAction && (
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-mono font-black text-slate-500 uppercase tracking-widest block">Recommended Action</span>
+                            <p className="text-xs text-emerald-300 leading-relaxed font-medium">✓ {heroAction}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {ct?.contrarianView && (
+                      <div className="bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2 flex items-start gap-2">
+                        <span className="text-amber-400 text-xs shrink-0 mt-0.5">⚡</span>
+                        <div>
+                          <span className="text-[9px] font-mono font-black text-amber-400 uppercase tracking-widest block">Contrarian View</span>
+                          <p className="text-[10px] font-mono text-slate-400 mt-0.5 leading-relaxed">{ct.contrarianView}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* ── Section 1: Executive Intelligence Brief ── */}
               <div className={`exec-brief${consensusLoading && !consensusData ? " exec-brief--loading" : ""}`}>
                 <div className="exec-brief__head">
@@ -915,219 +1070,499 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                   <p className="exec-brief__placeholder">Waiting for enough creator signals to synthesize a brief…</p>
                 )}
 
-                {/* Signal mini-grid: Trend Vector / Emerging Theme / Biggest Insight */}
+                {/* ── What Changed Today ── */}
                 {todaysThemes.length > 0 && (
-                  <div className="exec-brief__signal-grid">
-                    <div className="exec-brief__signal-item">
-                      <span className="exec-brief__signal-label">Trend Vector</span>
-                      <p className="exec-brief__signal-topic">{todaysThemes[0].topic}</p>
-                      {(() => {
-                        const ct = consensusData?.themes.find(t => t.topic.toLowerCase() === todaysThemes[0].topic.toLowerCase());
-                        return ct?.consensus
-                          ? <p className="exec-brief__signal-desc">{ct.consensus}</p>
-                          : consensusLoading
-                            ? <div className="exec-brief__signal-skeleton" style={{ width: "90%" }} />
-                            : null;
+                  <div className="mt-5 pt-4 border-t border-[#1e2d45] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[9px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">Live Intelligence Feed · What Changed Today</p>
+                      <span className="text-[9px] font-mono font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
+                        {filteredVideos.length} sources
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {todaysThemes.map((t, idx) => {
+                        const ct = findConsensusTheme(consensusData?.themes, t.topic);
+                        const trend = ct?.trendDirection ?? (t.creators >= 3 ? 'growing' : 'stable');
+                        const icon = trend === 'growing' ? '↑' : trend === 'declining' ? '↓' : '→';
+                        const trendColor = trend === 'growing' ? 'text-emerald-400' : trend === 'declining' ? 'text-red-400' : 'text-slate-400';
+                        const rowBg = trend === 'growing' ? 'bg-emerald-500/5 border-emerald-500/15' : trend === 'declining' ? 'bg-red-500/5 border-red-500/15' : 'bg-slate-900/40 border-slate-800/40';
+                        return (
+                          <div key={t.topic} className={`flex items-start gap-3 rounded-lg px-3 py-2.5 border ${rowBg}`}>
+                            <span className={`text-base font-black shrink-0 mt-0.5 ${trendColor}`}>{icon}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] font-mono text-slate-600">#{idx + 1}</span>
+                                <p className="text-xs font-black text-white font-mono uppercase tracking-tight">{t.topic}</p>
+                              </div>
+                              <p className="text-[10px] font-mono text-slate-500 mt-0.5">
+                                <span className="text-slate-300 font-bold">{t.creators}</span> creator{t.creators !== 1 ? 's' : ''} · <span className="text-slate-300 font-bold">{t.count}</span> video{t.count !== 1 ? 's' : ''}
+                                {trend === 'growing' && <span className={`${trendColor} font-bold`}> · gaining momentum</span>}
+                                {trend === 'declining' && <span className={`${trendColor} font-bold`}> · declining</span>}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {biggestOpportunity && !todaysThemes.some(t => t.topic.toLowerCase() === biggestOpportunity.topic.toLowerCase()) && (
+                        <div className="flex items-start gap-3 bg-emerald-500/5 rounded-lg px-3 py-2.5 border border-emerald-500/15">
+                          <span className="text-base font-black shrink-0 mt-0.5 text-emerald-400">↑</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-white font-mono uppercase tracking-tight">{biggestOpportunity.topic}</p>
+                            <p className="text-[10px] font-mono text-slate-500 mt-0.5">
+                              <span className="text-emerald-400 font-bold">Opportunity signal</span> · {biggestOpportunity.creators} creator{biggestOpportunity.creators !== 1 ? 's' : ''} · {biggestOpportunity.mentions} signals
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      {topRisk && !todaysThemes.some(t => t.topic.toLowerCase() === topRisk.topic.toLowerCase()) && (
+                        <div className="flex items-start gap-3 bg-red-500/5 rounded-lg px-3 py-2.5 border border-red-500/15">
+                          <span className="text-base font-black shrink-0 mt-0.5 text-red-400">↓</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-white font-mono uppercase tracking-tight">{topRisk.topic}</p>
+                            <p className="text-[10px] font-mono text-slate-500 mt-0.5">
+                              <span className="text-red-400 font-bold">Risk signal</span> · {topRisk.creators} creator{topRisk.creators !== 1 ? 's' : ''} · {topRisk.mentions} signals
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Opportunity Alerts ── */}
+                {topRisk && (
+                  <div className="mt-5 pt-4 border-t border-[#1e2d45] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[9px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">AI-Detected · Risk Alert</p>
+                      <span className="text-[9px] font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        1 Active
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {topRisk && (() => {
+                        const reason = consensusData?.topRisk?.reason || themeDataMap.get(topRisk.topic)?.insights[0]?.text;
+                        const riskTheme = findConsensusTheme(consensusData?.themes, topRisk.topic);
+                        const riskActions = riskTheme?.recommendedActions?.slice(0, 2) ?? (consensusData?.actions ? [consensusData.actions[consensusData.actions.length - 1]] : []);
+                        const creators = themeDataMap.get(topRisk.topic)?.creators ?? [];
+                        return (
+                          <div className="bg-[#120b0b] border border-red-500/20 rounded-xl p-5 space-y-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <span className="text-[9px] font-mono font-black text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded uppercase tracking-wider">Risk Alert</span>
+                                <h4 className="text-base font-black text-white font-mono uppercase tracking-tight mt-2">{topRisk.topic}</h4>
+                              </div>
+                              <span className="text-red-400 text-xl font-black shrink-0">⚠</span>
+                            </div>
+                            {reason && (
+                              <div className="space-y-1">
+                                <span className="text-[9px] font-mono font-black text-slate-500 uppercase tracking-wider block">Why Now</span>
+                                <p className="text-xs text-slate-300 leading-relaxed border-l-2 border-red-500/40 pl-3">{reason}</p>
+                              </div>
+                            )}
+                            <div className="grid grid-cols-3 gap-3 pt-2 border-t border-red-500/10">
+                              <div>
+                                <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">Creators</p>
+                                <p className="text-sm font-black text-white">{topRisk.creators}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">Videos</p>
+                                <p className="text-sm font-black text-white">{sectionedVideos.risks.length}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">Signals</p>
+                                <p className="text-sm font-black text-red-400">{topRisk.mentions}</p>
+                              </div>
+                            </div>
+                            {riskActions.filter(Boolean).length > 0 && (
+                              <div className="pt-3 border-t border-red-500/15 space-y-2.5">
+                                <span className="text-[9px] font-mono font-black text-white uppercase tracking-widest block">Recommended Action</span>
+                                <div className="space-y-2">
+                                  {riskActions.filter(Boolean).map((a, i) => (
+                                    <div key={i} className="flex items-start gap-2">
+                                      <span className="text-emerald-400 shrink-0 font-bold text-sm leading-none mt-0.5">✓</span>
+                                      <p className="text-xs text-slate-200 leading-snug font-medium">{a}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {creators.slice(0, 4).length > 0 && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {creators.slice(0, 4).map((c, i) => (
+                                  <span key={i} className="text-[9px] font-mono text-slate-300 bg-slate-800/80 border border-slate-700/60 px-2 py-0.5 rounded">{c}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
                       })()}
                     </div>
-                    {todaysThemes[1] && (
-                      <div className="exec-brief__signal-item">
-                        <span className="exec-brief__signal-label">Emerging Theme</span>
-                        <p className="exec-brief__signal-topic">{todaysThemes[1].topic}</p>
-                        {(() => {
-                          const ct = consensusData?.themes.find(t => t.topic.toLowerCase() === todaysThemes[1].topic.toLowerCase());
-                          return ct?.consensus
-                            ? <p className="exec-brief__signal-desc">{ct.consensus}</p>
-                            : consensusLoading
-                              ? <div className="exec-brief__signal-skeleton" style={{ width: "80%" }} />
-                              : null;
-                        })()}
-                      </div>
-                    )}
-                    {(topInsight || consensusLoading) && (
-                      <div className="exec-brief__signal-item">
-                        <span className="exec-brief__signal-label">Biggest Insight</span>
-                        {topInsight
-                          ? <p className="exec-brief__signal-desc" style={{ fontStyle: "normal", color: "#94a3b8" }}>{topInsight}</p>
-                          : <div className="exec-brief__signal-skeleton" style={{ width: "85%" }} />
-                        }
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
 
-              {/* ── Sections 2, 3 & 4: Opportunity + Risk + Most Actionable ── */}
-              <div className="intel-signal-grid">
-                <div className="intel-signal intel-signal--opp">
-                  <p className="intel-signal__eyebrow">🚀 Biggest Opportunity</p>
-                  {biggestOpportunity ? (
-                    <>
-                      <h3 className="intel-signal__topic">
-                        {consensusData?.topOpportunity?.topic ?? biggestOpportunity.topic}
-                      </h3>
-                      {consensusData?.topOpportunity?.reason
-                        ? <p className="intel-signal__reason">{consensusData.topOpportunity.reason}</p>
-                        : consensusLoading && <p className="intel-signal__reason intel-signal__reason--loading">Generating analysis…</p>
-                      }
-                      <div className="intel-signal__stats">
-                        <div className="intel-signal__stat">
-                          <span className="intel-signal__stat-value">{consensusData?.topOpportunity?.confidence ?? "—"}%</span>
-                          <span className="intel-signal__stat-label">Confidence</span>
-                        </div>
-                        <div className="intel-signal__stat">
-                          <span className="intel-signal__stat-value">{biggestOpportunity.creators}</span>
-                          <span className="intel-signal__stat-label">Creators</span>
-                        </div>
-                        <div className="intel-signal__stat">
-                          <span className="intel-signal__stat-value">{biggestOpportunity.mentions}</span>
-                          <span className="intel-signal__stat-label">Mentions</span>
-                        </div>
+              {/* ── Section 4: Emerging Signals Grid ── */}
+              {todaysThemes.length > 0 && (() => {
+                const row1 = todaysThemes.slice(0, 2);
+                const row2 = todaysThemes.slice(2, 4);
+
+                const renderCard = (t: typeof todaysThemes[0], globalIdx: number) => {
+                  const cTheme = findConsensusTheme(consensusData?.themes, t.topic);
+                  const confidence = cTheme?.confidence ?? Math.min(92, 40 + t.creators * 14);
+                  const isStrong = t.creators >= 3;
+                  const isActive = selectedConsensusTheme === t.topic;
+                  const strengthLabel =
+                    t.creators >= 4 || confidence >= 80 ? "Very Strong" :
+                    t.creators >= 3 || confidence >= 70 ? "Strong" :
+                    t.creators >= 2 || confidence >= 60 ? "Moderate" : "Weak";
+                  const strengthColor =
+                    strengthLabel === "Very Strong" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" :
+                    strengthLabel === "Strong"      ? "text-blue-400 bg-blue-500/10 border-blue-500/20" :
+                    strengthLabel === "Moderate"    ? "text-amber-400 bg-amber-500/10 border-amber-500/20" :
+                                                     "text-slate-400 bg-slate-800/60 border-slate-700/40";
+                  const isTopOpp = biggestOpportunity?.topic.toLowerCase() === t.topic.toLowerCase();
+                  const signals = themeDataMap.get(t.topic)?.insights.length ?? 0;
+                  const allCreators = themeDataMap.get(t.topic)?.creators ?? t.channelNames;
+                  const topVideos = themeVideoMap.get(t.topic) ?? [];
+                  const MEDALS = ["🥇", "🥈", "🥉"];
+
+                  return (
+                    <div
+                      key={t.topic}
+                      onClick={() => {
+                        const next = isActive ? null : t.topic;
+                        setSelectedConsensusTheme(next);
+                        trackEvent(next ? 'consensus_card_opened' : 'consensus_card_closed', { topic: t.topic, isStrong });
+                      }}
+                      className={`group border rounded-xl p-5 flex flex-col cursor-pointer transition-all duration-200 select-none ${
+                        isActive
+                          ? "border-blue-500 ring-1 ring-blue-500/20 shadow-[0_0_28px_rgba(59,130,246,0.12)]"
+                          : "border-[#1e2d45] hover:border-blue-500/40 hover:shadow-[0_0_18px_rgba(59,130,246,0.07)]"
+                      }`}
+                      style={{ background: 'linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)', boxShadow: '0 4px 32px #0000002e,inset 0 1px #ffffff08' }}
+                    >
+                      {/* Top meta row */}
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-mono font-black text-blue-400 bg-blue-950/60 border border-blue-900/40 px-2 py-0.5 rounded">
+                          #{globalIdx + 1}
+                        </span>
+                        <span className={`text-[9px] font-mono font-black px-2 py-0.5 rounded border ${strengthColor}`}>
+                          {strengthLabel}
+                        </span>
                       </div>
-                    </>
-                  ) : (
-                    <p className="intel-signal__empty">No major consensus opportunities detected today.</p>
-                  )}
-                </div>
 
-                <div className={`intel-signal${topRisk ? " intel-signal--risk" : " intel-signal--safe"}`}>
-                  <p className="intel-signal__eyebrow">{topRisk ? "⚠️ Biggest Risk" : "✅ Risk Assessment"}</p>
-                  {topRisk ? (
-                    <>
-                      <h3 className="intel-signal__topic">
-                        {consensusData?.topRisk?.topic ?? topRisk.topic}
-                      </h3>
-                      {consensusData?.topRisk?.reason
-                        ? <p className="intel-signal__reason">{consensusData.topRisk.reason}</p>
-                        : consensusLoading && <p className="intel-signal__reason intel-signal__reason--loading">Generating analysis…</p>
-                      }
-                      <div className="intel-signal__stats">
-                        <div className="intel-signal__stat">
-                          <span className="intel-signal__stat-value">{consensusData?.topRisk?.confidence ?? "—"}%</span>
-                          <span className="intel-signal__stat-label">Confidence</span>
-                        </div>
-                        <div className="intel-signal__stat">
-                          <span className="intel-signal__stat-value">{topRisk.creators}</span>
-                          <span className="intel-signal__stat-label">Creators</span>
-                        </div>
-                        <div className="intel-signal__stat">
-                          <span className="intel-signal__stat-value">{topRisk.mentions}</span>
-                          <span className="intel-signal__stat-label">Mentions</span>
-                        </div>
+                      {/* Title */}
+                      <h4 className="text-sm font-black text-white tracking-tight font-mono uppercase leading-tight mb-1">
+                        {t.topic}
+                      </h4>
+
+                      {/* AI consensus — primary message */}
+                      <div className="flex-1 mb-2 space-y-1">
+                        {cTheme?.consensus ? (
+                          <>
+                            <span className="text-[9px] font-mono font-black text-slate-400 uppercase tracking-widest block">Key Consensus</span>
+                            <p className="text-xs text-white leading-relaxed font-medium">
+                              {cTheme.consensus}
+                            </p>
+                          </>
+                        ) : consensusLoading ? (
+                          <>
+                            <span className="text-[9px] font-mono font-black text-slate-600 uppercase tracking-widest block">Key Consensus</span>
+                            <p className="text-xs text-slate-600 italic animate-pulse">Synthesizing consensus…</p>
+                          </>
+                        ) : null}
                       </div>
-                    </>
-                  ) : (
-                    <p className="intel-signal__empty">No major consensus risks detected today.</p>
-                  )}
-                </div>
 
-                <div className="intel-signal intel-signal--action">
-                  <p className="intel-signal__eyebrow">⚡ Most Actionable Insight</p>
-                  {consensusData?.actions?.[0] ? (
-                    <>
-                      <h3 className="intel-signal__topic" style={{ fontSize: "0.9rem" }}>Top Action for Today</h3>
-                      <p className="intel-signal__reason">{consensusData.actions[0]}</p>
-                      <div className="intel-signal__stats">
-                        <div className="intel-signal__stat">
-                          <span className="intel-signal__stat-value">{consensusData.actions.length}</span>
-                          <span className="intel-signal__stat-label">Actions</span>
-                        </div>
-                        <div className="intel-signal__stat">
-                          <span className="intel-signal__stat-value">{todaysThemes.length}</span>
-                          <span className="intel-signal__stat-label">Themes</span>
-                        </div>
-                        <div className="intel-signal__stat">
-                          <span className="intel-signal__stat-value">{filteredVideos.length}</span>
-                          <span className="intel-signal__stat-label">Sources</span>
-                        </div>
-                      </div>
-                    </>
-                  ) : consensusLoading ? (
-                    <p className="intel-signal__reason intel-signal__reason--loading">Generating actionable intelligence…</p>
-                  ) : (
-                    <p className="intel-signal__empty">No actionable insights synthesized yet.</p>
-                  )}
-                </div>
-              </div>
+                      {/* Stats */}
+                      <p className="text-[10px] font-mono text-white mb-3">
+                        {t.creators} creator{t.creators !== 1 ? "s" : ""} · {t.count} video{t.count !== 1 ? "s" : ""}
+                        {signals > 0 && ` · ${signals} signal${signals !== 1 ? "s" : ""}`}
+                      </p>
 
-              {/* ── Executive Summary Narrative ── */}
-              {todaysThemes.length > 0 && (
-                <div className="intel-summary">
-                  <p className="intel-summary__text">
-                    After analyzing <strong>{analyticsMetrics?.total ?? videos.length}</strong> videos, WatchFilter identified{" "}
-                    <strong>{todaysThemes.length}</strong> major theme{todaysThemes.length !== 1 ? "s" : ""}.{" "}
-                    <strong>{todaysThemes.slice(0, 2).map(t => t.topic).join(" and ")}</strong>
-                    {" "}{todaysThemes.length > 1 ? "are" : "is"} the strongest signal{todaysThemes.length > 1 ? "s" : ""} today
-                    {todaysThemes.length > 2
-                      ? `, alongside ${todaysThemes.slice(2, 4).map(t => t.topic.toLowerCase()).join(" and ")}`
-                      : ""}
-                    , with <strong>{filteredVideos.length}</strong> high-signal videos approved from{" "}
-                    <strong>{new Set(filteredVideos.map(v => v.channelTitle)).size}</strong> unique channels.
-                  </p>
-                </div>
-              )}
-
-              {/* ── Section 4: Creator Consensus Engine ── */}
-              {todaysThemes.length > 0 && (
-                <div className="consensus-engine">
-                  <div className="consensus-engine__head">
-                    <div>
-                      <h3 className="consensus-engine__title">Creator Consensus Engine</h3>
-                      <p className="consensus-engine__sub">What independent creators are collectively concluding today</p>
-                    </div>
-                  </div>
-                  <div className="consensus-engine__cards">
-                    {todaysThemes.map(({ topic, count, creators, channelNames }, i) => {
-                      const cTheme = consensusData?.themes.find((t) => t.topic.toLowerCase() === topic.toLowerCase());
-                      const maxCount = todaysThemes[0].count;
-                      const pct = Math.round((count / maxCount) * 100);
-                      const confidence = cTheme?.confidence ?? Math.min(92, 40 + creators * 14);
-                      const isActive = selectedConsensusTheme === topic;
-                      return (
-                        <div
-                          key={topic}
-                          className={`consensus-card${isActive ? " consensus-card--active" : ""}`}
-                          onClick={() => setSelectedConsensusTheme(isActive ? null : topic)}
-                        >
-                          <div className="consensus-card__header">
-                            <span className="consensus-card__rank">#{i + 1}</span>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                              {isActive && <span className="consensus-card__active-badge">Isolated Focus</span>}
-                              <span className="consensus-card__meta">{creators} creator{creators !== 1 ? "s" : ""} · {count} video{count !== 1 ? "s" : ""}</span>
+                      {/* Cross-Creator Validation — compact in-card view */}
+                      {(() => {
+                        const cardInsights = themeDataMap.get(t.topic)?.insights ?? [];
+                        if (cardInsights.length === 0) return null;
+                        return (
+                          <div className="space-y-1 mb-3">
+                            <span className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest block">Cross-Creator Validation</span>
+                            <div className="space-y-1">
+                              {cardInsights.slice(0, 2).map((ins, ii) => (
+                                <div key={ii} className="flex items-start gap-1.5">
+                                  <span className="text-[10px] font-mono font-black text-blue-400 shrink-0 mt-0.5 truncate max-w-[80px]">{ins.creator}:</span>
+                                  <p className="text-xs text-white leading-relaxed line-clamp-2">{ins.text}</p>
+                                </div>
+                              ))}
                             </div>
                           </div>
-                          <h4 className="consensus-card__topic">{topic}</h4>
-                          {cTheme?.consensus
-                            ? <p className="consensus-card__statement">{cTheme.consensus}</p>
-                            : consensusLoading && <p className="consensus-card__statement consensus-card__statement--loading">Synthesizing consensus…</p>
-                          }
-                          <div className="consensus-card__footer">
-                            <div className="consensus-card__bar-wrap">
-                              <div className="consensus-card__bar" style={{ width: `${pct}%` }} />
-                            </div>
-                            <div className="consensus-card__stats">
-                              <span className="consensus-card__confidence">{confidence}%</span>
-                              <span className="consensus-card__confidence-label">agreement</span>
-                            </div>
+                        );
+                      })()}
+
+                      {/* Why It Matters */}
+                      {cTheme?.whyItMatters ? (
+                        <div className="space-y-0.5 mb-3">
+                          <span className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest block">Why It Matters</span>
+                          <p className="text-xs text-white leading-relaxed">{cTheme.whyItMatters}</p>
+                        </div>
+                      ) : consensusLoading ? (
+                        <div className="h-3 bg-slate-800/50 animate-pulse rounded mb-3" style={{ width: '85%' }} />
+                      ) : null}
+
+                      {/* Recommended Action */}
+                      {cTheme?.recommendedActions?.[0] ? (
+                        <div className="space-y-0.5 mb-3">
+                          <span className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest block">Recommended Action</span>
+                          <div className="flex items-start gap-1.5">
+                            <span className="text-emerald-400 text-xs shrink-0 leading-none mt-0.5">✓</span>
+                            <p className="text-xs text-white leading-snug">{cTheme.recommendedActions[0]}</p>
                           </div>
-                          <div className="consensus-card__channels">
-                            {channelNames.map((ch) => (
-                              <span key={ch} className="consensus-card__channel">{ch}</span>
-                            ))}
-                            {creators > channelNames.length && (
-                              <span className="consensus-card__channel consensus-card__channel--more">+{creators - channelNames.length} more</span>
+                        </div>
+                      ) : null}
+
+                      {/* Trend + top contributors — shown for all cards */}
+                      {allCreators.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[9px] font-mono font-black ${strengthColor}`}>
+                              {strengthLabel === "Very Strong" ? "↑↑ Very Strong Consensus" : strengthLabel === "Strong" ? "↑ Strong Consensus" : strengthLabel === "Moderate" ? "→ Moderate Consensus" : "↓ Weak Consensus"}
+                            </span>
+                            {isTopOpp && (
+                              <span className="text-[9px] font-mono font-black text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">
+                                Opportunity: High
+                              </span>
                             )}
                           </div>
-                          {/* Bottom progress accent track */}
-                          <div className="consensus-card__progress-track">
-                            <div className="consensus-card__progress-fill" style={{ width: `${pct}%` }} />
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-mono font-black text-slate-400 uppercase tracking-widest block">Top Contributors</span>
+                            {allCreators.slice(0, 3).map((ch, ci) => (
+                              <div key={ci} className="flex items-center gap-2">
+                                <span className="text-sm leading-none">{MEDALS[ci]}</span>
+                                <span className="text-xs font-bold text-white">{ch}</span>
+                              </div>
+                            ))}
+                            {t.creators > Math.min(allCreators.length, 3) && (
+                              <span className="text-[10px] font-mono text-blue-400 pl-6 block">
+                                +{t.creators - Math.min(allCreators.length, 3)} more
+                              </span>
+                            )}
                           </div>
                         </div>
-                      );
-                    })}
+                      )}
+
+
+                      {/* Footer: progress bar + Verify Sources pill */}
+                      <div className="space-y-2 pt-2.5 border-t border-slate-800/60 mt-auto">
+                        <div className="w-full bg-slate-950 rounded-full h-1 overflow-hidden">
+                          <div
+                            className="bg-gradient-to-r from-blue-500 to-indigo-500 h-1 rounded-full transition-all duration-300"
+                            style={{ width: `${confidence}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono text-white">{confidence}% consensus</span>
+                          <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[9px] font-mono font-bold uppercase tracking-wider transition-all duration-200 ${
+                            isActive
+                              ? "bg-blue-500/15 text-blue-400 border-blue-500/40"
+                              : "bg-slate-900 text-slate-500 border-slate-800 group-hover:text-slate-300 group-hover:border-slate-700"
+                          }`}>
+                            <span>{isActive ? "Collapse" : "Verify Sources"}</span>
+                            <span
+                              className={`transition-transform duration-200 ${isActive ? "rotate-180" : "rotate-0"}`}
+                              style={{ display: 'inline-block' }}
+                            >▼</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                };
+
+                const renderDrawer = (rowThemes: typeof todaysThemes) => {
+                  if (!selectedConsensusTheme) return null;
+                  const activeT = rowThemes.find(t => t.topic === selectedConsensusTheme);
+                  if (!activeT) return null;
+
+                  const cTheme = consensusData?.themes.find(ct => ct.topic.toLowerCase() === activeT.topic.toLowerCase());
+                  const topVideos = themeVideoMap.get(activeT.topic) ?? [];
+                  const allCreators = themeDataMap.get(activeT.topic)?.creators ?? activeT.channelNames;
+                  const insights = themeDataMap.get(activeT.topic)?.insights ?? [];
+                  const reportSlug = activeT.topic.toLowerCase().replace(/\s+/g, '-');
+                  const MEDALS = ["🥇", "🥈", "🥉"];
+
+                  return (
+                    <div className="w-full border border-[#1e2d45] border-t-2 border-t-blue-500/40 rounded-xl p-5 space-y-4" style={{ background: 'linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)', boxShadow: '0 4px 32px #0000002e,inset 0 1px #ffffff08' }}>
+                      {/* Drawer header */}
+                      <div className="flex items-center justify-between border-b border-slate-800/60 pb-3 gap-4">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                          <span className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest truncate">
+                            Verified Audit Trail —{" "}
+                            <span className="text-blue-400 normal-case font-sans tracking-normal font-medium">{activeT.topic}</span>
+                          </span>
+                        </div>
+                        <a
+                          href={`/reports/${reportSlug}`}
+                          onClick={e => { e.stopPropagation(); trackEvent('full_report_clicked', { topic: activeT.topic }); }}
+                          className="text-[9px] font-mono text-slate-500 hover:text-blue-400 transition-colors shrink-0"
+                        >
+                          Full Transcript Logs →
+                        </a>
+                      </div>
+
+                      {/* Horizontal video evidence grid */}
+                      {topVideos.length === 0 ? (
+                        <p className="text-center text-xs font-mono text-slate-600 py-4 italic">
+                          No source citations indexed for this topic yet.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {topVideos.slice(0, 4).map(v => (
+                            <div
+                              key={v.videoId}
+                              className="border border-[#1e2d45] rounded-xl p-4 flex gap-4 items-start hover:border-blue-500/40 transition-all group/card"
+                              style={{ background: 'linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)', boxShadow: '0 4px 32px #0000002e,inset 0 1px #ffffff08' }}
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {/* Thumbnail */}
+                              <div className="w-28 h-16 bg-slate-950 rounded-lg overflow-hidden relative border border-slate-800 shrink-0">
+                                {v.thumbnail && (
+                                  <img
+                                    src={v.thumbnail}
+                                    alt={v.title}
+                                    className="w-full h-full object-cover opacity-40 group-hover/card:opacity-70 transition-opacity"
+                                    loading="lazy"
+                                  />
+                                )}
+                              </div>
+                              {/* Metadata */}
+                              <div className="flex-1 space-y-1.5 min-w-0">
+                                <div className="flex items-center justify-between gap-2 text-[10px] font-mono">
+                                  <span className="font-black text-slate-300 uppercase truncate">{v.channelTitle}</span>
+                                  {estimateSavings(v.duration) && (
+                                    <span className="shrink-0 text-emerald-400 font-bold bg-emerald-500/5 border border-emerald-500/10 px-1.5 py-0.5 rounded text-[9px] whitespace-nowrap">
+                                      {estimateSavings(v.duration)}
+                                    </span>
+                                  )}
+                                </div>
+                                <a href={`https://www.youtube.com/watch?v=${v.videoId}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
+                                  <p className="text-xs font-bold text-slate-200 line-clamp-2 group-hover/card:text-blue-400 transition-colors leading-snug tracking-tight">
+                                    {v.title}
+                                  </p>
+                                </a>
+                                <div className="flex justify-end">
+                                  <a
+                                    href={`https://www.youtube.com/watch?v=${v.videoId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={e => e.stopPropagation()}
+                                    className="text-[8px] font-mono font-bold bg-blue-500/10 hover:bg-blue-500/20 text-white border border-blue-500/20 px-2 py-0.5 rounded transition-colors uppercase tracking-wider"
+                                  >
+                                    Analyze Fluff ↗
+                                  </a>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Bottom intel row: Why It Matters · Contrarian · Actions */}
+                      {(cTheme?.whyItMatters || cTheme?.contrarianView || (cTheme?.recommendedActions?.length ?? 0) > 0 || insights.length > 0 || allCreators.length > 0) && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-slate-800/50">
+                          <div className="space-y-3">
+                            {cTheme?.whyItMatters && (
+                              <div className="space-y-1">
+                                <span className="text-xs font-mono font-black text-white uppercase tracking-widest block">Why It Matters</span>
+                                <p className="text-xs text-slate-200 leading-relaxed pl-3 border-l-2 border-blue-500/50">{cTheme.whyItMatters}</p>
+                              </div>
+                            )}
+                            {allCreators.length > 0 && (
+                              <div className="space-y-1.5">
+                                <span className="text-xs font-mono font-black text-white uppercase tracking-widest block">Supporting Creators</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {allCreators.map((ch, ci) => (
+                                    <span key={ci} className="text-[9px] font-mono text-slate-300 bg-slate-800/80 border border-slate-700/60 px-2 py-0.5 rounded">
+                                      {MEDALS[ci] ?? "·"} {ch}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          {insights.length > 0 && (
+                            <div className="space-y-1.5">
+                              <span className="text-xs font-mono font-black text-white uppercase tracking-widest block">Creator Findings</span>
+                              <div className="space-y-2">
+                                {insights.slice(0, 3).map((item, ii) => (
+                                  <div key={ii} className="bg-slate-900/60 border-l-2 border-purple-500/40 rounded-r-lg px-3 py-2 space-y-1">
+                                    <p className="text-[9px] font-mono font-black text-slate-500 uppercase tracking-wider">{item.creator}</p>
+                                    <p className="text-[10px] font-mono text-slate-300 italic leading-relaxed">&ldquo;{item.text}&rdquo;</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          <div className="space-y-3">
+                            {cTheme?.contrarianView && (
+                              <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 space-y-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-amber-400 text-xs">⚡</span>
+                                  <span className="text-xs font-mono font-black text-amber-400 uppercase tracking-widest">Contrarian View</span>
+                                </div>
+                                <p className="text-[10px] font-mono text-slate-400 leading-relaxed italic">{cTheme.contrarianView}</p>
+                              </div>
+                            )}
+                            {(cTheme?.recommendedActions?.length ?? 0) > 0 && (
+                              <div className="space-y-1.5">
+                                <span className="text-xs font-mono font-black text-white uppercase tracking-widest block">Recommended Actions</span>
+                                {cTheme!.recommendedActions!.map((action, ai) => (
+                                  <div key={ai} className="flex items-start gap-2">
+                                    <span className="shrink-0 w-4 h-4 rounded-full bg-blue-600/70 text-white font-black text-[8px] flex items-center justify-center mt-0.5">{ai + 1}</span>
+                                    <p className="text-xs text-slate-300 leading-snug">{action}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                };
+
+                return (
+                  <div className="space-y-3">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] font-mono font-black text-amber-400 uppercase tracking-widest">
+                        Emerging Signals{" "}
+                        <span className="font-normal normal-case text-slate-600">· Needs 3+ creators to qualify</span>
+                      </span>
+                      <span className="text-xs font-mono text-slate-500">
+                        {todaysThemes.filter(t => t.creators >= 3).length} topic{todaysThemes.filter(t => t.creators >= 3).length !== 1 ? "s" : ""} with 3+ creators
+                      </span>
+                    </div>
+
+                    {/* Row 1 */}
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {row1.map((t, i) => renderCard(t, i))}
+                      </div>
+                      {renderDrawer(row1)}
+                    </div>
+
+                    {/* Row 2 */}
+                    {row2.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {row2.map((t, i) => renderCard(t, i + 2))}
+                        </div>
+                        {renderDrawer(row2)}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* ── Section 5: Do This Today ── */}
               {(consensusData?.actions?.length ?? 0) > 0 ? (
@@ -1160,33 +1595,6 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                 </div>
               ) : null}
 
-              {/* ── Section 6: Relevant To You ── */}
-              {personalizedInsights && personalizedInsights.basedOn.length > 0 && (
-                <div className="intel-personalized">
-                  <div className="intel-personalized__head">
-                    <p className="intel-personalized__eyebrow">Personalized Signals</p>
-                    <h3 className="intel-personalized__title">Relevant To You</h3>
-                  </div>
-                  <p className="intel-personalized__basis">
-                    Based on today&apos;s content patterns:
-                    {personalizedInsights.basedOn.map((t) => (
-                      <span key={t} className="intel-personalized__tag">{t}</span>
-                    ))}
-                  </p>
-                  {personalizedInsights.recommended.length > 0 && (
-                    <div className="intel-personalized__rows">
-                      {personalizedInsights.recommended.map(({ topic, count, creators }) => (
-                        <div key={topic} className="intel-personalized__row">
-                          <span className="intel-personalized__arrow">→</span>
-                          <span className="intel-personalized__topic">{topic}</span>
-                          <span className="intel-personalized__detail">{creators} creator{creators !== 1 ? "s" : ""} · {count} video{count !== 1 ? "s" : ""}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* ── Supporting video proof streams ── */}
               <div className="dash-proof-streams">
                 <div className="dash-proof-streams__hud">
@@ -1195,18 +1603,34 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                       🗄️ Supporting Verified Video Proof Streams
                     </h3>
                     <p className="dash-proof-streams__count">
-                      Showing {displayVideos.length} of {filteredVideos.length} source assets
+                      Showing {displayVideos.length} of {showAllSources ? structuralFilter.length : filteredVideos.length} source assets
+                      {showAllSources ? " · extended view" : ""}
                       {selectedConsensusTheme ? ` · filtered by "${selectedConsensusTheme}"` : ""}
                     </p>
                   </div>
-                  {selectedConsensusTheme && (
-                    <button
-                      onClick={() => setSelectedConsensusTheme(null)}
-                      className="dash-proof-streams__clear-btn"
-                    >
-                      Clear filter: <strong>{selectedConsensusTheme}</strong> ✕
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {selectedConsensusTheme && (
+                      <button
+                        onClick={() => setSelectedConsensusTheme(null)}
+                        className="dash-proof-streams__clear-btn"
+                      >
+                        Clear filter: <strong>{selectedConsensusTheme}</strong> ✕
+                      </button>
+                    )}
+                    {structuralFilter.length > filteredVideos.length && (
+                      <button
+                        onClick={() => setShowAllSources(v => !v)}
+                        className="text-[10px] font-mono font-bold px-3 py-1.5 rounded-lg border transition-colors"
+                        style={showAllSources
+                          ? { background: 'rgba(59,130,246,0.1)', color: '#60a5fa', borderColor: 'rgba(59,130,246,0.3)' }
+                          : { background: 'rgba(30,41,59,0.6)', color: '#94a3b8', borderColor: 'rgba(51,65,85,0.6)' }}
+                      >
+                        {showAllSources
+                          ? `↑ Show approved only (${filteredVideos.length})`
+                          : `↓ Show all sources (+${structuralFilter.length - filteredVideos.length} more)`}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {displayVideos.length === 0 ? (
                   <div className="dash-proof-streams__empty">
