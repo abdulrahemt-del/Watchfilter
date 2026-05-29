@@ -42,9 +42,6 @@ export async function POST(request: Request) {
   if (!analysis) {
     return NextResponse.json({ error: "Analysis not found" }, { status: 404 });
   }
-  if (!analysis.worth_watching) {
-    return NextResponse.json({ error: "Analysis incomplete" }, { status: 422 });
-  }
 
   if (inProgress.has(analysisId)) {
     return NextResponse.json({ error: "Audio generation already in progress for this analysis." }, { status: 409 });

@@ -798,7 +798,7 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio }: {
           {analysis.audioPath && onPlayAudio && (
             <button onClick={onPlayAudio} className="btn-email">🎙 Audio Briefing</button>
           )}
-          {!analysis.audioPath && !needsEnhancement && analysis.worth_watching && onRefresh && (
+          {!analysis.audioPath && !needsEnhancement && onRefresh && (
             <GenerateAudioButton analysisId={analysis.id} onRefresh={onRefresh} />
           )}
           {needsEnhancement && onRefresh && (

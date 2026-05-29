@@ -138,6 +138,16 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     if (estimatedEnd > 0) setTimingScale(estimatedEnd / duration);
   }, [duration, wordTimings]);
 
+  // Play immediately when autoPlay becomes true on an already-loaded player.
+  // onLoadedMetadata only fires on load — if the prop changes after mount (e.g., user
+  // clicks Audio Briefing while the player is already visible), this handles it.
+  useEffect(() => {
+    if (!autoPlay) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    void audio.play().then(() => setPlaying(true)).catch(() => {});
+  }, [autoPlay]);
+
   // Auto-scroll active word into view in transcript panel
   useEffect(() => {
     if (!showTranscript || activeWordIdx < 0 || !transcriptRef.current) return;
