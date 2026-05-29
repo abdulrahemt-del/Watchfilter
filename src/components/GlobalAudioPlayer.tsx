@@ -147,7 +147,13 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     if (!autoPlay) return;
     const audio = audioRef.current;
     if (!audio) return;
-    void audio.play().then(() => setPlaying(true)).catch(() => {});
+    void audio.play().then(() => setPlaying(true)).catch((err: unknown) => {
+      const name = err instanceof Error ? err.name : "";
+      // NotSupportedError / NotAllowedError mean the src failed or autoplay policy blocked it
+      if (name !== "AbortError") {
+        setAudioError("Playback failed — click ↺ Fix to regenerate");
+      }
+    });
   }, [autoPlay]);
 
   // Auto-scroll active word into view in transcript panel
@@ -191,8 +197,10 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
       audio.pause();
       setPlaying(false);
     } else {
-      void audio.play();
-      setPlaying(true);
+      void audio.play().then(() => setPlaying(true)).catch((err: unknown) => {
+        const name = err instanceof Error ? err.name : "";
+        if (name !== "AbortError") { setAudioError("Playback failed — click ↺ Fix to regenerate"); setPlaying(false); }
+      });
       if (!hasTrackedPlay.current) {
         hasTrackedPlay.current = true;
         track("audio_played", { analysisId, label: title });
@@ -218,7 +226,10 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     setAudioError(null);
     setDuration(audio.duration);
     if (autoPlay) {
-      void audio.play().then(() => setPlaying(true)).catch(() => {});
+      void audio.play().then(() => setPlaying(true)).catch((err: unknown) => {
+        const name = err instanceof Error ? err.name : "";
+        if (name !== "AbortError") setAudioError("Playback failed — click ↺ Fix to regenerate");
+      });
     }
   }
 
@@ -260,6 +271,29 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     const v = Number(e.target.value);
     setVolume(v);
     if (audioRef.current) audioRef.current.volume = v;
+  }
+
+  async function regenerateAudio() {
+    setAudioError(null);
+    setRegenVoice("onyx");
+    try {
+      const res = await fetch("/api/regenerate-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysisId, voice: activeVoice }),
+      });
+      const data = (await res.json()) as { audioPath?: string; error?: string };
+      if (!res.ok || !data.audioPath) throw new Error(data.error ?? "Failed");
+      setCurrentSrc(data.audioPath + "?t=" + Date.now());
+      setActiveVoice(activeVoice);
+      setProgress(0); setCurrentTime(0); setDuration(0);
+      setActiveWordIdx(-1); setWordTimings([]); setTimingScale(1);
+    } catch (err) {
+      setAudioError("Regeneration failed — try again");
+      console.error("[GlobalAudioPlayer] regen error", err);
+    } finally {
+      setRegenVoice(null);
+    }
   }
 
   async function switchVoice(voice: "onyx" | "nova") {
@@ -312,7 +346,18 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
         <span className="audio-player__label">🎙 Audio Briefing</span>
         {!minimized && (
           audioError
-            ? <span className="audio-player__title" style={{ color: "#f87171" }}>⚠ {audioError}</span>
+            ? (
+              <span style={{ display: "flex", alignItems: "center", gap: "0.4rem", minWidth: 0, flex: 1 }}>
+                <span className="audio-player__title" style={{ color: "#f87171", flex: 1 }}>⚠ {audioError}</span>
+                <button
+                  onClick={() => void regenerateAudio()}
+                  disabled={regenVoice !== null}
+                  style={{ fontSize: "0.65rem", padding: "0.2rem 0.45rem", background: "#f59e0b", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}
+                >
+                  {regenVoice ? "…" : "↺ Fix"}
+                </button>
+              </span>
+            )
             : <span className="audio-player__title">{title}</span>
         )}
         <div className="audio-player__header-actions">
