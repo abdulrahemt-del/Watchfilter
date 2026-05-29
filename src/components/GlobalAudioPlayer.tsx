@@ -147,10 +147,10 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     if (!autoPlay) return;
     const audio = audioRef.current;
     if (!audio) return;
-    void audio.play().then(() => setPlaying(true)).catch((err: unknown) => {
+    void audio.play().then(() => { setPlaying(true); setAudioError(null); }).catch((err: unknown) => {
       const name = err instanceof Error ? err.name : "";
-      // NotSupportedError / NotAllowedError mean the src failed or autoplay policy blocked it
-      if (name !== "AbortError") {
+      // NotAllowedError = browser autoplay policy blocked — audio is fine, user can click ▶
+      if (name !== "AbortError" && name !== "NotAllowedError") {
         setAudioError("Playback failed — click ↺ Fix to regenerate");
       }
     });
@@ -198,7 +198,7 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
       audio.pause();
       setPlaying(false);
     } else {
-      void audio.play().then(() => setPlaying(true)).catch((err: unknown) => {
+      void audio.play().then(() => { setPlaying(true); setAudioError(null); }).catch((err: unknown) => {
         const name = err instanceof Error ? err.name : "";
         if (name !== "AbortError") { setAudioError("Playback failed — click ↺ Fix to regenerate"); setPlaying(false); }
       });
@@ -228,9 +228,11 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     setDuration(audio.duration);
     if (autoPlay || shouldPlayAfterLoad.current) {
       shouldPlayAfterLoad.current = false;
-      void audio.play().then(() => setPlaying(true)).catch((err: unknown) => {
+      void audio.play().then(() => { setPlaying(true); setAudioError(null); }).catch((err: unknown) => {
         const name = err instanceof Error ? err.name : "";
-        if (name !== "AbortError") setAudioError("Playback failed — click ↺ Fix to regenerate");
+        if (name !== "AbortError" && name !== "NotAllowedError") {
+          setAudioError("Playback failed — click ↺ Fix to regenerate");
+        }
       });
     }
   }
