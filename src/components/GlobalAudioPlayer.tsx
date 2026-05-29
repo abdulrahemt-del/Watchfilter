@@ -64,6 +64,7 @@ interface Props {
   analysisId: string;
   autoPlay?: boolean;
   onClose: () => void;
+  onAudioPathUpdated?: (newPath: string) => void;
 }
 
 export interface GlobalAudioPlayerHandle {
@@ -71,7 +72,7 @@ export interface GlobalAudioPlayerHandle {
 }
 
 export const GlobalAudioPlayer = forwardRef<GlobalAudioPlayerHandle, Props>(
-function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }: Props, ref) {
+function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose, onAudioPathUpdated }: Props, ref) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -328,6 +329,7 @@ function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }: Props,
       setActiveVoice(activeVoice);
       setProgress(0); setCurrentTime(0); setDuration(0);
       setActiveWordIdx(-1); setWordTimings([]); setTimingScale(1);
+      onAudioPathUpdated?.(data.audioPath);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Regeneration failed";
       setAudioError(msg);

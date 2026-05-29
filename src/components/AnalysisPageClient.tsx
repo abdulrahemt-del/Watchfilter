@@ -56,6 +56,10 @@ export function AnalysisPageClient({ analysis: initial }: { analysis: SavedAnaly
           analysisId={globalAudio.analysisId}
           autoPlay={globalAudio.autoPlay}
           onClose={() => setGlobalAudio(null)}
+          onAudioPathUpdated={(newPath) => {
+            setGlobalAudio(prev => prev ? { ...prev, src: newPath } : prev);
+            setAnalysis(prev => ({ ...prev, audioPath: newPath }));
+          }}
         />
       )}
     </>
