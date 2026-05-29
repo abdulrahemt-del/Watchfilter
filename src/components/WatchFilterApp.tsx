@@ -753,10 +753,10 @@ export function WatchFilterApp() {
           />
         )}
 
-        {/* ── Subscription Feed ── */}
-        {activeNav === "feed" && (
+        {/* ── Subscription Feed — always mounted so state survives nav changes ── */}
+        <div style={{ display: activeNav === "feed" ? "contents" : "none" }}>
           <SubscriptionFeed onAnalyze={(ytUrl) => void analyzeFromUrl(ytUrl)} />
-        )}
+        </div>
 
         {/* ── Trends ── */}
         {activeNav === "trends" && <TrendsView />}
