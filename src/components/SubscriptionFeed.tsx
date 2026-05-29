@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Info } from "lucide-react";
 import type { FeedVideo } from "@/app/api/youtube/feed/route";
@@ -237,7 +237,14 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   const [error, setError]             = useState<string | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [drawerVideo, setDrawerVideo] = useState<FeedVideo | null>(null);
-  const [mode, setMode]               = useState<FeedMode>("off");
+  const [mode, setMode]               = useState<FeedMode>(() => {
+    try {
+      const saved = sessionStorage.getItem("wf_feed_mode");
+      if (saved && ["off", "longform", "business", "founder", "finance"].includes(saved))
+        return saved as FeedMode;
+    } catch { /* ignore */ }
+    return "off";
+  });
   const [aiResults, setAiResults]     = useState<Record<string, AIScore>>({});
   const [aiLoading, setAiLoading]     = useState(false);
   const [aiScanEnabled, setAiScanEnabled] = useState(false);
@@ -378,6 +385,22 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     loadFeed();
   }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Restore AI scores from localStorage when email becomes available (skips re-scan on nav back)
+  const aiRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!session?.user?.email || aiRestoredRef.current) return;
+    aiRestoredRef.current = true;
+    try {
+      const raw = localStorage.getItem(`wf_ai_${session.user.email}`);
+      if (raw) {
+        const cached = JSON.parse(raw) as { ts: number; scores: Record<string, AIScore> };
+        if (Date.now() - cached.ts < 24 * 60 * 60 * 1000 && Object.keys(cached.scores).length > 0) {
+          setAiResults(cached.scores);
+        }
+      }
+    } catch { /* ignore */ }
+  }, [session?.user?.email]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Enable AI scan when user enters an AI-assisted mode
   useEffect(() => {
     if (mode === "business" || mode === "founder" || mode === "finance") {
@@ -463,8 +486,10 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   }, [videos, filteredVideos, mode]);
 
   function handleModeClick(clicked: FeedMode) {
-    setMode((prev) => prev === clicked ? "off" : clicked);
+    const next = mode === clicked ? "off" : clicked;
+    setMode(next);
     setSelectedConsensusTheme(null);
+    try { sessionStorage.setItem("wf_feed_mode", next); } catch { /* ignore */ }
   }
 
   function handleAnalyze(video: FeedVideo) {
