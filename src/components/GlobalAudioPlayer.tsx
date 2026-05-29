@@ -113,6 +113,7 @@ function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }: Props,
     setDuration(0);
     setTimingScale(1);
     setAudioError(null);
+    hasAutoRegenForSrc.current = false;
     audio.load();
   }, [currentSrc]);
 
@@ -191,6 +192,7 @@ function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }: Props,
 
   const hasTrackedPlay = useRef(false);
   const shouldPlayAfterLoad = useRef(false);
+  const hasAutoRegenForSrc = useRef(false);
 
   // Expose triggerPlay so parent click handlers can call audio.play() synchronously
   // within the user gesture context (useEffect runs after paint and loses the gesture).
@@ -256,12 +258,15 @@ function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }: Props,
     console.error("[GlobalAudioPlayer] audio error", code, audio?.error?.message, currentSrc);
     setPlaying(false);
 
-    // Old private-blob proxy paths (/api/audio?url=...) are broken — auto-regenerate silently.
-    if (currentSrc.startsWith("/api/audio?url=") && analysisId) {
+    // First-time load failure for any src — auto-regenerate once.
+    // Covers: old proxy URLs, local /audio/ paths (missing on Vercel), deleted blob files.
+    if (analysisId && !hasAutoRegenForSrc.current) {
+      hasAutoRegenForSrc.current = true;
       void regenerateAudio();
       return;
     }
 
+    // Second failure (regen produced a URL that also fails) — show actual error.
     const msg =
       code === 1 ? "Playback aborted" :
       code === 2 ? "Network error loading audio" :
