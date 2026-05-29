@@ -1,23 +1,16 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { FeedVideo } from "@/app/api/youtube/feed/route";
 import type { AIScore } from "@/app/api/youtube/filter/route";
 import type { ConsensusResult } from "@/app/api/youtube/consensus/route";
+import { useFilteredFeed, isoToSeconds, type FeedMode } from "@/hooks/useFilteredSubscriptionFeed";
 import { CorePulseMetrics } from "./widgets/CorePulseMetrics";
 import { OpportunityAlertsWidget, type OpportunityAlert } from "./widgets/OpportunityAlertsWidget";
 import { CollapsibleSignalCards, type EmergingSignalTheme } from "./widgets/CollapsibleSignalCards";
 import { CreatorShareOfVoiceWidget, type CreatorVoice } from "./widgets/CreatorShareOfVoiceWidget";
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function isoToSeconds(iso: string): number {
-  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!m) return 0;
-  return (+(m[1] ?? 0)) * 3600 + (+(m[2] ?? 0)) * 60 + (+(m[3] ?? 0));
-}
 
 function smartTruncate(s: string, n = 400) {
   return s && s.length > n ? s.slice(0, n).trimEnd() + "…" : s;
@@ -53,11 +46,25 @@ export function MarketIntelligencePulse() {
   const { data: session, status } = useSession();
   const email = session?.user?.email ?? "anon";
 
+  // Use the same mode the feed is currently in (defaults to "founder" for intelligence breadth)
+  const [mode] = useState<FeedMode>(() => {
+    try {
+      const saved = sessionStorage.getItem("wf_feed_mode");
+      if (saved === "business" || saved === "founder" || saved === "finance") return saved as FeedMode;
+    } catch { /* ignore */ }
+    return "founder";
+  });
+
   // Read all caches synchronously on first render — content appears without a blank flash
   const [feedVideos, setFeedVideos] = useState<FeedVideo[]>(() => {
     const e = getLastEmail();
     return readCacheSync<{ ts: number; videos: FeedVideo[] }>(`wf_feed_${e}`)?.videos ?? [];
   });
+
+  // Apply the EXACT same structural filter as SubscriptionFeed — channel blocks, title blocks,
+  // duration gate, and mode-specific keyword inclusion. Intelligence only covers this pool.
+  const structuralFilter = useFilteredFeed(feedVideos, mode);
+
   const [aiScores, setAiScores] = useState<Record<string, AIScore>>(() => {
     const e = getLastEmail();
     const c = readCacheSync<{ ts: number; scores: Record<string, AIScore> }>(`wf_ai_${e}`);
@@ -83,24 +90,16 @@ export function MarketIntelligencePulse() {
   const [aiLoading, setAiLoading]         = useState(false);
   const [conLoading, setConLoading]       = useState(false);
 
-  // ── Bootstrap ──────────────────────────────────────────────────────────────
+  // ── Bootstrap: load feed data only ────────────────────────────────────────
   useEffect(() => {
     if (status !== "authenticated") return;
 
     const feedKey     = `wf_feed_${email}`;
-    const aiKey       = `wf_ai_${email}`;
     const snapshotKey = `wf_snapshot_${email}`;
     const visitKey    = `wf_visit_${email}`;
 
-    // Persist email so synchronous state initializers can read the right keys next visit
     try { localStorage.setItem("wf_last_email", email); } catch { /* ignore */ }
-
-    try {
-      const rawSnap = localStorage.getItem(snapshotKey);
-      if (rawSnap) setPrevSnapshot(JSON.parse(rawSnap));
-    } catch { /* ignore */ }
-
-    // Update last visit
+    try { const rawSnap = localStorage.getItem(snapshotKey); if (rawSnap) setPrevSnapshot(JSON.parse(rawSnap)); } catch { /* ignore */ }
     try { localStorage.setItem(visitKey, JSON.stringify(Date.now())); } catch { /* ignore */ }
 
     try {
@@ -110,48 +109,59 @@ export function MarketIntelligencePulse() {
       if (!cached.videos?.length) { setFeedMissing(true); return; }
       if (!feedVideos.length) setFeedVideos(cached.videos);
       if (!feedTs) setFeedTs(cached.ts);
-
-      // Skip AI pipeline if scores are already loaded from synchronous init
-      if (Object.keys(aiScores).length > 0) return;
-
-      // Check localStorage freshness first
-      let hasLocalCache = false;
-      try {
-        const rawAI = localStorage.getItem(aiKey);
-        if (rawAI) {
-          const cachedAI = JSON.parse(rawAI) as { ts: number; scores: Record<string, AIScore> };
-          if (Date.now() - cachedAI.ts < AI_TTL && Object.keys(cachedAI.scores).length > 0) {
-            setAiScores(cachedAI.scores);
-            hasLocalCache = true;
-          }
-        }
-      } catch { /* ignore */ }
-      if (hasLocalCache) return;
-
-      // Try cloud cache, then fall back to full pipeline
-      void (async () => {
-        try {
-          const cloudRes = await fetch("/api/intelligence/scores");
-          if (cloudRes.ok) {
-            const cloud = await cloudRes.json() as { cached: boolean; aiScores?: Record<string, AIScore>; consensusData?: ConsensusResult; cachedAt?: number };
-            if (cloud.cached && cloud.aiScores && Object.keys(cloud.aiScores).length > 0) {
-              setAiScores(cloud.aiScores);
-              try { localStorage.setItem(aiKey, JSON.stringify({ ts: cloud.cachedAt ?? Date.now(), scores: cloud.aiScores })); } catch { /* ignore */ }
-              if (cloud.consensusData) {
-                setConsensus(cloud.consensusData);
-                try { localStorage.setItem(`wf_consensus_${email}`, JSON.stringify({ ts: cloud.cachedAt ?? Date.now(), data: cloud.consensusData })); } catch { /* ignore */ }
-              }
-              return;
-            }
-          }
-        } catch { /* cloud unavailable — fall through to pipeline */ }
-        runAIPipeline(cached.videos, aiKey);
-      })();
+      // AI pipeline handled by the separate effect below that watches structuralFilter
     } catch { setFeedMissing(true); }
   }, [status, email]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── AI pipeline: fires once structural filter is ready ─────────────────────
+  // Separated so it always uses the filtered pool, never the raw feed.
+  const aiPipelineStarted = useRef(false);
+  useEffect(() => {
+    if (!structuralFilter.length || aiPipelineStarted.current) return;
+    if (Object.keys(aiScores).length > 0) return; // Already populated from sync init
+
+    aiPipelineStarted.current = true;
+    const aiKey = `wf_ai_${email}`;
+
+    // localStorage cache check
+    let hasLocalCache = false;
+    try {
+      const rawAI = localStorage.getItem(aiKey);
+      if (rawAI) {
+        const cachedAI = JSON.parse(rawAI) as { ts: number; scores: Record<string, AIScore> };
+        if (Date.now() - cachedAI.ts < AI_TTL && Object.keys(cachedAI.scores).length > 0) {
+          setAiScores(cachedAI.scores);
+          hasLocalCache = true;
+        }
+      }
+    } catch { /* ignore */ }
+    if (hasLocalCache) return;
+
+    // Cloud cache → full pipeline
+    void (async () => {
+      try {
+        const cloudRes = await fetch("/api/intelligence/scores");
+        if (cloudRes.ok) {
+          const cloud = await cloudRes.json() as { cached: boolean; aiScores?: Record<string, AIScore>; consensusData?: ConsensusResult; cachedAt?: number };
+          if (cloud.cached && cloud.aiScores && Object.keys(cloud.aiScores).length > 0) {
+            setAiScores(cloud.aiScores);
+            try { localStorage.setItem(aiKey, JSON.stringify({ ts: cloud.cachedAt ?? Date.now(), scores: cloud.aiScores })); } catch { /* ignore */ }
+            if (cloud.consensusData) {
+              setConsensus(cloud.consensusData);
+              try { localStorage.setItem(`wf_consensus_${email}`, JSON.stringify({ ts: cloud.cachedAt ?? Date.now(), data: cloud.consensusData })); } catch { /* ignore */ }
+            }
+            return;
+          }
+        }
+      } catch { /* cloud unavailable — fall through to pipeline */ }
+      runAIPipeline(structuralFilter, aiKey);
+    })();
+  }, [structuralFilter.length, email]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function runAIPipeline(videos: FeedVideo[], aiKey: string) {
-    const eligible = videos.filter(v => isoToSeconds(v.duration) >= 1200).slice(0, 50);
+    // videos is already the structural filter output — channel blocks, title blocks,
+    // duration gate, and mode keyword inclusion already applied. Just cap at 50.
+    const eligible = videos.slice(0, 50);
     if (!eligible.length) return;
 
     setAiLoading(true);
@@ -198,13 +208,15 @@ export function MarketIntelligencePulse() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
+  // filteredVideos = structural filter → AI exclusion gate.
+  // This matches exactly what SubscriptionFeed shows in the feed grid.
   const filteredVideos = useMemo<FeedVideo[]>(() => {
     const aiReady = Object.keys(aiScores).length > 0;
     const base = aiReady
-      ? feedVideos.filter(v => aiScores[v.videoId]?.topicCategory !== "excluded")
-      : feedVideos.filter(v => isoToSeconds(v.duration) >= 1200);
+      ? structuralFilter.filter(v => aiScores[v.videoId]?.topicCategory !== "excluded")
+      : structuralFilter;
     return [...base].sort((a, b) => (aiScores[b.videoId]?.score ?? 0) - (aiScores[a.videoId]?.score ?? 0));
-  }, [feedVideos, aiScores]);
+  }, [structuralFilter, aiScores]);
 
   const todaysThemes = useMemo(() => {
     const map = new Map<string, { count: number; channels: Set<string>; insights: string[] }>();
