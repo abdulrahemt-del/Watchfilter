@@ -39,7 +39,7 @@ function DashboardView({
   onVoiceChange: (v: "onyx" | "nova") => void;
 }) {
   const [localUrl, setLocalUrl] = useState("");
-  const [feedTab, setFeedTab] = useState<"subscriptions" | "briefings">("subscriptions");
+  const [feedTab, setFeedTab] = useState<"subscriptions" | "briefings">("briefings");
 
   function handleCmdSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -125,9 +125,10 @@ function DashboardView({
           </div>
         </div>
 
-        {feedTab === "subscriptions" && (
+        {/* Always mounted so Intelligence Terminal state survives tab switches */}
+        <div style={{ display: feedTab === "subscriptions" ? "contents" : "none" }}>
           <SubscriptionFeed onAnalyze={(ytUrl) => { onAnalyzeUrl(ytUrl); }} />
-        )}
+        </div>
 
         {feedTab === "briefings" && (
           history.length === 0 ? (
@@ -649,8 +650,8 @@ export function WatchFilterApp() {
       />
 
       <main className="main-panel">
-        {/* ── Dashboard ── */}
-        {activeNav === "dashboard" && (
+        {/* ── Dashboard — always mounted so feedTab + feed state survive nav changes ── */}
+        <div style={{ display: activeNav === "dashboard" ? "contents" : "none" }}>
           <DashboardView
             history={history}
             activeId={activeId}
@@ -661,7 +662,7 @@ export function WatchFilterApp() {
             voice={voice}
             onVoiceChange={setVoice}
           />
-        )}
+        </div>
 
         {/* ── Analyze Video ── */}
         {activeNav === "analyze" && (
