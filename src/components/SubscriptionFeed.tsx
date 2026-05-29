@@ -12,6 +12,7 @@ import {
   isoToSeconds,
   detectPrimaryTopic,
   AFFINITY_PASS_THRESHOLD,
+  INTEL_CATEGORY_BLOCKS,
   type FeedMode,
 } from "@/hooks/useFilteredSubscriptionFeed";
 import { FluffAnalyzerDrawer, categoryChipClass } from "@/components/FluffAnalyzerDrawer";
@@ -504,6 +505,9 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   // Today's Themes: top categories with creator counts
   const todaysThemes = useMemo(() => {
     if (!aiReady) return [];
+    const blocked = (mode === "founder" || mode === "finance" || mode === "business")
+      ? (INTEL_CATEGORY_BLOCKS[mode] ?? [])
+      : [];
     const map = new Map<string, { count: number; channels: Set<string> }>();
     for (const [videoId, ai] of Object.entries(aiResults)) {
       if (ai.topicCategory === "excluded") continue;
@@ -511,6 +515,9 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
       if (!video) continue;
       for (const cat of ai.categories ?? []) {
         if (cat.length <= 3) continue;
+        // Skip categories that don't belong in this mode's intelligence brief
+        const catLower = cat.toLowerCase();
+        if (blocked.some(b => catLower === b || catLower.startsWith(b))) continue;
         if (!map.has(cat)) map.set(cat, { count: 0, channels: new Set() });
         const e = map.get(cat)!;
         e.count++;

@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { FeedVideo } from "@/app/api/youtube/feed/route";
 import type { AIScore } from "@/app/api/youtube/filter/route";
 import type { ConsensusResult } from "@/app/api/youtube/consensus/route";
-import { useFilteredFeed, isoToSeconds, type FeedMode } from "@/hooks/useFilteredSubscriptionFeed";
+import { useFilteredFeed, isoToSeconds, INTEL_CATEGORY_BLOCKS, type FeedMode } from "@/hooks/useFilteredSubscriptionFeed";
 import { CorePulseMetrics } from "./widgets/CorePulseMetrics";
 import { OpportunityAlertsWidget, type OpportunityAlert } from "./widgets/OpportunityAlertsWidget";
 import { CollapsibleSignalCards, type EmergingSignalTheme } from "./widgets/CollapsibleSignalCards";
@@ -219,12 +219,18 @@ export function MarketIntelligencePulse() {
   }, [structuralFilter, aiScores]);
 
   const todaysThemes = useMemo(() => {
+    const blocked = (mode === "founder" || mode === "finance" || mode === "business")
+      ? (INTEL_CATEGORY_BLOCKS[mode] ?? [])
+      : [];
     const map = new Map<string, { count: number; channels: Set<string>; insights: string[] }>();
     filteredVideos.forEach(v => {
       const ai = aiScores[v.videoId];
       if (!ai) return;
       ai.categories.forEach(cat => {
         if (!cat) return;
+        // Skip categories that don't belong in this mode's intelligence brief
+        const catLower = cat.toLowerCase();
+        if (blocked.some(b => catLower === b || catLower.startsWith(b))) return;
         if (!map.has(cat)) map.set(cat, { count: 0, channels: new Set(), insights: [] });
         const e = map.get(cat)!;
         e.count++;

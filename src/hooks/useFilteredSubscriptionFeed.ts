@@ -82,9 +82,9 @@ export const CHANNEL_AFFINITY: Record<string, number> = {
   "founder stories":        80,
   "noah kagan":             80,
   "appsumo":                80,
-  "marketing against the grain": 80,
-  "marketing school":       80,
-  "neil patel":             80,
+  "marketing against the grain": 55,
+  "marketing school":       55,  // digital marketing, not founder/investing
+  "neil patel":             55,  // SEO/digital marketing — not founder/investing
 
   // ── C tier: good business / finance (+70) ────────────────────────────────
   "graham stephan":         70,
@@ -108,9 +108,9 @@ export const CHANNEL_AFFINITY: Record<string, number> = {
   "rob berger":             70,
   "joseph carlson":         70,
   "the swedish investor":   70,
-  "cole gordon":            70,
+  "cole gordon":            50,  // sales coaching — needs keyword match, not auto-trust
   "daniel priestley":       70,
-  "jordan platten":         70,
+  "jordan platten":         50,  // AI agency builder — needs keyword match, not auto-trust
   "two cents":              70,
   "wealth well done":       70,
   "heritage wealth planning": 70,
@@ -357,6 +357,24 @@ export const AFFINITY_PASS_THRESHOLD  = 70;   // trusted business channel — st
 export const AFFINITY_BLOCK_THRESHOLD = -80;  // hard block threshold
 export const UNKNOWN_AI_THRESHOLD     = 85;   // AI businessRelevance gate for unknown channels
 
+// ── Intelligence category blocks ──────────────────────────────────────────────
+// Categories that should NOT surface as intelligence themes in a given mode.
+// The FEED still shows these videos — they passed the filter. But "Sales" and
+// "Lead Generation" shouldn't headline the intelligence brief when the user
+// selected Founder or Finance mode; those categories belong to business mode.
+
+export const INTEL_CATEGORY_BLOCKS: Partial<Record<FeedMode, string[]>> = {
+  founder: [
+    "sales", "lead generation", "lead gen", "digital marketing",
+    "cold outreach", "email marketing", "social media", "advertising",
+    "marketing", "seo", "copywriting",
+  ],
+  finance: [
+    "lead generation", "lead gen", "digital marketing",
+    "cold outreach", "email marketing", "advertising", "seo", "copywriting",
+  ],
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 export function isoToSeconds(iso: string): number {
@@ -450,9 +468,10 @@ export function useFilteredFeed(rawVideos: FeedVideo[], mode: FeedMode): FeedVid
         "founder", "startup", "entrepreneur", "entrepreneurship",
         "venture capital", "vc ", "seed round", "series a", "series b",
         "fundraising", "angel investor", "build a business", "building a business",
-        "saas", "b2b", "revenue model", "scaling", "agency", "product market fit",
+        "saas", "b2b", "product market fit",
         "hiring", "ceo", "company building", "bootstrap", "bootstrapped",
         "raise money", "raised $", "exit", "acquisition", "ipo",
+        "revenue model", "scaling a startup", "scaling a company",
       ];
       return trusted.filter((v) => {
         const t = (v.title + " " + (v.description ?? "").slice(0, 400)).toLowerCase();
