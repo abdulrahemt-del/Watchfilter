@@ -6,7 +6,7 @@ import { track } from "@/lib/analytics";
 import { AnalysisView } from "./AnalysisView";
 import { ConsensusView } from "./ConsensusView";
 import { AppSidebar, type NavItem } from "./AppSidebar";
-import { GlobalAudioPlayer } from "./GlobalAudioPlayer";
+import { GlobalAudioPlayer, type GlobalAudioPlayerHandle } from "./GlobalAudioPlayer";
 import { BriefingCard } from "./BriefingCard";
 import { SubscriptionFeed } from "./SubscriptionFeed";
 import type {
@@ -462,6 +462,7 @@ export function WatchFilterApp() {
     src: string; title: string; analysisId: string; autoPlay?: boolean;
   } | null>(null);
   const globalAudioRef = useRef(globalAudio);
+  const playerRef = useRef<GlobalAudioPlayerHandle>(null);
   useEffect(() => { globalAudioRef.current = globalAudio; }, [globalAudio]);
 
   const [consensus, setConsensus] = useState<ConsensusResult | null>(null);
@@ -524,12 +525,11 @@ export function WatchFilterApp() {
   function handleListenBrief(id: string) {
     const item = history.find((h) => h.id === id);
     if (!item?.audioPath) return;
-    setGlobalAudio({
-      src: item.audioPath,
-      title: item.title ?? item.videoId,
-      analysisId: item.id,
-      autoPlay: true,
-    });
+    if (globalAudioRef.current?.analysisId === item.id) {
+      playerRef.current?.triggerPlay();
+    } else {
+      setGlobalAudio({ src: item.audioPath, title: item.title ?? item.videoId, analysisId: item.id });
+    }
   }
 
 
@@ -730,12 +730,13 @@ export function WatchFilterApp() {
               <AnalysisView
                 analysis={analysis}
                 onRefresh={() => void loadAnalysis(analysis.id)}
-                onPlayAudio={analysis.audioPath ? () => setGlobalAudio({
-                  src: analysis.audioPath!,
-                  title: analysis.title ?? analysis.videoId,
-                  analysisId: analysis.id,
-                  autoPlay: true,
-                }) : undefined}
+                onPlayAudio={analysis.audioPath ? () => {
+                  if (globalAudio?.analysisId === analysis.id) {
+                    playerRef.current?.triggerPlay();
+                  } else {
+                    setGlobalAudio({ src: analysis.audioPath!, title: analysis.title ?? analysis.videoId, analysisId: analysis.id });
+                  }
+                } : undefined}
               />
             )}
           </>
@@ -768,6 +769,7 @@ export function WatchFilterApp() {
 
       {globalAudio && (
         <GlobalAudioPlayer
+          ref={playerRef}
           src={globalAudio.src}
           title={globalAudio.title}
           analysisId={globalAudio.analysisId}
