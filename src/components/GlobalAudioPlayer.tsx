@@ -200,6 +200,8 @@ function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }: Props,
     triggerPlay() {
       const audio = audioRef.current;
       if (!audio) return;
+      // Audio element in error state — regen is already in flight, don't call play()
+      if (audio.error) return;
       setAudioError(null);
       void audio.play().then(() => { setPlaying(true); }).catch((err: unknown) => {
         const name = err instanceof Error ? err.name : "";
@@ -217,9 +219,17 @@ function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }: Props,
       audio.pause();
       setPlaying(false);
     } else {
+      // Audio in error state — trigger regen instead of trying to play a broken element
+      if (audio.error) {
+        if (!regenVoice) void regenerateAudio();
+        return;
+      }
       void audio.play().then(() => { setPlaying(true); setAudioError(null); }).catch((err: unknown) => {
         const name = err instanceof Error ? err.name : "";
-        if (name !== "AbortError") { setAudioError("Playback failed — click ↺ Fix to regenerate"); setPlaying(false); }
+        if (name !== "AbortError" && name !== "NotAllowedError") {
+          setAudioError("Playback failed — click ↺ Fix to regenerate");
+          setPlaying(false);
+        }
       });
       if (!hasTrackedPlay.current) {
         hasTrackedPlay.current = true;
@@ -393,7 +403,7 @@ function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }: Props,
             : <span className="audio-player__title">{title}</span>
         )}
         <div className="audio-player__header-actions">
-          <button onClick={togglePlay} className="audio-player__btn" aria-label={playing ? "Pause" : "Play"}>
+          <button onClick={togglePlay} className="audio-player__btn" aria-label={playing ? "Pause" : "Play"} disabled={regenVoice !== null}>
             {playing ? (
               <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden>
                 <rect x="0" y="0" width="3.5" height="12" rx="1" />
