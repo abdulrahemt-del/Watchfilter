@@ -299,7 +299,8 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
       setProgress(0); setCurrentTime(0); setDuration(0);
       setActiveWordIdx(-1); setWordTimings([]); setTimingScale(1);
     } catch (err) {
-      setAudioError("Regeneration failed — try again");
+      const msg = err instanceof Error ? err.message : "Regeneration failed";
+      setAudioError(msg);
       console.error("[GlobalAudioPlayer] regen error", err);
     } finally {
       setRegenVoice(null);

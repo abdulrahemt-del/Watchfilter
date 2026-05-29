@@ -548,25 +548,30 @@ type AudioGenState = "idle" | "loading" | "done" | "error";
 
 function GenerateAudioButton({ analysisId, onRefresh }: { analysisId: string; onRefresh: () => void }) {
   const [state, setState] = useState<AudioGenState>("idle");
+  const [errorMsg, setErrorMsg] = useState("");
   const ranRef = useRef(false);
 
   async function generate() {
     if (ranRef.current) return;
     ranRef.current = true;
     setState("loading");
+    setErrorMsg("");
     try {
       const res = await fetch("/api/regenerate-audio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ analysisId, voice: "onyx" }),
       });
-      if (!res.ok) throw new Error("Audio generation failed");
+      const data = (await res.json()) as { audioPath?: string; error?: string };
+      if (!res.ok || !data.audioPath) throw new Error(data.error ?? `HTTP ${res.status}`);
       setState("done");
       onRefresh();
-    } catch {
+    } catch (err) {
       ranRef.current = false;
+      const msg = err instanceof Error ? err.message : "Failed";
+      setErrorMsg(msg);
       setState("error");
-      setTimeout(() => setState("idle"), 3000);
+      setTimeout(() => setState("idle"), 8000);
     }
   }
 
@@ -575,15 +580,18 @@ function GenerateAudioButton({ analysisId, onRefresh }: { analysisId: string; on
 
   if (state === "done") return null;
   return (
-    <button
-      onClick={() => void generate()}
-      disabled={state === "loading"}
-      className="btn-email"
-    >
-      {state === "loading" ? <><span className="spinner" /> Generating Audio…</> :
-       state === "error" ? "❌ Failed — retry" :
-       "🎙 Generate Audio"}
-    </button>
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+      <button
+        onClick={() => void generate()}
+        disabled={state === "loading"}
+        className="btn-email"
+      >
+        {state === "loading" ? <><span className="spinner" /> Generating Audio…</> :
+         state === "error" ? "❌ Retry Audio" :
+         "🎙 Generate Audio"}
+      </button>
+      {errorMsg && <span style={{ fontSize: "0.65rem", color: "#ef4444" }}>{errorMsg}</span>}
+    </div>
   );
 }
 
