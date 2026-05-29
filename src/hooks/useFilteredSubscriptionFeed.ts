@@ -365,15 +365,50 @@ export const UNKNOWN_AI_THRESHOLD     = 85;   // AI businessRelevance gate for u
 
 export const INTEL_CATEGORY_BLOCKS: Partial<Record<FeedMode, string[]>> = {
   founder: [
+    // Marketing / sales tactics — not founding
     "sales", "lead generation", "lead gen", "digital marketing",
     "cold outreach", "email marketing", "social media", "advertising",
     "marketing", "seo", "copywriting",
+    // AI tools / tutorials — founding ≠ AI automation
+    "ai tools", "ai automation", "ai tutorial", "ai workflow", "ai agents",
   ],
   finance: [
-    "lead generation", "lead gen", "digital marketing",
-    "cold outreach", "email marketing", "advertising", "seo", "copywriting",
+    // Marketing / sales / online business — not investing
+    "sales", "lead generation", "lead gen", "digital marketing",
+    "cold outreach", "email marketing", "advertising", "seo", "copywriting", "marketing",
+    // AI tools and general business — finance mode is for investing/markets only
+    "ai tools", "ai automation", "ai tutorial", "ai workflow", "ai agents", "ai business",
+    // Founding / operations — not relevant for investing mode
+    "entrepreneurship", "startup", "company building", "bootstrapping",
   ],
 };
+
+// ── Mode-specific extra title blocks ─────────────────────────────────────────
+// Applied inside the founder/finance gates AFTER the hard blocks.
+// Stops AI-tutorial and agency content from appearing in those modes even when
+// the title contains a passing keyword (e.g. "ChatGPT for your startup").
+
+const FOUNDER_EXTRA_BLOCKS = [
+  "chatgpt tutorial", "how to use chatgpt", "how to use claude", "how to use gemini",
+  "ai tools for", "ai workflow tutorial", "ai automation tutorial",
+  "make money with ai", "ai side hustle", "ai tools 2024", "ai tools 2025",
+  "gohighlevel", "ghl tutorial", "ghl workflow",
+  "ai agency", "build an ai agency", "start an ai agency",
+];
+
+const FINANCE_EXTRA_BLOCKS = [
+  // AI tutorials — not investing
+  "chatgpt", "how to use ai", "ai tools", "ai workflow",
+  "ai automation", "ai agent tutorial", "ai for beginners",
+  "midjourney", "stable diffusion",
+  // Agency / online business
+  "agency", "lead gen", "cold email", "cold outreach",
+  "dropshipping", "print on demand", "affiliate marketing",
+  "make money online", "youtube automation",
+  // Social media / marketing tactics
+  "instagram growth", "tiktok growth", "facebook ads tutorial",
+  "build an audience", "grow your channel",
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -468,30 +503,37 @@ export function useFilteredFeed(rawVideos: FeedVideo[], mode: FeedMode): FeedVid
         "founder", "startup", "entrepreneur", "entrepreneurship",
         "venture capital", "vc ", "seed round", "series a", "series b",
         "fundraising", "angel investor", "build a business", "building a business",
-        "saas", "b2b", "product market fit",
+        "product market fit",
         "hiring", "ceo", "company building", "bootstrap", "bootstrapped",
         "raise money", "raised $", "exit", "acquisition", "ipo",
         "revenue model", "scaling a startup", "scaling a company",
       ];
       return trusted.filter((v) => {
         const t = (v.title + " " + (v.description ?? "").slice(0, 400)).toLowerCase();
+        // Extra block: AI tutorials / agency content (even if founder keyword present)
+        if (FOUNDER_EXTRA_BLOCKS.some(b => t.includes(b))) return false;
         return FOUNDER_TERMS.some((kw) => t.includes(kw));
       });
     }
 
     if (mode === "finance") {
       const FINANCE_TERMS = [
-        "invest", "stock market", "portfolio", "trading", "hedge fund",
-        "etf", "bond", "yield", "dividend", "personal finance",
-        "retirement", "401k", "roth", "ira", "index fund", "passive income",
-        "financial independence", "fire movement", "net worth",
-        "inflation", "recession", "federal reserve", "interest rate", "macro",
-        "crypto", "bitcoin", "real estate", "mortgage", "reit",
+        "invest", "investing", "stock market", "stocks", "shares", "portfolio",
+        "trading", "hedge fund", "etf", "bond", "yield", "dividend",
+        "personal finance", "retirement", "401k", "roth", "ira",
+        "index fund", "passive income", "financial independence", "fire movement",
+        "net worth", "inflation", "recession", "federal reserve", "interest rate",
+        "macro", "crypto", "bitcoin", "real estate investing", "reit",
         "wealth management", "wealth building", "money management",
         "financial planning", "asset allocation", "market crash", "market rally",
+        "ipo", "earnings", "valuation", "financial markets", "capital markets",
+        "superannuation", "pension", "wealth generation", "tax planning",
+        "rich list", "billionaire", "net worth",
       ];
       return trusted.filter((v) => {
         const t = (v.title + " " + (v.description ?? "").slice(0, 400)).toLowerCase();
+        // Extra block: AI tutorials, agency, and marketing content
+        if (FINANCE_EXTRA_BLOCKS.some(b => t.includes(b))) return false;
         return FINANCE_TERMS.some((kw) => t.includes(kw));
       });
     }
