@@ -5,7 +5,7 @@ import { getUserPipelineCache, upsertUserPipelineCache } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
 
 export async function GET() {
   const session = await getServerSession(authOptions);
