@@ -189,6 +189,7 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
   }
 
   const hasTrackedPlay = useRef(false);
+  const shouldPlayAfterLoad = useRef(false);
 
   function togglePlay() {
     const audio = audioRef.current;
@@ -225,7 +226,8 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     if (!audio) return;
     setAudioError(null);
     setDuration(audio.duration);
-    if (autoPlay) {
+    if (autoPlay || shouldPlayAfterLoad.current) {
+      shouldPlayAfterLoad.current = false;
       void audio.play().then(() => setPlaying(true)).catch((err: unknown) => {
         const name = err instanceof Error ? err.name : "";
         if (name !== "AbortError") setAudioError("Playback failed — click ↺ Fix to regenerate");
@@ -236,6 +238,15 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
   function onAudioError() {
     const audio = audioRef.current;
     const code = audio?.error?.code;
+    console.error("[GlobalAudioPlayer] audio error", code, audio?.error?.message, currentSrc);
+    setPlaying(false);
+
+    // Old private-blob proxy paths (/api/audio?url=...) are broken — auto-regenerate silently.
+    if (currentSrc.startsWith("/api/audio?url=") && analysisId) {
+      void regenerateAudio();
+      return;
+    }
+
     const msg =
       code === 1 ? "Playback aborted" :
       code === 2 ? "Network error loading audio" :
@@ -243,8 +254,6 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
       code === 4 ? "Audio format not supported" :
       "Failed to load audio";
     setAudioError(msg);
-    setPlaying(false);
-    console.error("[GlobalAudioPlayer] audio error", code, audio?.error?.message, currentSrc);
   }
 
   function onEnded() {
@@ -284,6 +293,7 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
       });
       const data = (await res.json()) as { audioPath?: string; error?: string };
       if (!res.ok || !data.audioPath) throw new Error(data.error ?? "Failed");
+      shouldPlayAfterLoad.current = true;
       setCurrentSrc(data.audioPath + "?t=" + Date.now());
       setActiveVoice(activeVoice);
       setProgress(0); setCurrentTime(0); setDuration(0);
@@ -307,6 +317,7 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
       const data = (await res.json()) as { audioPath?: string; error?: string };
       if (!res.ok || !data.audioPath) throw new Error(data.error ?? "Failed");
       if (audioRef.current) { audioRef.current.pause(); setPlaying(false); }
+      shouldPlayAfterLoad.current = true;
       setCurrentSrc(data.audioPath + "?t=" + Date.now());
       setActiveVoice(voice);
       setProgress(0); setCurrentTime(0); setDuration(0);
