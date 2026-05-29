@@ -86,6 +86,7 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
   const [dragging, setDragging] = useState(false);
   const dragOrigin = useRef<{ mouseX: number; mouseY: number; elemX: number; elemY: number } | null>(null);
 
+  const [audioError, setAudioError] = useState<string | null>(null);
   const [wordTimings, setWordTimings] = useState<WordTiming[]>([]);
   const [activeWordIdx, setActiveWordIdx] = useState(-1);
   // Scale estimated timings to actual audio duration for accurate sync
@@ -106,6 +107,7 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     setCurrentTime(0);
     setDuration(0);
     setTimingScale(1);
+    setAudioError(null);
     audio.load();
   }, [currentSrc]);
 
@@ -213,10 +215,25 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
   function onLoadedMetadata() {
     const audio = audioRef.current;
     if (!audio) return;
+    setAudioError(null);
     setDuration(audio.duration);
     if (autoPlay) {
       void audio.play().then(() => setPlaying(true)).catch(() => {});
     }
+  }
+
+  function onAudioError() {
+    const audio = audioRef.current;
+    const code = audio?.error?.code;
+    const msg =
+      code === 1 ? "Playback aborted" :
+      code === 2 ? "Network error loading audio" :
+      code === 3 ? "Audio decoding failed" :
+      code === 4 ? "Audio format not supported" :
+      "Failed to load audio";
+    setAudioError(msg);
+    setPlaying(false);
+    console.error("[GlobalAudioPlayer] audio error", code, audio?.error?.message, currentSrc);
   }
 
   function onEnded() {
@@ -287,12 +304,17 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
       <audio
         ref={audioRef} src={currentSrc} preload="metadata"
         onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} onEnded={onEnded}
+        onError={onAudioError}
       />
 
       <div className="audio-player__header" onMouseDown={onDragStart}>
         <span className="audio-player__drag-handle">⠿</span>
         <span className="audio-player__label">🎙 Audio Briefing</span>
-        {!minimized && <span className="audio-player__title">{title}</span>}
+        {!minimized && (
+          audioError
+            ? <span className="audio-player__title" style={{ color: "#f87171" }}>⚠ {audioError}</span>
+            : <span className="audio-player__title">{title}</span>
+        )}
         <div className="audio-player__header-actions">
           <button onClick={togglePlay} className="audio-player__btn" aria-label={playing ? "Pause" : "Play"}>
             {playing ? (

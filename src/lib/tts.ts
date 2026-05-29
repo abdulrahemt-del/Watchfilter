@@ -245,12 +245,11 @@ export async function generateSpeechFile(
   if (blobToken) {
     const { put } = await import("@vercel/blob");
     const blob = await put(`audio/${filename}`, buffer, {
-      access: "private",
+      access: "public",
       contentType: "audio/mpeg",
       token: blobToken,
     });
-    // Wrap in our proxy route so clients can stream without a public blob store
-    return `/api/audio?url=${encodeURIComponent(blob.url)}`;
+    return blob.url;
   }
 
   const outputPath = join(process.cwd(), "public", "audio", filename);

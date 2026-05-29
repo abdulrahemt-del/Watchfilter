@@ -25,19 +25,22 @@ export async function GET(req: NextRequest) {
     });
 
     if (!upstream.ok) {
-      console.error("[audio] blob fetch failed:", upstream.status, blobUrl);
+      const body = await upstream.text().catch(() => "");
+      console.error("[audio] blob fetch failed:", upstream.status, blobUrl, body.slice(0, 200));
       return NextResponse.json({ error: `Blob ${upstream.status}` }, { status: upstream.status });
     }
 
+    // Buffer fully — avoids streaming issues with chunked audio in Next.js App Router
+    const buffer = await upstream.arrayBuffer();
+
     const headers = new Headers({
       "Content-Type": upstream.headers.get("Content-Type") ?? "audio/mpeg",
+      "Content-Length": String(buffer.byteLength),
       "Cache-Control": "private, max-age=3600",
       "Accept-Ranges": "bytes",
     });
-    const cl = upstream.headers.get("Content-Length");
-    if (cl) headers.set("Content-Length", cl);
 
-    return new NextResponse(upstream.body, { status: 200, headers });
+    return new NextResponse(buffer, { status: 200, headers });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[audio] error:", msg);
