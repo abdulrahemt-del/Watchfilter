@@ -70,6 +70,10 @@ async function ensureSchema(): Promise<void> {
     `ALTER TABLE analyses ADD COLUMN duration_seconds INTEGER`,
     `ALTER TABLE analyses ADD COLUMN off_script_nuggets TEXT`,
     `ALTER TABLE analyses ADD COLUMN speaker_name TEXT`,
+    // Cloud pipeline cache — stores AI scores + consensus per user
+    `ALTER TABLE intelligence_snapshot ADD COLUMN ai_scores_cache TEXT`,
+    `ALTER TABLE intelligence_snapshot ADD COLUMN consensus_cache TEXT`,
+    `ALTER TABLE intelligence_snapshot ADD COLUMN pipeline_cached_at TEXT`,
   ]) {
     try { await c.execute(sql); } catch { /* column already present */ }
   }
@@ -338,6 +342,46 @@ export async function setFeedCache(userId: string, videos: unknown[]): Promise<v
           VALUES (?, ?, ?)
           ON CONFLICT(user_id) DO UPDATE SET cached_at = excluded.cached_at, videos = excluded.videos`,
     args: [userId, new Date().toISOString(), JSON.stringify(videos)],
+  });
+}
+
+export async function getUserPipelineCache(userId: string): Promise<{
+  aiScores: Record<string, unknown>;
+  consensusData: unknown;
+  cachedAt: number;
+} | null> {
+  const c = await db();
+  const row = await c.execute({
+    sql: "SELECT ai_scores_cache, consensus_cache, pipeline_cached_at FROM intelligence_snapshot WHERE user_id = ?",
+    args: [userId],
+  });
+  const r = row.rows[0];
+  if (!r?.ai_scores_cache) return null;
+  try {
+    return {
+      aiScores:      JSON.parse(r.ai_scores_cache as string) as Record<string, unknown>,
+      consensusData: r.consensus_cache ? JSON.parse(r.consensus_cache as string) : null,
+      cachedAt:      r.pipeline_cached_at ? new Date(r.pipeline_cached_at as string).getTime() : 0,
+    };
+  } catch { return null; }
+}
+
+export async function upsertUserPipelineCache(
+  userId: string,
+  aiScores: Record<string, unknown>,
+  consensusData: unknown,
+): Promise<void> {
+  const c = await db();
+  const now = new Date().toISOString();
+  // Upsert into intelligence_snapshot — creates row if missing, otherwise updates cache columns
+  await c.execute({
+    sql: `INSERT INTO intelligence_snapshot (id, user_id, computed_at, meta_data, brief, alerts, shifts, voice_share, ai_scores_cache, consensus_cache, pipeline_cached_at)
+          VALUES (?, ?, ?, '{}', '[]', '[]', '[]', '[]', ?, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET
+            ai_scores_cache   = excluded.ai_scores_cache,
+            consensus_cache   = excluded.consensus_cache,
+            pipeline_cached_at = excluded.pipeline_cached_at`,
+    args: [randomUUID(), userId, now, JSON.stringify(aiScores), JSON.stringify(consensusData), now],
   });
 }
 

@@ -33,8 +33,8 @@ function timeAgo(ts: number): string {
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
 
-const AI_TTL  = 12 * 60 * 60 * 1000; // 12 hours — reduces cold-start frequency
-const CON_TTL = 12 * 60 * 60 * 1000;
+const AI_TTL  = 24 * 60 * 60 * 1000; // 24 hours
+const CON_TTL = 24 * 60 * 60 * 1000;
 
 function getLastEmail(): string {
   try { return localStorage.getItem("wf_last_email") ?? "anon"; } catch { return "anon"; }
@@ -114,19 +114,39 @@ export function MarketIntelligencePulse() {
       // Skip AI pipeline if scores are already loaded from synchronous init
       if (Object.keys(aiScores).length > 0) return;
 
-      // Check AI cache freshness (may have different email than last-email key)
+      // Check localStorage freshness first
+      let hasLocalCache = false;
       try {
         const rawAI = localStorage.getItem(aiKey);
         if (rawAI) {
           const cachedAI = JSON.parse(rawAI) as { ts: number; scores: Record<string, AIScore> };
           if (Date.now() - cachedAI.ts < AI_TTL && Object.keys(cachedAI.scores).length > 0) {
             setAiScores(cachedAI.scores);
-            return;
+            hasLocalCache = true;
           }
         }
-      } catch { /* fall through to rescore */ }
+      } catch { /* ignore */ }
+      if (hasLocalCache) return;
 
-      runAIPipeline(cached.videos, aiKey);
+      // Try cloud cache, then fall back to full pipeline
+      void (async () => {
+        try {
+          const cloudRes = await fetch("/api/intelligence/scores");
+          if (cloudRes.ok) {
+            const cloud = await cloudRes.json() as { cached: boolean; aiScores?: Record<string, AIScore>; consensusData?: ConsensusResult; cachedAt?: number };
+            if (cloud.cached && cloud.aiScores && Object.keys(cloud.aiScores).length > 0) {
+              setAiScores(cloud.aiScores);
+              try { localStorage.setItem(aiKey, JSON.stringify({ ts: cloud.cachedAt ?? Date.now(), scores: cloud.aiScores })); } catch { /* ignore */ }
+              if (cloud.consensusData) {
+                setConsensus(cloud.consensusData);
+                try { localStorage.setItem(`wf_consensus_${email}`, JSON.stringify({ ts: cloud.cachedAt ?? Date.now(), data: cloud.consensusData })); } catch { /* ignore */ }
+              }
+              return;
+            }
+          }
+        } catch { /* cloud unavailable — fall through to pipeline */ }
+        runAIPipeline(cached.videos, aiKey);
+      })();
     } catch { setFeedMissing(true); }
   }, [status, email]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -167,6 +187,13 @@ export function MarketIntelligencePulse() {
     setAiScores(finalScores);
     try { localStorage.setItem(aiKey, JSON.stringify({ ts: Date.now(), scores: finalScores })); } catch { /* ignore */ }
     setAiLoading(false);
+
+    // Save scores to cloud so other devices can skip the pipeline
+    fetch("/api/intelligence/scores", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aiScores: finalScores, consensusData: null }),
+    }).catch(() => { /* non-blocking */ });
   }
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -222,6 +249,15 @@ export function MarketIntelligencePulse() {
       .then((data: ConsensusResult) => {
         setConsensus(data);
         try { localStorage.setItem(`wf_consensus_${email}`, JSON.stringify({ ts: Date.now(), data })); } catch { /* ignore */ }
+        // Update cloud cache with both scores and consensus
+        const currentScores = Object.keys(aiScores).length > 0 ? aiScores : null;
+        if (currentScores) {
+          fetch("/api/intelligence/scores", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ aiScores: currentScores, consensusData: data }),
+          }).catch(() => { /* non-blocking */ });
+        }
         try {
           localStorage.setItem(`wf_snapshot_${email}`, JSON.stringify({
             ts: Date.now(),
