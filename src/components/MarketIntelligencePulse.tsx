@@ -512,7 +512,7 @@ export function MarketIntelligencePulse() {
         <div className="flex items-center gap-3 shrink-0">
           {isLoading && (
             <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg animate-pulse">
-              {aiLoading ? "⚙ Scoring…" : "⚙ Synthesizing…"}
+              {aiLoading ? "⚙ Scoring your feed… (first load ~30s, then cached for 12h)" : "⚙ Synthesizing…"}
             </span>
           )}
           <div className="text-xs font-mono text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700">
