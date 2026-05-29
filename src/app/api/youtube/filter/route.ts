@@ -100,13 +100,20 @@ score < 60  → explanation: "".
 
 ━━━ WHY IT MATTERS ━━━
 
-ALL non-excluded videos → whyItMatters: ONE sentence naming the SPECIFIC opportunity, risk, or edge.
+MANDATORY for every non-excluded video — this field CANNOT be empty or generic.
+whyItMatters: ONE sentence naming the SPECIFIC opportunity, risk, or edge a founder/investor would act on.
 Must reference what the episode actually covers — not the topic in general.
+If the description is thin, derive it from the title + channel context.
+
 Bad: "AI presents opportunities for businesses."
 Bad: "This discusses investing strategies."
+Bad: "Covers important topics for entrepreneurs."
 Good: "Reveals how solo operators are replacing 3-person sales teams with AI for under $300/month."
 Good: "Shows why cash-flow businesses are outperforming high-growth startups in the current rate environment."
+Good: "Breaks down how one founder hit $1M ARR in 8 months by targeting overlooked SMB verticals."
+
 If the episode is excluded (topicCategory: "excluded") → whyItMatters: "".
+Otherwise: whyItMatters is REQUIRED. Never return an empty string for non-excluded videos.
 
 Return ALL videos. Never skip any.`;
 
@@ -164,7 +171,7 @@ export async function POST(req: Request) {
 
     const list = videos
       .map((v, i) =>
-        `${i + 1}. ID:${v.videoId}\nTitle: ${JSON.stringify(v.title)}\nChannel: ${JSON.stringify(v.channelTitle)}\nDescription: ${JSON.stringify(v.description.slice(0, 150))}`,
+        `${i + 1}. ID:${v.videoId}\nTitle: ${JSON.stringify(v.title)}\nChannel: ${JSON.stringify(v.channelTitle)}\nDescription: ${JSON.stringify(v.description.slice(0, 350))}`,
       )
       .join("\n\n");
 

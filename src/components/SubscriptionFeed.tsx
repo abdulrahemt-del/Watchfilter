@@ -1623,7 +1623,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                         className="text-[10px] font-mono font-bold px-3 py-1.5 rounded-lg border transition-colors"
                         style={showAllSources
                           ? { background: 'rgba(59,130,246,0.1)', color: '#60a5fa', borderColor: 'rgba(59,130,246,0.3)' }
-                          : { background: 'rgba(30,41,59,0.6)', color: '#94a3b8', borderColor: 'rgba(51,65,85,0.6)' }}
+                          : { background: 'rgba(30,41,59,0.6)', color: '#ffffff', borderColor: 'rgba(51,65,85,0.6)' }}
                       >
                         {showAllSources
                           ? `↑ Show approved only (${filteredVideos.length})`
