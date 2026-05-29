@@ -35,7 +35,7 @@ export function AnalysisPageClient({ analysis: initial }: { analysis: SavedAnaly
 
   function handlePlayAudio() {
     if (!analysis.audioPath) return;
-    setGlobalAudio({ src: analysis.audioPath, title: analysis.title ?? analysis.videoId, analysisId: analysis.id });
+    setGlobalAudio({ src: analysis.audioPath, title: analysis.title ?? analysis.videoId, analysisId: analysis.id, autoPlay: true });
   }
 
   return (

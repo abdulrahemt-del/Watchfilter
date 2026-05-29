@@ -548,8 +548,11 @@ type AudioGenState = "idle" | "loading" | "done" | "error";
 
 function GenerateAudioButton({ analysisId, onRefresh }: { analysisId: string; onRefresh: () => void }) {
   const [state, setState] = useState<AudioGenState>("idle");
+  const ranRef = useRef(false);
 
   async function generate() {
+    if (ranRef.current) return;
+    ranRef.current = true;
     setState("loading");
     try {
       const res = await fetch("/api/regenerate-audio", {
@@ -561,11 +564,16 @@ function GenerateAudioButton({ analysisId, onRefresh }: { analysisId: string; on
       setState("done");
       onRefresh();
     } catch {
+      ranRef.current = false;
       setState("error");
       setTimeout(() => setState("idle"), 3000);
     }
   }
 
+  // Auto-trigger on mount — no user action needed
+  useEffect(() => { void generate(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (state === "done") return null;
   return (
     <button
       onClick={() => void generate()}
