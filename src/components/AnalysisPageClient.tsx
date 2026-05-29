@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnalysisView } from "./AnalysisView";
-import { GlobalAudioPlayer } from "./GlobalAudioPlayer";
+import { GlobalAudioPlayer, type GlobalAudioPlayerHandle } from "./GlobalAudioPlayer";
 import type { SavedAnalysis } from "@/lib/client-types";
 
 export function AnalysisPageClient({ analysis: initial }: { analysis: SavedAnalysis }) {
@@ -13,6 +13,7 @@ export function AnalysisPageClient({ analysis: initial }: { analysis: SavedAnaly
     src: string; title: string; analysisId: string; autoPlay?: boolean;
   } | null>(null);
   const globalAudioRef = useRef(globalAudio);
+  const playerRef = useRef<GlobalAudioPlayerHandle>(null);
   useEffect(() => { globalAudioRef.current = globalAudio; }, [globalAudio]);
 
   // Surface audio player whenever analysis has an audioPath
@@ -35,7 +36,13 @@ export function AnalysisPageClient({ analysis: initial }: { analysis: SavedAnaly
 
   function handlePlayAudio() {
     if (!analysis.audioPath) return;
-    setGlobalAudio({ src: analysis.audioPath, title: analysis.title ?? analysis.videoId, analysisId: analysis.id, autoPlay: true });
+    if (globalAudio?.analysisId === analysis.id) {
+      // Player already mounted — call play() synchronously while still in user gesture context.
+      // Using triggerPlay() avoids the gesture-context loss that occurs inside useEffect.
+      playerRef.current?.triggerPlay();
+    } else {
+      setGlobalAudio({ src: analysis.audioPath, title: analysis.title ?? analysis.videoId, analysisId: analysis.id, autoPlay: true });
+    }
   }
 
   return (
@@ -43,6 +50,7 @@ export function AnalysisPageClient({ analysis: initial }: { analysis: SavedAnaly
       <AnalysisView analysis={analysis} onRefresh={handleRefresh} onPlayAudio={handlePlayAudio} />
       {globalAudio && (
         <GlobalAudioPlayer
+          ref={playerRef}
           src={globalAudio.src}
           title={globalAudio.title}
           analysisId={globalAudio.analysisId}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import { track } from "@/lib/analytics";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -66,7 +66,12 @@ interface Props {
   onClose: () => void;
 }
 
-export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }: Props) {
+export interface GlobalAudioPlayerHandle {
+  triggerPlay: () => void;
+}
+
+export const GlobalAudioPlayer = forwardRef<GlobalAudioPlayerHandle, Props>(
+function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }: Props, ref) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -147,13 +152,9 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     if (!autoPlay) return;
     const audio = audioRef.current;
     if (!audio) return;
-    void audio.play().then(() => { setPlaying(true); setAudioError(null); }).catch((err: unknown) => {
-      const name = err instanceof Error ? err.name : "";
-      // NotAllowedError = browser autoplay policy blocked — audio is fine, user can click ▶
-      if (name !== "AbortError" && name !== "NotAllowedError") {
-        setAudioError("Playback failed — click ↺ Fix to regenerate");
-      }
-    });
+    // Best-effort only — gesture context is lost in useEffect, so NotAllowedError is expected.
+    // Real play is triggered via triggerPlay() from the parent click handler.
+    void audio.play().then(() => { setPlaying(true); setAudioError(null); }).catch(() => {});
   }, [autoPlay]);
 
   // Auto-scroll active word into view in transcript panel
@@ -190,6 +191,22 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
 
   const hasTrackedPlay = useRef(false);
   const shouldPlayAfterLoad = useRef(false);
+
+  // Expose triggerPlay so parent click handlers can call audio.play() synchronously
+  // within the user gesture context (useEffect runs after paint and loses the gesture).
+  useImperativeHandle(ref, () => ({
+    triggerPlay() {
+      const audio = audioRef.current;
+      if (!audio) return;
+      setAudioError(null);
+      void audio.play().then(() => { setPlaying(true); }).catch((err: unknown) => {
+        const name = err instanceof Error ? err.name : "";
+        if (name !== "AbortError" && name !== "NotAllowedError") {
+          setAudioError("Playback failed — click ↺ Fix to regenerate");
+        }
+      });
+    },
+  }));
 
   function togglePlay() {
     const audio = audioRef.current;
@@ -228,12 +245,8 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
     setDuration(audio.duration);
     if (autoPlay || shouldPlayAfterLoad.current) {
       shouldPlayAfterLoad.current = false;
-      void audio.play().then(() => { setPlaying(true); setAudioError(null); }).catch((err: unknown) => {
-        const name = err instanceof Error ? err.name : "";
-        if (name !== "AbortError" && name !== "NotAllowedError") {
-          setAudioError("Playback failed — click ↺ Fix to regenerate");
-        }
-      });
+      // Best-effort only — gesture context lost in event callbacks on some browsers.
+      void audio.play().then(() => { setPlaying(true); setAudioError(null); }).catch(() => {});
     }
   }
 
@@ -482,4 +495,4 @@ export function GlobalAudioPlayer({ src, title, analysisId, autoPlay, onClose }:
       )}
     </div>
   );
-}
+});
