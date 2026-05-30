@@ -132,18 +132,18 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
                       : "bg-white border-[#c0d6df] hover:border-[#a8bfcb] hover:bg-[#f8fafc]"
                   }`}
                 >
-                  <div className="flex justify-between items-center text-[10px] font-mono text-[#6b8a99] mb-1.5">
+                  <div className="flex justify-between items-center text-[11px] font-mono text-[#6b8a99] mb-1.5">
                     <span className="font-bold text-[#4f6d7a]">{cluster.rankIndex}</span>
                     <span className={`font-bold ${EVIDENCE_COLOR[cluster.evidenceStrength]}`}>
                       {cluster.evidenceStrength} Signal
                     </span>
                   </div>
 
-                  <h3 className="text-sm font-black font-mono tracking-tight text-[#0f2535] mb-1">
+                  <h3 className="text-[15px] font-black font-mono tracking-tight text-[#0f2535] mb-1">
                     {cluster.topicTitle}
                   </h3>
 
-                  <div className="flex items-center justify-between text-[11px] font-mono text-[#6b8a99] pt-2 border-t border-[#c0d6df] mt-3">
+                  <div className="flex items-center justify-between text-xs font-mono text-[#6b8a99] pt-2 border-t border-[#c0d6df] mt-3">
                     <span>{cluster.contributingCreatorsCount} creators · {cluster.totalLinkedVideos} videos</span>
                     <span className="text-[#4a6fa5] font-bold">{cluster.consensusAgreementRate}%</span>
                   </div>
@@ -178,28 +178,28 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
                   {/* Header row */}
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-0.5 min-w-0">
-                      <span className="text-[10px] font-mono text-[#4a6fa5] font-bold uppercase tracking-wider bg-blue-50 border border-blue-100 px-2 py-0.5 rounded">
+                      <span className="text-[11px] font-mono text-[#4a6fa5] font-bold uppercase tracking-wider bg-blue-50 border border-blue-100 px-2 py-0.5 rounded">
                         Citation #{index + 1}
                       </span>
-                      <h4 className="text-xs font-bold text-[#1a2e3b] tracking-tight leading-snug pt-1 group-hover:text-[#4a6fa5] transition-colors">
+                      <h4 className="text-sm font-bold text-[#1a2e3b] tracking-tight leading-snug pt-1 group-hover:text-[#4a6fa5] transition-colors">
                         {citation.videoTitle}
                       </h4>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0 bg-[#f0f6f9] border border-[#c0d6df] px-2 py-1 rounded-md">
-                      <span className="text-[11px] font-mono text-[#4f6d7a] font-semibold">{citation.channelName}</span>
+                      <span className="text-xs font-mono text-[#4f6d7a] font-semibold">{citation.channelName}</span>
                       {ytUrl ? (
                         <a
                           href={ytUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={e => e.stopPropagation()}
-                          className="text-[10px] font-mono bg-purple-50 text-[#6b4fbb] border border-purple-200 px-1.5 py-0.5 rounded font-bold hover:bg-purple-100 transition-colors"
+                          className="text-[11px] font-mono bg-purple-50 text-[#6b4fbb] border border-purple-200 px-1.5 py-0.5 rounded font-bold hover:bg-purple-100 transition-colors"
                         >
                           ▶ {citation.timestampMark}
                         </a>
                       ) : (
-                        <span className="text-[10px] font-mono bg-purple-50 text-[#6b4fbb] border border-purple-200 px-1.5 py-0.5 rounded font-bold">
+                        <span className="text-[11px] font-mono bg-purple-50 text-[#6b4fbb] border border-purple-200 px-1.5 py-0.5 rounded font-bold">
                           {citation.timestampMark}
                         </span>
                       )}
@@ -208,20 +208,20 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
 
                   {/* Verbatim quote */}
                   <div className="bg-[#f8fafc] border-l-2 border-purple-300 rounded-r-lg p-3 group-hover:border-purple-400 transition-colors">
-                    <p className="text-xs font-mono text-[#6b8a99] group-hover:text-[#4f6d7a] leading-relaxed italic transition-colors">
+                    <p className="text-sm font-mono text-[#6b8a99] group-hover:text-[#4f6d7a] leading-relaxed italic transition-colors">
                       &ldquo;{citation.verbatimTranscriptQuote}&rdquo;
                     </p>
                   </div>
 
                   {/* Footer row */}
-                  <div className="flex items-center justify-between text-[11px] font-mono text-[#6b8a99] pt-1 border-t border-[#c0d6df]">
+                  <div className="flex items-center justify-between text-xs font-mono text-[#6b8a99] pt-1 border-t border-[#c0d6df]">
                     <span className="text-[#0a7a4a] font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                       🛡️ {citation.fluffTimeSaved} fluff removed
                     </span>
                     {citation.analysisId && (
                       <Link
                         href={`/analyses/${citation.analysisId}`}
-                        className="text-[#4a6fa5] font-bold uppercase tracking-wider text-[10px] hover:underline"
+                        className="text-[#4a6fa5] font-bold uppercase tracking-wider text-[11px] hover:underline"
                         onClick={e => e.stopPropagation()}
                       >
                         Full Report ↗
