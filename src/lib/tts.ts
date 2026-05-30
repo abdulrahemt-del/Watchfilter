@@ -241,13 +241,17 @@ export async function generateSpeechFile(
   // embeds metadata frames mid-stream, causing pops and choppiness during playback.
   const buffer = Buffer.concat(audioBuffers.map((buf, i) => i === 0 ? buf : stripId3Header(buf)));
 
+  const storeId = process.env.BLOB_READ_WRITE_TOKEN_STORE_ID;
   const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
-  if (blobToken) {
+  if (storeId || blobToken) {
     const { put } = await import("@vercel/blob");
+    // In production: use OIDC via storeId (new public store, no static token needed).
+    // In local dev: fall back to static token.
     const blob = await put(`audio/${filename}`, buffer, {
       access: "public",
       contentType: "audio/mpeg",
-      token: blobToken,
+      addRandomSuffix: false,
+      ...(storeId ? { storeId } : { token: blobToken! }),
     });
     return blob.url;
   }
