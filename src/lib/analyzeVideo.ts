@@ -54,13 +54,23 @@ export async function analyzeYouTubeVideo(
   const timestampedTranscript = formatTranscriptForModel(
     transcriptResult.segments,
   );
-  const analysis = await summarizeTranscript({
+  const transcriptInput = {
     apiKey,
     model: options.model ?? "gpt-4o-mini",
     title,
     timestampedTranscript,
     maxTranscriptChars: options.maxTranscriptChars,
-  });
+  };
+
+  let analysis = await summarizeTranscript(transcriptInput);
+
+  // Hard enforce minimum 5 data points — retry once at higher temperature if model fell short.
+  if (analysis.hard_data_points.length < 5) {
+    const retry = await summarizeTranscript({ ...transcriptInput, temperature: 0.4 });
+    if (retry.hard_data_points.length > analysis.hard_data_points.length) {
+      analysis = retry;
+    }
+  }
 
   return {
     ...analysis,
@@ -94,6 +104,7 @@ async function summarizeTranscript(input: {
   title: string | null;
   timestampedTranscript: string;
   maxTranscriptChars?: number;
+  temperature?: number;
 }): Promise<VideoAnalysis> {
   const openai = new OpenAI({ apiKey: input.apiKey });
 
@@ -106,7 +117,7 @@ async function summarizeTranscript(input: {
 
   const completion = await openai.beta.chat.completions.parse({
     model: input.model,
-    temperature: 0,
+    temperature: input.temperature ?? 0,
     messages: [
       { role: "system", content: WATCHFILTER_SYSTEM_PROMPT },
       { role: "user", content: userContent },
