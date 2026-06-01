@@ -23,7 +23,7 @@ ANTI-REPETITION MANDATE: Each field must serve a UNIQUE purpose. If you catch yo
 A 5-field response where every field says "persistence matters" is a failure. Make each field earn its place.
 
 MANDATORY MINIMUMS — failure to meet these is a critical error:
-  - Videos under 15 minutes: minimum 3 data points
+  - Videos under 15 minutes: minimum 5 data points
   - Videos 15–45 minutes: minimum 5 data points
   - Videos 45 minutes to 2 hours: minimum 8 data points
   - Videos over 2 hours: minimum 12 data points

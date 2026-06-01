@@ -128,8 +128,8 @@ function synthesizeDataPointParagraph(
 
 /**
  * Build a compressed intelligence briefing script.
- * Target: 4–5 minutes of audio (~520–650 words).
- * Top 3 insights, 1 nugget, 2 priorities — analyst prose, no section narration.
+ * Structure: all data points ranked by signal strength (min 5), up to 5 nuggets.
+ * Tactical Playbook is excluded — audio covers intelligence only, not execution steps.
  */
 export function buildPodcastScript(
   analysis: VideoAnalysis & { title: string | null; channelName?: string | null }
@@ -188,22 +188,12 @@ export function buildPodcastScript(
     if (para) lines.push(para, "");
   }
 
-  // ── All off-script golden nuggets ─────────────────────────────────
-  const nuggets = analysis.off_script_nuggets ?? [];
+  // ── Off-script golden nuggets — capped at 5 ──────────────────────
+  const nuggets = (analysis.off_script_nuggets ?? []).slice(0, 5);
   if (nuggets.length > 0) {
     lines.push("Off-Script Golden Nuggets.", "");
     nuggets.forEach(n => { lines.push(n); lines.push(""); });
   }
-
-  // ── Top 3 action priorities — all execution steps ─────────────────
-  lines.push("Top priorities.", "");
-  analysis.actionable_takeaways.slice(0, 3).forEach((t, i) => {
-    const strategy = typeof t === "string" ? t : t.strategy;
-    const steps = typeof t !== "string" ? (t.execution_steps ?? []) : [];
-    lines.push(`${i + 1}: ${strategy}.`);
-    steps.forEach(step => { lines.push(`  → ${step}.`); });
-    lines.push("");
-  });
 
   lines.push("", "End of WatchFilter briefing.");
 
