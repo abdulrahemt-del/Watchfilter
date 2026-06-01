@@ -708,6 +708,16 @@ function ReanalyzeButton({ youtubeUrl, onRefresh, onReanalyzed }: { youtubeUrl: 
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as SavedAnalysis;
+
+      // Kick off audio regeneration immediately — fire-and-forget so it runs
+      // against the freshly saved analysis (with 5+ data points) without waiting
+      // for GenerateAudioButton to mount or EnhanceButton to complete.
+      void fetch("/api/regenerate-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysisId: data.id, voice: "onyx" }),
+      });
+
       setState("done");
       if (onReanalyzed) onReanalyzed(data);
       else if (onRefresh) onRefresh();
