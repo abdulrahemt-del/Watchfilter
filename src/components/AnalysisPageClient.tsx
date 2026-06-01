@@ -47,7 +47,7 @@ export function AnalysisPageClient({ analysis: initial }: { analysis: SavedAnaly
 
   return (
     <>
-      <AnalysisView analysis={analysis} onRefresh={handleRefresh} onPlayAudio={handlePlayAudio} />
+      <AnalysisView analysis={analysis} onRefresh={handleRefresh} onPlayAudio={handlePlayAudio} onReanalyzed={(newAnalysis) => setAnalysis(newAnalysis)} />
       {globalAudio && (
         <GlobalAudioPlayer
           ref={playerRef}

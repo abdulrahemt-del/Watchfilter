@@ -730,6 +730,7 @@ export function WatchFilterApp() {
               <AnalysisView
                 analysis={analysis}
                 onRefresh={() => void loadAnalysis(analysis.id)}
+                onReanalyzed={(newAnalysis) => { setAnalysis(newAnalysis); setActiveId(newAnalysis.id); void loadHistory(); }}
                 onPlayAudio={analysis.audioPath ? () => {
                   if (globalAudio?.analysisId === analysis.id) {
                     playerRef.current?.triggerPlay();

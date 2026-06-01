@@ -694,7 +694,7 @@ function QuickFeedback({ analysisId, videoTitle }: { analysisId: string; videoTi
 /* ── Re-analyze Button ── */
 type ReanalyzeState = "idle" | "loading" | "done" | "error";
 
-function ReanalyzeButton({ youtubeUrl, onRefresh }: { youtubeUrl: string; onRefresh?: () => void }) {
+function ReanalyzeButton({ youtubeUrl, onRefresh, onReanalyzed }: { youtubeUrl: string; onRefresh?: () => void; onReanalyzed?: (a: SavedAnalysis) => void }) {
   const [state, setState] = useState<ReanalyzeState>("idle");
 
   async function reanalyze() {
@@ -707,8 +707,10 @@ function ReanalyzeButton({ youtubeUrl, onRefresh }: { youtubeUrl: string; onRefr
         body: JSON.stringify({ url: youtubeUrl }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as SavedAnalysis;
       setState("done");
-      if (onRefresh) onRefresh();
+      if (onReanalyzed) onReanalyzed(data);
+      else if (onRefresh) onRefresh();
       else window.location.reload();
     } catch {
       setState("error");
@@ -732,10 +734,11 @@ function ReanalyzeButton({ youtubeUrl, onRefresh }: { youtubeUrl: string; onRefr
 }
 
 /* ── Main Component ── */
-export function AnalysisView({ analysis, onRefresh, onPlayAudio }: {
+export function AnalysisView({ analysis, onRefresh, onPlayAudio, onReanalyzed }: {
   analysis: SavedAnalysis;
   onRefresh?: () => void;
   onPlayAudio?: () => void;
+  onReanalyzed?: (a: SavedAnalysis) => void;
 }) {
   const needsEnhancement = !analysis.off_script_nuggets?.length;
   const displayTitle = analysis.title ?? `Video ${analysis.videoId}`;
@@ -847,12 +850,12 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio }: {
             <button onClick={onPlayAudio} className="btn-email">🎙 Audio Briefing</button>
           )}
           {!analysis.audioPath && !needsEnhancement && onRefresh && (
-            <GenerateAudioButton analysisId={analysis.id} onRefresh={onRefresh} />
+            <GenerateAudioButton key={analysis.id} analysisId={analysis.id} onRefresh={onRefresh} />
           )}
           {needsEnhancement && onRefresh && (
             <EnhanceButton analysisId={analysis.id} onRefresh={onRefresh} />
           )}
-          <ReanalyzeButton youtubeUrl={analysis.youtubeUrl} onRefresh={onRefresh} />
+          <ReanalyzeButton youtubeUrl={analysis.youtubeUrl} onRefresh={onRefresh} onReanalyzed={onReanalyzed} />
         </div>
       </div>
 
