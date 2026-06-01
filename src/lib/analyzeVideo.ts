@@ -64,12 +64,16 @@ export async function analyzeYouTubeVideo(
 
   let analysis = await summarizeTranscript(transcriptInput);
 
-  // Hard enforce minimum 5 data points — retry once at higher temperature if model fell short.
+  // Hard enforce minimum 5 data points — retry at higher temperature and MERGE unique points.
   if (analysis.hard_data_points.length < 5) {
     const retry = await summarizeTranscript({ ...transcriptInput, temperature: 0.4 });
-    if (retry.hard_data_points.length > analysis.hard_data_points.length) {
-      analysis = retry;
-    }
+    const seen = new Set(
+      analysis.hard_data_points.map(p => p.metric_title.toLowerCase().slice(0, 50))
+    );
+    const fresh = retry.hard_data_points.filter(
+      p => !seen.has(p.metric_title.toLowerCase().slice(0, 50))
+    );
+    analysis = { ...analysis, hard_data_points: [...analysis.hard_data_points, ...fresh] };
   }
 
   return {
