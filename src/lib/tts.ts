@@ -81,47 +81,44 @@ function chunkScript(text: string): string[] {
 }
 
 /**
- * Synthesize one data point as a compact analyst paragraph.
- * Mirrors the default card view: Core Insight → Why It Matters → Actionable → Confidence caveat.
- * No section labels — natural prose only.
+ * Synthesize one data point word-for-word across all fields.
+ * Order: Title → Quote → Core Insight → Why It Matters → Signal Quality →
+ *        Verification → Second-Order Implications → Alternative View → Takeaway.
  */
 function synthesizeDataPointParagraph(
   title: string,
   quote: string | null,
   speakerThesis: string | null,
+  whyItMatters: string | null,
+  signalStrength: string | null,
+  verificationStatus: string | null,
+  verificationReason: string | null,
   secondOrderImplications: string | null,
   contrarianView: string | null,
   actionableTakeaway: string | null,
 ): string {
   const parts: string[] = [];
 
-  // Title
   parts.push(title.replace(/\.$/, "") + ".");
 
-  // Direct Quote — full text
-  if (quote) {
-    parts.push(`"${quote}"`);
+  if (quote) parts.push(`"${quote}"`);
+
+  if (speakerThesis) parts.push(speakerThesis);
+
+  if (whyItMatters) parts.push(whyItMatters);
+
+  if (signalStrength) parts.push(`Signal quality: ${signalStrength}.`);
+
+  if (verificationStatus) {
+    const reason = verificationReason ? ` ${verificationReason}` : "";
+    parts.push(`Verification: ${verificationStatus}.${reason}`);
   }
 
-  // Core Insight — full text
-  if (speakerThesis) {
-    parts.push(speakerThesis);
-  }
+  if (secondOrderImplications) parts.push(secondOrderImplications);
 
-  // Second-Order Implications — full text
-  if (secondOrderImplications) {
-    parts.push(secondOrderImplications);
-  }
+  if (contrarianView) parts.push(contrarianView);
 
-  // Contrarian View — full text
-  if (contrarianView) {
-    parts.push(contrarianView);
-  }
-
-  // Actionable Takeaway — full text
-  if (actionableTakeaway) {
-    parts.push(actionableTakeaway);
-  }
+  if (actionableTakeaway) parts.push(actionableTakeaway);
 
   return parts.filter(Boolean).join(" ");
 }
@@ -178,6 +175,10 @@ export function buildPodcastScript(
           String(p.metric_title ?? ""),
           (p.direct_quote as string) ?? null,
           (p.speaker_thesis as string) ?? null,
+          (p.why_it_matters as string) ?? null,
+          (p.signal_strength as string) ?? null,
+          (p.verification_status as string) ?? null,
+          (p.verification_reason as string) ?? null,
           (p.second_order_implications as string) ?? null,
           (p.contrarian_view as string) ?? null,
           (p.actionable_takeaway as string) ?? null,
