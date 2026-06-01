@@ -367,7 +367,8 @@ export const INTEL_CATEGORY_BLOCKS: Partial<Record<FeedMode, string[]>> = {
   business: [
     // AI tutorials/tools — "business" mode shows strategy, not how-to AI content
     "ai tools", "ai automation", "ai tutorial", "ai workflow", "ai agents",
-    "ai ", // blocks "AI Business", "AI Strategy", "AI Marketing" etc.
+    "ai business", "ai strategy", "ai marketing", "ai productivity",
+    "ai ", // blocks any remaining multi-word AI category not caught above
     "artificial intelligence",
   ],
   founder: [

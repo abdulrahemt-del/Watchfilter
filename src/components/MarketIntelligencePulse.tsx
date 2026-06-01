@@ -46,15 +46,10 @@ export function MarketIntelligencePulse() {
   const { data: session, status } = useSession();
   const email = session?.user?.email ?? "anon";
 
-  // Use the same mode the feed is currently in (defaults to "founder" for intelligence breadth)
-  const [mode] = useState<FeedMode>(() => {
-    try {
-      const saved = sessionStorage.getItem("wf_feed_mode");
-      if (saved === "business" || saved === "founder" || saved === "finance") return saved as FeedMode;
-    } catch { /* ignore */ }
-    // Default to "business" — broader than "founder", includes finance/investing channels
-    return "business";
-  });
+  // Intelligence always uses "business" mode — broadest trusted channel pool,
+  // no topic keyword gate. Ensures investing/finance channels are never filtered
+  // out by the founder-mode FOUNDER_TERMS gate even if the feed is in a narrower mode.
+  const mode: FeedMode = "business";
 
   // Read all caches synchronously on first render — content appears without a blank flash
   const [feedVideos, setFeedVideos] = useState<FeedVideo[]>(() => {
@@ -238,7 +233,13 @@ export function MarketIntelligencePulse() {
         const e = map.get(cat)!;
         e.count++;
         e.channels.add(v.channelTitle);
-        if (ai.whyItMatters && e.insights.length < 4) e.insights.push(ai.whyItMatters);
+        // Include video title + whyItMatters for richer consensus context
+        const insight = ai.whyItMatters
+          ? `${v.channelTitle}: ${ai.whyItMatters}`
+          : ai.explanation
+          ? `${v.channelTitle}: ${ai.explanation}`
+          : null;
+        if (insight && e.insights.length < 6) e.insights.push(insight);
       });
     });
     const sorted = [...map.entries()].sort((a, b) => b[1].count - a[1].count);
@@ -266,9 +267,9 @@ export function MarketIntelligencePulse() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        themes: todaysThemes.map(t => ({ topic: t.topic, count: t.count, creators: t.channelNames, insights: t.insights })),
-        topOpportunity: { topic: topOpp.topic, count: topOpp.count, creators: topOpp.channelNames, insights: topOpp.insights },
-        topRisk: topRisk ? { topic: topRisk.topic, count: topRisk.count, creators: topRisk.channelNames, insights: topRisk.insights } : null,
+        themes: todaysThemes.map(t => ({ topic: t.topic, count: t.count, referenceCount: t.count, creators: t.channelNames, insights: t.insights })),
+        topOpportunity: { topic: topOpp.topic, count: topOpp.count, referenceCount: topOpp.count, creators: topOpp.channelNames, insights: topOpp.insights },
+        topRisk: topRisk ? { topic: topRisk.topic, count: topRisk.count, referenceCount: topRisk.count, creators: topRisk.channelNames, insights: topRisk.insights } : null,
       }),
     })
       .then(r => r.json())
