@@ -84,8 +84,8 @@ export function OpportunityAlertsWidget({ alerts, loading }: Props) {
               {/* Why Now */}
               {alert.whyNow && (
                 <div className="space-y-0.5">
-                  <span className="text-[9px] font-mono font-black text-slate-500 uppercase tracking-widest">Why Now</span>
-                  <p className="text-xs text-slate-300 leading-relaxed">{alert.whyNow}</p>
+                  <span className="text-[11px] font-mono font-black text-slate-500 uppercase tracking-widest">Why Now</span>
+                  <p className="text-sm text-slate-300 leading-relaxed">{alert.whyNow}</p>
                 </div>
               )}
 
