@@ -3,6 +3,7 @@
  * Usage:  BASE_URL=https://watchfilter.vercel.app npx tsx scripts/smoke-test.ts
  * Or for local dev: npx tsx scripts/smoke-test.ts  (defaults to localhost:3000)
  */
+export {};
 
 const BASE = process.env.BASE_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
 
