@@ -85,7 +85,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid YouTube URL." }, { status: 400 });
   }
 
-  const existing = await getLatestAnalysisByVideoId(videoId);
+  const force = new URL(request.url).searchParams.get("force") === "true";
+  const existing = !force && await getLatestAnalysisByVideoId(videoId);
   if (existing) {
     return NextResponse.json(existing);
   }
