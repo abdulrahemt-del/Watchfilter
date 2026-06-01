@@ -85,23 +85,13 @@ Prioritise: Podcast, Interview, Market Commentary, Deep Dive, Case Study, Analys
 ━━━ CATEGORIES ━━━
 
 Return 1–3 broad, canonical business categories per video (2–4 words max).
-Consolidate aggressively — prefer one strong category over three weak sub-topics.
-Assign categories based on the PRIMARY subject of the episode, not just tools mentioned.
-
-Good canonical categories:
+Consolidate aggressively — prefer one strong category over three weak sub-topics:
+• "AI Business" — not "AI Agencies", "AI Automation", "AI Tools", "AI Employees"
 • "Investing" — not "Value Investing", "Stock Picking", "Index Funds"
-• "Venture Capital" — not "VC Funding", "Startup Fundraising", "Seed Rounds"
 • "Entrepreneurship" — not "Startup Building", "Company Formation", "Founder Journey"
 • "Personal Finance" — not "Money Management", "Financial Planning Basics"
-• "Business Strategy" — not "Operations", "Business Systems", "Frameworks"
-• "Macro Economics" — not "Economy Update", "Market Outlook"
-• "Real Estate" — not "Property Investing", "Real Estate Strategies"
-
-For episodes that discuss AI as a TOOL within a business context, assign the primary business domain:
-• Founder using AI to scale → "Entrepreneurship"  (not "AI Business")
-• Investor analyzing AI companies → "Investing"  (not "AI Business")
-• Operator cutting costs with AI → "Business Strategy"  (not "AI Business")
-Only use "AI Business" if the ENTIRE episode is specifically about building AI companies or AI as a business model.
+• "Lead Generation" — not "Lead Gen Strategies", "B2B Leads", "Cold Outreach"
+• "Venture Capital" — not "VC Funding", "Startup Fundraising", "Seed Rounds"
 
 ━━━ EXPLANATION RULE ━━━
 
