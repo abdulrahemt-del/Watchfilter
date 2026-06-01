@@ -39,7 +39,7 @@ function DashboardView({
   onVoiceChange: (v: "onyx" | "nova") => void;
 }) {
   const [localUrl, setLocalUrl] = useState("");
-  const [feedTab, setFeedTab] = useState<"subscriptions" | "briefings">("briefings");
+  const [feedTab, setFeedTab] = useState<"subscriptions" | "briefings">("subscriptions");
 
   function handleCmdSubmit(e: React.FormEvent) {
     e.preventDefault();
