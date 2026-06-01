@@ -694,7 +694,7 @@ function QuickFeedback({ analysisId, videoTitle }: { analysisId: string; videoTi
 /* ── Re-analyze Button ── */
 type ReanalyzeState = "idle" | "loading" | "done" | "error";
 
-function ReanalyzeButton({ youtubeUrl, onRefresh }: { youtubeUrl: string; onRefresh: () => void }) {
+function ReanalyzeButton({ youtubeUrl, onRefresh }: { youtubeUrl: string; onRefresh?: () => void }) {
   const [state, setState] = useState<ReanalyzeState>("idle");
 
   async function reanalyze() {
@@ -708,7 +708,8 @@ function ReanalyzeButton({ youtubeUrl, onRefresh }: { youtubeUrl: string; onRefr
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setState("done");
-      onRefresh();
+      if (onRefresh) onRefresh();
+      else window.location.reload();
     } catch {
       setState("error");
       setTimeout(() => setState("idle"), 5000);
@@ -851,9 +852,7 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio }: {
           {needsEnhancement && onRefresh && (
             <EnhanceButton analysisId={analysis.id} onRefresh={onRefresh} />
           )}
-          {onRefresh && (
-            <ReanalyzeButton youtubeUrl={analysis.youtubeUrl} onRefresh={onRefresh} />
-          )}
+          <ReanalyzeButton youtubeUrl={analysis.youtubeUrl} onRefresh={onRefresh} />
         </div>
       </div>
 
