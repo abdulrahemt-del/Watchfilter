@@ -533,7 +533,7 @@ export function MarketIntelligencePulse() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a1628] via-[#0d1a2e] to-[#0d1520] flex items-center justify-center text-slate-500 font-mono text-sm">
+      <div className="min-h-screen bg-[#0d1f3c] flex items-center justify-center text-slate-500 font-mono text-sm">
         Connecting…
       </div>
     );
@@ -541,7 +541,7 @@ export function MarketIntelligencePulse() {
 
   if (status === "unauthenticated") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a1628] via-[#0d1a2e] to-[#0d1520] flex flex-col items-center justify-center gap-4 text-slate-500">
+      <div className="min-h-screen bg-[#0d1f3c] flex flex-col items-center justify-center gap-4 text-slate-500">
         <p className="font-mono text-sm">Sign in to view Market Intelligence.</p>
         <Link href="/" className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors">← Return to Feed</Link>
       </div>
@@ -550,7 +550,7 @@ export function MarketIntelligencePulse() {
 
   if (feedMissing) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a1628] via-[#0d1a2e] to-[#0d1520] flex flex-col items-center justify-center gap-4 text-center px-6">
+      <div className="min-h-screen bg-[#0d1f3c] flex flex-col items-center justify-center gap-4 text-center px-6">
         <span className="text-4xl">📡</span>
         <h2 className="text-white font-black text-lg">No feed data yet</h2>
         <p className="text-slate-500 font-mono text-xs max-w-xs">
@@ -566,7 +566,7 @@ export function MarketIntelligencePulse() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="bg-gradient-to-br from-[#0a1628] via-[#0d1a2e] to-[#0d1520] min-h-screen text-slate-100 font-sans antialiased">
+    <div className="bg-[#0d1f3c] min-h-screen text-slate-100 font-sans antialiased">
     <div className="w-full px-4 md:px-6 py-6 space-y-8">
 
       {/* ── HEADER ── */}
