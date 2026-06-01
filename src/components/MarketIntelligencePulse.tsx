@@ -225,7 +225,10 @@ export function MarketIntelligencePulse() {
       ? (INTEL_CATEGORY_BLOCKS[mode] ?? [])
       : [];
     const map = new Map<string, { count: number; channels: Set<string>; insights: string[] }>();
-    filteredVideos.forEach(v => {
+    // filteredVideos is already sorted by AI score descending.
+    // Only use the top 25 highest-scoring approved videos so weak or loosely related
+    // videos don't dilute the consensus signal.
+    filteredVideos.slice(0, 25).forEach(v => {
       const ai = aiScores[v.videoId];
       if (!ai) return;
       ai.categories.forEach(cat => {
@@ -247,15 +250,14 @@ export function MarketIntelligencePulse() {
       });
     });
     const sorted = [...map.entries()].sort((a, b) => b[1].count - a[1].count);
-    // Require at least 2 unique creators per theme — single-creator topics are noise.
-    // Each theme gets its own full creator list (up to 5) without cross-theme deduplication,
-    // so finance/investing themes aren't starved of creators by an AI theme running first.
     return sorted
       .filter(([, { channels }]) => channels.size >= 3)
       .slice(0, 8)
       .map(([topic, { count, channels, insights }]) => ({
         topic, count, creators: channels.size,
-        channelNames: [...channels].slice(0, 5),
+        // Send all contributing channel names — no cap — so the consensus API
+        // shows the correct creator count and can name every source.
+        channelNames: [...channels],
         insights,
       }));
   }, [filteredVideos, aiScores]);
