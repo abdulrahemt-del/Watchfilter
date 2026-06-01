@@ -51,7 +51,7 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
   if (!clusters.length || !active) return null;
 
   return (
-    <div className="bg-[#0d1117] text-slate-100 rounded-2xl p-6 space-y-6">
+    <div className="bg-gradient-to-br from-[#0a1628] via-[#0d1a2e] to-[#0d1520] text-slate-100 rounded-2xl p-6 space-y-6">
 
       {/* Header */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-800 pb-5 gap-4">
@@ -64,7 +64,7 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-[#101520] border border-slate-800 px-4 py-2 rounded-xl text-xs font-mono">
+        <div className="flex items-center gap-3 bg-[#0d1a2e]/80 border border-slate-700/50 px-4 py-2 rounded-xl text-xs font-mono">
           <div className="text-left">
             <span className="text-[10px] text-slate-500 uppercase block">Engine</span>
             <span className="text-emerald-400 font-bold">✓ Live</span>
@@ -128,8 +128,8 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
                   onClick={() => setSelectedId(cluster.id)}
                   className={`p-4 rounded-xl border cursor-pointer transition-all select-none ${
                     isSelected
-                      ? "bg-[#0d1f3c] border-blue-500/50 shadow-md ring-1 ring-blue-500/20"
-                      : "bg-[#101520] border-slate-800 hover:border-slate-700 hover:bg-[#0d1520]"
+                      ? "bg-[#0d2347] border-blue-500/50 shadow-md ring-1 ring-blue-500/20"
+                      : "bg-[#0d1a2e]/80 border-slate-700/50 hover:border-slate-600 hover:bg-[#0d2040]/60"
                   }`}
                 >
                   <div className="flex justify-between items-center text-[11px] font-mono text-slate-500 mb-1.5">
@@ -172,7 +172,7 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
                 : undefined;
 
               const card = (
-                <div className="bg-[#101520] border border-slate-800 rounded-xl p-4 space-y-3 hover:border-slate-700 transition-all group">
+                <div className="bg-[#0d1a2e]/80 border border-slate-700/50 rounded-xl p-4 space-y-3 hover:border-slate-600 transition-all group">
                   {/* Header row */}
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-0.5 min-w-0">
@@ -205,7 +205,7 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
                   </div>
 
                   {/* Verbatim quote */}
-                  <div className="bg-slate-900/60 border-l-2 border-purple-500/40 rounded-r-lg p-3 group-hover:border-purple-400 transition-colors">
+                  <div className="bg-[#091422]/80 border-l-2 border-purple-500/40 rounded-r-lg p-3 group-hover:border-purple-400 transition-colors">
                     <p className="text-sm font-mono text-slate-400 group-hover:text-slate-300 leading-relaxed italic transition-colors">
                       &ldquo;{citation.verbatimTranscriptQuote}&rdquo;
                     </p>
