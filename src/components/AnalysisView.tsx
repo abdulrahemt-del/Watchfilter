@@ -691,6 +691,45 @@ function QuickFeedback({ analysisId, videoTitle }: { analysisId: string; videoTi
   );
 }
 
+/* ── Re-analyze Button ── */
+type ReanalyzeState = "idle" | "loading" | "done" | "error";
+
+function ReanalyzeButton({ youtubeUrl, onRefresh }: { youtubeUrl: string; onRefresh: () => void }) {
+  const [state, setState] = useState<ReanalyzeState>("idle");
+
+  async function reanalyze() {
+    if (state === "loading") return;
+    setState("loading");
+    try {
+      const res = await fetch("/api/analyze?force=true", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: youtubeUrl }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setState("done");
+      onRefresh();
+    } catch {
+      setState("error");
+      setTimeout(() => setState("idle"), 5000);
+    }
+  }
+
+  return (
+    <button
+      onClick={() => void reanalyze()}
+      disabled={state === "loading"}
+      className="btn-email"
+      title="Force a fresh analysis, bypassing the cache"
+    >
+      {state === "loading" ? <><span className="spinner" /> Re-analyzing…</> :
+       state === "done" ? "✓ Done" :
+       state === "error" ? "❌ Failed — retry" :
+       "↻ Re-analyze"}
+    </button>
+  );
+}
+
 /* ── Main Component ── */
 export function AnalysisView({ analysis, onRefresh, onPlayAudio }: {
   analysis: SavedAnalysis;
@@ -811,6 +850,9 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio }: {
           )}
           {needsEnhancement && onRefresh && (
             <EnhanceButton analysisId={analysis.id} onRefresh={onRefresh} />
+          )}
+          {onRefresh && (
+            <ReanalyzeButton youtubeUrl={analysis.youtubeUrl} onRefresh={onRefresh} />
           )}
         </div>
       </div>
