@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "analyze": "tsx scripts/analyze-cli.ts"
+    "analyze": "tsx scripts/analyze-cli.ts",
+    "smoke": "tsx scripts/smoke-test.ts",
+    "smoke:prod": "BASE_URL=https://watchfilter.vercel.app tsx scripts/smoke-test.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.3",

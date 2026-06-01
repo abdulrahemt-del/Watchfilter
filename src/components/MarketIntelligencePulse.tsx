@@ -90,6 +90,7 @@ export function MarketIntelligencePulse() {
   });
   const [aiLoading, setAiLoading]         = useState(false);
   const [conLoading, setConLoading]       = useState(false);
+  const [consensusKey, setConsensusKey]   = useState(0);
 
   // ── Bootstrap: load feed data only ────────────────────────────────────────
   useEffect(() => {
@@ -245,7 +246,7 @@ export function MarketIntelligencePulse() {
     // Each theme gets its own full creator list (up to 5) without cross-theme deduplication,
     // so finance/investing themes aren't starved of creators by an AI theme running first.
     return sorted
-      .filter(([, { channels }]) => channels.size >= 2)
+      .filter(([, { channels }]) => channels.size >= 3)
       .slice(0, 8)
       .map(([topic, { count, channels, insights }]) => ({
         topic, count, creators: channels.size,
@@ -296,7 +297,7 @@ export function MarketIntelligencePulse() {
       })
       .catch(() => { /* silent fail */ })
       .finally(() => setConLoading(false));
-  }, [todaysThemes, aiLoading, email]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [todaysThemes, aiLoading, email, consensusKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Widget data derivations ────────────────────────────────────────────────
 
@@ -515,6 +516,12 @@ export function MarketIntelligencePulse() {
 
   const isLoading = aiLoading || conLoading;
 
+  function handleForceRefresh() {
+    try { localStorage.removeItem(`wf_consensus_${email}`); } catch { /* ignore */ }
+    setConsensus(null);
+    setConsensusKey(k => k + 1);
+  }
+
   // ── Guards ─────────────────────────────────────────────────────────────────
 
   if (status === "loading") {
@@ -576,6 +583,14 @@ export function MarketIntelligencePulse() {
               {aiLoading ? "⚙ Scoring your feed… (first load ~30s, then cached for 12h)" : "⚙ Synthesizing…"}
             </span>
           )}
+          <button
+            onClick={handleForceRefresh}
+            disabled={isLoading}
+            className="text-[10px] font-mono text-slate-400 bg-slate-900 hover:bg-slate-800 hover:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+            title="Clear cached consensus and re-synthesize"
+          >
+            ↻ Refresh
+          </button>
           <div className="text-xs font-mono text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700">
             Last Sync: <span className="text-blue-400">{feedTs ? timeAgo(feedTs) : "—"}</span>
           </div>
