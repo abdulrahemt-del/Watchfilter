@@ -81,44 +81,43 @@ function chunkScript(text: string): string[] {
 }
 
 /**
- * Synthesize one data point word-for-word across all fields.
- * Order: Title → Quote → Core Insight → Why It Matters → Signal Quality →
- *        Verification → Second-Order Implications → Alternative View → Takeaway.
+ * Synthesize one data point word-for-word, matching exactly what the MetricCard shows by default.
+ * Order mirrors the card layout: Title → Signal badge → Direct Quote → Core Insight →
+ *   Second-Order Implications → Contrarian View → Actionable Takeaway → Confidence.
+ * why_it_matters is excluded — it lives in the hidden "Deep Analysis" drawer, not visible by default.
  */
 function synthesizeDataPointParagraph(
   title: string,
+  signalStrength: string | null,
   quote: string | null,
   speakerThesis: string | null,
-  whyItMatters: string | null,
-  signalStrength: string | null,
-  verificationStatus: string | null,
-  verificationReason: string | null,
   secondOrderImplications: string | null,
   contrarianView: string | null,
   actionableTakeaway: string | null,
+  verificationStatus: string | null,
+  verificationReason: string | null,
 ): string {
   const parts: string[] = [];
 
   parts.push(title.replace(/\.$/, "") + ".");
 
-  if (quote) parts.push(`"${quote}"`);
+  if (signalStrength) parts.push(`Signal: ${signalStrength}.`);
 
-  if (speakerThesis) parts.push(speakerThesis);
+  if (quote) parts.push(`Direct quote: "${quote}"`);
 
-  if (whyItMatters) parts.push(whyItMatters);
+  if (speakerThesis) parts.push(`Core insight: ${speakerThesis}`);
 
-  if (signalStrength) parts.push(`Signal quality: ${signalStrength}.`);
+  if (secondOrderImplications) parts.push(`Second-order implications: ${secondOrderImplications}`);
+
+  // contrarian_view values already start with "Alternative view:" per schema convention
+  if (contrarianView) parts.push(contrarianView);
+
+  if (actionableTakeaway) parts.push(`Takeaway: ${actionableTakeaway}`);
 
   if (verificationStatus) {
     const reason = verificationReason ? ` ${verificationReason}` : "";
-    parts.push(`Verification: ${verificationStatus}.${reason}`);
+    parts.push(`Confidence: ${verificationStatus}.${reason}`);
   }
-
-  if (secondOrderImplications) parts.push(secondOrderImplications);
-
-  if (contrarianView) parts.push(contrarianView);
-
-  if (actionableTakeaway) parts.push(actionableTakeaway);
 
   return parts.filter(Boolean).join(" ");
 }
@@ -173,15 +172,14 @@ export function buildPodcastScript(
     const para = "metric_title" in p
       ? synthesizeDataPointParagraph(
           String(p.metric_title ?? ""),
+          (p.signal_strength as string) ?? null,
           (p.direct_quote as string) ?? null,
           (p.speaker_thesis as string) ?? null,
-          (p.why_it_matters as string) ?? null,
-          (p.signal_strength as string) ?? null,
-          (p.verification_status as string) ?? null,
-          (p.verification_reason as string) ?? null,
           (p.second_order_implications as string) ?? null,
           (p.contrarian_view as string) ?? null,
           (p.actionable_takeaway as string) ?? null,
+          (p.verification_status as string) ?? null,
+          (p.verification_reason as string) ?? null,
         )
       : "metric_context" in p
         ? `${(p.metric_context as string)}: ${(p.metric_value as string)}.`
