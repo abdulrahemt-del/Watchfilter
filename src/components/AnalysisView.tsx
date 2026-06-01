@@ -873,7 +873,7 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio, onReanalyzed }:
                   return rb - ra;
                 })
                 .map((point, i) => (
-                  <MetricCard key={i} point={point} videoId={analysis.videoId} defaultOpen={i === 0} rank={i + 1} />
+                  <MetricCard key={i} point={point} videoId={analysis.videoId} defaultOpen={true} rank={i + 1} />
                 ));
             })()}
           </div>
