@@ -33,9 +33,9 @@ interface Props {
 }
 
 const EVIDENCE_COLOR: Record<ConsensusInsightNode["evidenceStrength"], string> = {
-  High:   "text-[#0a7a4a]",
-  Medium: "text-[#b45309]",
-  Low:    "text-[#6b8a99]",
+  High:   "text-emerald-400",
+  Medium: "text-amber-400",
+  Low:    "text-slate-500",
 };
 
 function timestampToSeconds(t: string): number {
@@ -51,46 +51,46 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
   if (!clusters.length || !active) return null;
 
   return (
-    <div className="space-y-6">
+    <div className="bg-[#0d1117] text-slate-100 rounded-2xl p-6 space-y-6">
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-[#c0d6df] pb-5 gap-4">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-800 pb-5 gap-4">
         <div>
-          <h1 className="text-xl font-black text-[#0f2535] tracking-tight font-mono uppercase">
+          <h1 className="text-xl font-black text-slate-100 tracking-tight font-mono uppercase">
             🕵️ WatchFilter Intelligence Terminal
           </h1>
-          <p className="text-xs text-[#6b8a99] font-mono mt-0.5">
+          <p className="text-xs text-slate-500 font-mono mt-0.5">
             Consensus vectors synthesized from your active channel subscriptions
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-[#f0f6f9] border border-[#c0d6df] px-4 py-2 rounded-xl text-xs font-mono">
+        <div className="flex items-center gap-3 bg-[#101520] border border-slate-800 px-4 py-2 rounded-xl text-xs font-mono">
           <div className="text-left">
-            <span className="text-[10px] text-[#6b8a99] uppercase block">Engine</span>
-            <span className="text-[#0a7a4a] font-bold">✓ Live</span>
+            <span className="text-[10px] text-slate-500 uppercase block">Engine</span>
+            <span className="text-emerald-400 font-bold">✓ Live</span>
           </div>
-          <div className="w-px h-6 bg-[#c0d6df]" />
+          <div className="w-px h-6 bg-slate-800" />
           <div className="text-right">
-            <span className="text-[10px] text-[#6b8a99] uppercase block">Last Updated</span>
-            <span className="text-[#4f6d7a] font-bold">{lastUpdated ?? "—"}</span>
+            <span className="text-[10px] text-slate-500 uppercase block">Last Updated</span>
+            <span className="text-slate-400 font-bold">{lastUpdated ?? "—"}</span>
           </div>
         </div>
       </div>
 
       {/* Low-creator warning */}
       {active.contributingCreatorsCount < 5 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex gap-3 items-start">
-            <span className="text-base text-amber-500 pt-0.5 select-none">⚠️</span>
+            <span className="text-base text-amber-400 pt-0.5 select-none">⚠️</span>
             <div className="space-y-0.5">
-              <h5 className="text-xs font-bold text-[#b45309] font-mono uppercase tracking-wider">
+              <h5 className="text-xs font-bold text-amber-400 font-mono uppercase tracking-wider">
                 Consensus Scope Restricted
               </h5>
-              <p className="text-xs text-[#6b8a99] leading-relaxed max-w-2xl">
+              <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
                 This theme is backed by{" "}
-                <strong className="text-[#0f2535]">{active.contributingCreatorsCount} creator channels</strong>.
+                <strong className="text-slate-200">{active.contributingCreatorsCount} creator channels</strong>.
                 {" "}Strong consensus requires{" "}
-                <strong className="text-[#0f2535]">5+ independent sources</strong> before treating it as market signal.
+                <strong className="text-slate-200">5+ independent sources</strong> before treating it as market signal.
               </p>
             </div>
           </div>
@@ -98,11 +98,11 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
       )}
 
       {/* Active synthesis panel */}
-      <div className="bg-gradient-to-br from-[#f0f6f9] to-white border border-[#c0d6df] rounded-xl p-5 shadow-sm space-y-2">
-        <div className="flex items-center gap-2 text-[10px] font-mono text-[#4a6fa5] font-bold uppercase tracking-widest">
+      <div className="bg-gradient-to-br from-[#0d1f3c] via-[#0d1520] to-[#130d2a] border border-blue-500/30 rounded-xl p-5 shadow-[0_0_24px_rgba(59,130,246,0.07)] space-y-2">
+        <div className="flex items-center gap-2 text-[10px] font-mono text-blue-400 font-bold uppercase tracking-widest">
           <span>🎯</span> Active Synthesis — {active.topicTitle}
         </div>
-        <h2 className="text-base font-bold tracking-tight text-[#0f2535] leading-relaxed">
+        <h2 className="text-base font-bold tracking-tight text-slate-100 leading-relaxed">
           {active.executiveSummary}
         </h2>
       </div>
@@ -113,10 +113,10 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
         {/* Left: cluster selector */}
         <div className="lg:col-span-1 space-y-3">
           <div className="px-1 flex justify-between items-center">
-            <span className="text-[11px] font-mono text-[#6b8a99] font-bold uppercase tracking-wider">
+            <span className="text-[11px] font-mono text-slate-500 font-bold uppercase tracking-wider">
               Synthesized Trends
             </span>
-            <span className="text-[10px] font-mono text-[#6b8a99]">Click to filter</span>
+            <span className="text-[10px] font-mono text-slate-600">Click to filter</span>
           </div>
 
           <div className="space-y-3">
@@ -128,24 +128,24 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
                   onClick={() => setSelectedId(cluster.id)}
                   className={`p-4 rounded-xl border cursor-pointer transition-all select-none ${
                     isSelected
-                      ? "bg-white border-[#4a6fa5] shadow-md ring-1 ring-[#4a6fa5]/20"
-                      : "bg-white border-[#c0d6df] hover:border-[#a8bfcb] hover:bg-[#f8fafc]"
+                      ? "bg-[#0d1f3c] border-blue-500/50 shadow-md ring-1 ring-blue-500/20"
+                      : "bg-[#101520] border-slate-800 hover:border-slate-700 hover:bg-[#0d1520]"
                   }`}
                 >
-                  <div className="flex justify-between items-center text-[11px] font-mono text-[#6b8a99] mb-1.5">
-                    <span className="font-bold text-[#4f6d7a]">{cluster.rankIndex}</span>
+                  <div className="flex justify-between items-center text-[11px] font-mono text-slate-500 mb-1.5">
+                    <span className="font-bold text-slate-400">{cluster.rankIndex}</span>
                     <span className={`font-bold ${EVIDENCE_COLOR[cluster.evidenceStrength]}`}>
                       {cluster.evidenceStrength} Signal
                     </span>
                   </div>
 
-                  <h3 className="text-[15px] font-black font-mono tracking-tight text-[#0f2535] mb-1">
+                  <h3 className="text-[15px] font-black font-mono tracking-tight text-slate-100 mb-1">
                     {cluster.topicTitle}
                   </h3>
 
-                  <div className="flex items-center justify-between text-xs font-mono text-[#6b8a99] pt-2 border-t border-[#c0d6df] mt-3">
+                  <div className="flex items-center justify-between text-xs font-mono text-slate-500 pt-2 border-t border-slate-800 mt-3">
                     <span>{cluster.contributingCreatorsCount} creators · {cluster.totalLinkedVideos} videos</span>
-                    <span className="text-[#4a6fa5] font-bold">{cluster.consensusAgreementRate}%</span>
+                    <span className="text-blue-400 font-bold">{cluster.consensusAgreementRate}%</span>
                   </div>
                 </div>
               );
@@ -156,11 +156,11 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
         {/* Right: citation evidence trails */}
         <div className="lg:col-span-2 space-y-3">
           <div className="px-1 flex justify-between items-center">
-            <span className="text-[11px] font-mono text-[#0f2535] font-bold uppercase tracking-wider">
+            <span className="text-[11px] font-mono text-slate-300 font-bold uppercase tracking-wider">
               📋 Evidence Trails:{" "}
-              <span className="text-[#4a6fa5]">{active.topicTitle}</span>
+              <span className="text-blue-400">{active.topicTitle}</span>
             </span>
-            <span className="text-[10px] font-mono text-[#6b8a99]">
+            <span className="text-[10px] font-mono text-slate-500">
               {active.supportingCitations.length} citations
             </span>
           </div>
@@ -172,34 +172,32 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
                 : undefined;
 
               const card = (
-                <div
-                  className="bg-white border border-[#c0d6df] rounded-xl p-4 space-y-3 hover:border-[#4a6fa5] transition-all group"
-                >
+                <div className="bg-[#101520] border border-slate-800 rounded-xl p-4 space-y-3 hover:border-slate-700 transition-all group">
                   {/* Header row */}
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-0.5 min-w-0">
-                      <span className="text-[11px] font-mono text-[#4a6fa5] font-bold uppercase tracking-wider bg-blue-50 border border-blue-100 px-2 py-0.5 rounded">
+                      <span className="text-[11px] font-mono text-blue-400 font-bold uppercase tracking-wider bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded">
                         Citation #{index + 1}
                       </span>
-                      <h4 className="text-sm font-bold text-[#1a2e3b] tracking-tight leading-snug pt-1 group-hover:text-[#4a6fa5] transition-colors">
+                      <h4 className="text-sm font-bold text-slate-200 tracking-tight leading-snug pt-1 group-hover:text-blue-300 transition-colors">
                         {citation.videoTitle}
                       </h4>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0 bg-[#f0f6f9] border border-[#c0d6df] px-2 py-1 rounded-md">
-                      <span className="text-xs font-mono text-[#4f6d7a] font-semibold">{citation.channelName}</span>
+                    <div className="flex items-center gap-1.5 shrink-0 bg-slate-900 border border-slate-700 px-2 py-1 rounded-md">
+                      <span className="text-xs font-mono text-slate-400 font-semibold">{citation.channelName}</span>
                       {ytUrl ? (
                         <a
                           href={ytUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={e => e.stopPropagation()}
-                          className="text-[11px] font-mono bg-purple-50 text-[#6b4fbb] border border-purple-200 px-1.5 py-0.5 rounded font-bold hover:bg-purple-100 transition-colors"
+                          className="text-[11px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded font-bold hover:bg-purple-500/20 transition-colors"
                         >
                           ▶ {citation.timestampMark}
                         </a>
                       ) : (
-                        <span className="text-[11px] font-mono bg-purple-50 text-[#6b4fbb] border border-purple-200 px-1.5 py-0.5 rounded font-bold">
+                        <span className="text-[11px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded font-bold">
                           {citation.timestampMark}
                         </span>
                       )}
@@ -207,21 +205,21 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
                   </div>
 
                   {/* Verbatim quote */}
-                  <div className="bg-[#f8fafc] border-l-2 border-purple-300 rounded-r-lg p-3 group-hover:border-purple-400 transition-colors">
-                    <p className="text-sm font-mono text-[#6b8a99] group-hover:text-[#4f6d7a] leading-relaxed italic transition-colors">
+                  <div className="bg-slate-900/60 border-l-2 border-purple-500/40 rounded-r-lg p-3 group-hover:border-purple-400 transition-colors">
+                    <p className="text-sm font-mono text-slate-400 group-hover:text-slate-300 leading-relaxed italic transition-colors">
                       &ldquo;{citation.verbatimTranscriptQuote}&rdquo;
                     </p>
                   </div>
 
                   {/* Footer row */}
-                  <div className="flex items-center justify-between text-xs font-mono text-[#6b8a99] pt-1 border-t border-[#c0d6df]">
-                    <span className="text-[#0a7a4a] font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  <div className="flex items-center justify-between text-xs font-mono text-slate-500 pt-1 border-t border-slate-800">
+                    <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                       🛡️ {citation.fluffTimeSaved} fluff removed
                     </span>
                     {citation.analysisId && (
                       <Link
                         href={`/analyses/${citation.analysisId}`}
-                        className="text-[#4a6fa5] font-bold uppercase tracking-wider text-[11px] hover:underline"
+                        className="text-blue-400 font-bold uppercase tracking-wider text-[11px] hover:underline"
                         onClick={e => e.stopPropagation()}
                       >
                         Full Report ↗
