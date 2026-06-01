@@ -52,7 +52,8 @@ export function MarketIntelligencePulse() {
       const saved = sessionStorage.getItem("wf_feed_mode");
       if (saved === "business" || saved === "founder" || saved === "finance") return saved as FeedMode;
     } catch { /* ignore */ }
-    return "founder";
+    // Default to "business" — broader than "founder", includes finance/investing channels
+    return "business";
   });
 
   // Read all caches synchronously on first render — content appears without a blank flash
@@ -160,8 +161,9 @@ export function MarketIntelligencePulse() {
 
   async function runAIPipeline(videos: FeedVideo[], aiKey: string) {
     // videos is already the structural filter output — channel blocks, title blocks,
-    // duration gate, and mode keyword inclusion already applied. Just cap at 50.
-    const eligible = videos.slice(0, 50);
+    // duration gate, and mode keyword inclusion already applied. Cap at 100 to cover
+    // users with many subscribed channels across diverse categories.
+    const eligible = videos.slice(0, 100);
     if (!eligible.length) return;
 
     setAiLoading(true);
@@ -239,12 +241,17 @@ export function MarketIntelligencePulse() {
       });
     });
     const sorted = [...map.entries()].sort((a, b) => b[1].count - a[1].count);
-    const usedChannels = new Set<string>();
-    return sorted.slice(0, 8).map(([topic, { count, channels, insights }]) => {
-      const pills = [...channels].filter(ch => !usedChannels.has(ch)).slice(0, 3);
-      pills.forEach(ch => usedChannels.add(ch));
-      return { topic, count, creators: channels.size, channelNames: pills, insights };
-    });
+    // Require at least 2 unique creators per theme — single-creator topics are noise.
+    // Each theme gets its own full creator list (up to 5) without cross-theme deduplication,
+    // so finance/investing themes aren't starved of creators by an AI theme running first.
+    return sorted
+      .filter(([, { channels }]) => channels.size >= 2)
+      .slice(0, 8)
+      .map(([topic, { count, channels, insights }]) => ({
+        topic, count, creators: channels.size,
+        channelNames: [...channels].slice(0, 5),
+        insights,
+      }));
   }, [filteredVideos, aiScores]);
 
   // ── Consensus pipeline ─────────────────────────────────────────────────────

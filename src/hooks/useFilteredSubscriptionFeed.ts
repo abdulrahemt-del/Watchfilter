@@ -364,20 +364,30 @@ export const UNKNOWN_AI_THRESHOLD     = 85;   // AI businessRelevance gate for u
 // selected Founder or Finance mode; those categories belong to business mode.
 
 export const INTEL_CATEGORY_BLOCKS: Partial<Record<FeedMode, string[]>> = {
+  business: [
+    // AI tutorials/tools — "business" mode shows strategy, not how-to AI content
+    "ai tools", "ai automation", "ai tutorial", "ai workflow", "ai agents",
+    "ai ", // blocks "AI Business", "AI Strategy", "AI Marketing" etc.
+    "artificial intelligence",
+  ],
   founder: [
     // Marketing / sales tactics — not founding
     "sales", "lead generation", "lead gen", "digital marketing",
     "cold outreach", "email marketing", "social media", "advertising",
     "marketing", "seo", "copywriting",
-    // AI tools / tutorials — founding ≠ AI automation
+    // AI tools / tutorials and broad AI categories
     "ai tools", "ai automation", "ai tutorial", "ai workflow", "ai agents",
+    "ai ", // blocks "AI Business", "AI Strategy" etc.
+    "artificial intelligence",
   ],
   finance: [
     // Marketing / sales / online business — not investing
     "sales", "lead generation", "lead gen", "digital marketing",
     "cold outreach", "email marketing", "advertising", "seo", "copywriting", "marketing",
-    // AI tools and general business — finance mode is for investing/markets only
+    // All AI categories — finance mode is investing/markets only
     "ai tools", "ai automation", "ai tutorial", "ai workflow", "ai agents", "ai business",
+    "ai ", // blocks any multi-word AI category
+    "artificial intelligence",
     // Founding / operations — not relevant for investing mode
     "entrepreneurship", "startup", "company building", "bootstrapping",
   ],
