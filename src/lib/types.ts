@@ -20,7 +20,7 @@ export const videoAnalysisSchema = z.object({
         metric_title: z
           .string()
           .describe(
-            "The specific data point as a complete, self-explanatory statement including the number and what it measures (e.g. '22x more memorable than statistics alone')",
+            "The specific data point as a complete, self-explanatory statement. May be quantitative ('22x more memorable than statistics alone') OR a high-conviction qualitative insight with specific evidence ('Pabrai holds positions for 3–5 years minimum regardless of short-term volatility'). Must include a specific number, timeframe, ratio, name, or direct evidence claim — not a vague opinion.",
           ),
         speaker_thesis: z
           .string()
@@ -127,8 +127,8 @@ export const videoAnalysisSchema = z.object({
           ),
       }),
     )
-    .min(1)
-    .describe("Key quantitative claims with causal chain, direct quote, credibility assessment, and timestamp"),
+    .min(5)
+    .describe("At least 5 specific, evidence-backed claims with causal chain, direct quote, credibility assessment, and timestamp. Mix quantitative and high-conviction qualitative claims — never fewer than 5."),
   actionable_takeaways: z
     .array(
       z.object({

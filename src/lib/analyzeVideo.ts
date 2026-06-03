@@ -64,16 +64,21 @@ export async function analyzeYouTubeVideo(
 
   let analysis = await summarizeTranscript(transcriptInput);
 
-  // Hard enforce minimum 5 data points — retry at higher temperature and MERGE unique points.
+  // Safety net — schema enforces min(5) but retry if model falls short anyway.
+  // Round 1: add strictly unique points from retry.
+  // Round 2: if still short, add ANY retry points not already present (looser key).
   if (analysis.hard_data_points.length < 5) {
     const retry = await summarizeTranscript({ ...transcriptInput, temperature: 0.4 });
-    const seen = new Set(
-      analysis.hard_data_points.map(p => p.metric_title.toLowerCase().slice(0, 50))
-    );
-    const fresh = retry.hard_data_points.filter(
-      p => !seen.has(p.metric_title.toLowerCase().slice(0, 50))
-    );
+    const seen50 = new Set(analysis.hard_data_points.map(p => p.metric_title.toLowerCase().slice(0, 50)));
+    const fresh = retry.hard_data_points.filter(p => !seen50.has(p.metric_title.toLowerCase().slice(0, 50)));
     analysis = { ...analysis, hard_data_points: [...analysis.hard_data_points, ...fresh] };
+
+    // Still short — add looser matches (first 20 chars) until we hit 5.
+    if (analysis.hard_data_points.length < 5) {
+      const seen20 = new Set(analysis.hard_data_points.map(p => p.metric_title.toLowerCase().slice(0, 20)));
+      const extra = retry.hard_data_points.filter(p => !seen20.has(p.metric_title.toLowerCase().slice(0, 20)));
+      analysis = { ...analysis, hard_data_points: [...analysis.hard_data_points, ...extra] };
+    }
   }
 
   return {
