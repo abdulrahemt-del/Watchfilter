@@ -366,6 +366,14 @@ export async function getUserPipelineCache(userId: string): Promise<{
   } catch { return null; }
 }
 
+export async function deleteUserPipelineCache(userId: string): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: "UPDATE intelligence_snapshot SET ai_scores_cache = NULL, consensus_cache = NULL, pipeline_cached_at = NULL WHERE user_id = ?",
+    args: [userId],
+  });
+}
+
 export async function upsertUserPipelineCache(
   userId: string,
   aiScores: Record<string, unknown>,

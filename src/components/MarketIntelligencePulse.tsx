@@ -571,8 +571,15 @@ export function MarketIntelligencePulse() {
   const isLoading = aiLoading || conLoading;
 
   function handleForceRefresh() {
+    // Wipe cloud DB cache so next load doesn't restore stale data
+    fetch("/api/intelligence/scores", { method: "DELETE" }).catch(() => { /* non-blocking */ });
+    // Wipe both localStorage caches
     try { localStorage.removeItem(`wf_consensus_${email}`); } catch { /* ignore */ }
+    try { localStorage.removeItem(`wf_ai_${email}`); } catch { /* ignore */ }
+    // Reset in-memory state and allow the AI pipeline to re-run
     setConsensus(null);
+    setAiScores({});
+    aiPipelineStarted.current = false;
     setConsensusKey(k => k + 1);
   }
 
