@@ -142,6 +142,7 @@ const PRE_BLOCK_CHANNELS = [
   "middle east eye", "the young turks", "secular talk",
   "chai with my bhai", "huda tv", "ali dawah", "joel osteen",
   "tmz", "entertainment tonight",
+  "mighty car mods", "donut media", "throttle house", "supercar blondie",
 ];
 
 const PRE_BLOCK_TITLE_PATTERNS = [

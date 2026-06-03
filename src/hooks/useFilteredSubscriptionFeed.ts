@@ -231,6 +231,10 @@ export const CHANNEL_AFFINITY: Record<string, number> = {
   "motortrend":             -100,
   "carwow":                 -100,
   "car and driver":         -100,
+  "mighty car mods":        -100,
+  "donut media":            -100,
+  "throttle house":         -100,
+  "supercar blondie":       -100,
 
   // ── Religion: hard block (-100) ──────────────────────────────────────────
   "huda tv":                -100,
@@ -428,6 +432,8 @@ export const HARD_TITLE_BLOCKS = [
   "travel vlog", "day in my life", "morning routine",
   // Automotive
   "car review", "test drive", "lamborghini", "ferrari",
+  "my new car", "buying a car", "supercar", "buying a supercar",
+  "car mod", "car mods", "car build",
   // Summary / compilation clips (low-value reposts)
   "extended summary",
   // History / science / nature documentaries
