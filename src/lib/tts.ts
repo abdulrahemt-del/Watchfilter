@@ -94,8 +94,6 @@ function synthesizeDataPointParagraph(
   secondOrderImplications: string | null,
   contrarianView: string | null,
   actionableTakeaway: string | null,
-  verificationStatus: string | null,
-  verificationReason: string | null,
 ): string {
   const parts: string[] = [];
 
@@ -113,11 +111,6 @@ function synthesizeDataPointParagraph(
   if (contrarianView) parts.push(contrarianView);
 
   if (actionableTakeaway) parts.push(`Takeaway: ${actionableTakeaway}`);
-
-  if (verificationStatus) {
-    const reason = verificationReason ? ` ${verificationReason}` : "";
-    parts.push(`Confidence: ${verificationStatus}.${reason}`);
-  }
 
   return parts.filter(Boolean).join(" ");
 }
@@ -178,8 +171,6 @@ export function buildPodcastScript(
           (p.second_order_implications as string) ?? null,
           (p.contrarian_view as string) ?? null,
           (p.actionable_takeaway as string) ?? null,
-          (p.verification_status as string) ?? null,
-          (p.verification_reason as string) ?? null,
         )
       : "metric_context" in p
         ? `${(p.metric_context as string)}: ${(p.metric_value as string)}.`
