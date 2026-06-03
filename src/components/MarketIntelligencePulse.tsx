@@ -46,14 +46,10 @@ export function MarketIntelligencePulse() {
   const { data: session, status } = useSession();
   const email = session?.user?.email ?? "anon";
 
-  // Mirror the feed mode so intelligence always reflects the same video pool as the feed.
-  const [mode] = useState<FeedMode>(() => {
-    try {
-      const saved = sessionStorage.getItem("wf_feed_mode");
-      if (saved === "business" || saved === "founder" || saved === "finance") return saved as FeedMode;
-    } catch { /* ignore */ }
-    return "founder";
-  });
+  // Intelligence always uses "business" mode — the catch-all that collects ALL approved
+  // business/investing/startup/finance content. Narrow modes (founder/finance) only apply
+  // to the subscription feed tab's display; they must NOT limit the intelligence pool.
+  const mode: FeedMode = "business";
 
   // Read all caches synchronously on first render — content appears without a blank flash
   const [feedVideos, setFeedVideos] = useState<FeedVideo[]>(() => {
@@ -103,15 +99,33 @@ export function MarketIntelligencePulse() {
     try { const rawSnap = localStorage.getItem(snapshotKey); if (rawSnap) setPrevSnapshot(JSON.parse(rawSnap)); } catch { /* ignore */ }
     try { localStorage.setItem(visitKey, JSON.stringify(Date.now())); } catch { /* ignore */ }
 
-    try {
-      const raw = localStorage.getItem(feedKey);
-      if (!raw) { setFeedMissing(true); return; }
-      const cached = JSON.parse(raw) as { ts: number; videos: FeedVideo[] };
-      if (!cached.videos?.length) { setFeedMissing(true); return; }
-      if (!feedVideos.length) setFeedVideos(cached.videos);
-      if (!feedTs) setFeedTs(cached.ts);
-      // AI pipeline handled by the separate effect below that watches structuralFilter
-    } catch { setFeedMissing(true); }
+    function tryLoadFeed() {
+      try {
+        const raw = localStorage.getItem(feedKey);
+        if (!raw) return false;
+        const cached = JSON.parse(raw) as { ts: number; videos: FeedVideo[] };
+        if (!cached.videos?.length) return false;
+        setFeedVideos(v => v.length ? v : cached.videos);
+        setFeedTs(t => t ?? cached.ts);
+        setFeedMissing(false);
+        return true;
+      } catch { return false; }
+    }
+
+    if (!tryLoadFeed()) {
+      setFeedMissing(true);
+      // SubscriptionFeed (always mounted) fetches feed async and writes to localStorage.
+      // Listen for that write and pick it up without requiring a full page refresh.
+      const onStorage = (e: StorageEvent) => {
+        if (e.key === feedKey && e.newValue) {
+          if (tryLoadFeed()) window.removeEventListener("storage", onStorage);
+        }
+      };
+      window.addEventListener("storage", onStorage);
+      // Fallback poll — storage events don't fire within the same tab in some browsers
+      const poll = setInterval(() => { if (tryLoadFeed()) clearInterval(poll); }, 2000);
+      setTimeout(() => clearInterval(poll), 30_000);
+    }
   }, [status, email]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── AI pipeline: fires once structural filter is ready ─────────────────────
@@ -208,6 +222,37 @@ export function MarketIntelligencePulse() {
     }).catch(() => { /* non-blocking */ });
   }
 
+  // ── Pipeline diagnostics ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!feedVideos.length) return;
+    const aiReady = Object.keys(aiScores).length > 0;
+    const scored = Object.values(aiScores);
+    const approved = scored.filter(s => s.topicCategory !== "excluded");
+    const rejected = scored.filter(s => s.topicCategory === "excluded");
+
+    const rejectedByChannel: Record<string, number> = {};
+    rejected.forEach(s => {
+      const v = feedVideos.find(f => f.videoId === s.videoId);
+      if (v) rejectedByChannel[v.channelTitle] = (rejectedByChannel[v.channelTitle] ?? 0) + 1;
+    });
+
+    const catCounts: Record<string, number> = {};
+    approved.forEach(s => s.categories?.forEach(c => { catCounts[c] = (catCounts[c] ?? 0) + 1; }));
+
+    const approvedChannels = new Set(
+      approved.map(s => feedVideos.find(f => f.videoId === s.videoId)?.channelTitle).filter(Boolean)
+    );
+
+    console.group("[intel-pool] Pipeline diagnostics");
+    console.log(`Feed total: ${feedVideos.length}`);
+    console.log(`Structural filter (business mode): ${structuralFilter.length}`);
+    console.log(`AI scored: ${scored.length} | Approved: ${approved.length} | Rejected: ${rejected.length} | AI ready: ${aiReady}`);
+    console.log("Approved channels:", [...approvedChannels].sort());
+    console.log("Rejected by channel:", rejectedByChannel);
+    console.log("Approved categories:", catCounts);
+    console.groupEnd();
+  }, [feedVideos.length, structuralFilter.length, Object.keys(aiScores).length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Derived ────────────────────────────────────────────────────────────────
 
   // filteredVideos = structural filter → AI exclusion gate.
@@ -225,9 +270,7 @@ export function MarketIntelligencePulse() {
   }, [structuralFilter, aiScores]);
 
   const todaysThemes = useMemo(() => {
-    const blocked = (mode === "founder" || mode === "finance" || mode === "business")
-      ? (INTEL_CATEGORY_BLOCKS[mode] ?? [])
-      : [];
+    const blocked = (INTEL_CATEGORY_BLOCKS[mode as keyof typeof INTEL_CATEGORY_BLOCKS]) ?? [];
     const map = new Map<string, { count: number; channels: Set<string>; insights: string[] }>();
     // filteredVideos is already sorted by AI score descending.
     // Only use the top 25 highest-scoring approved videos so weak or loosely related
