@@ -50,7 +50,7 @@ export const videoAnalysisSchema = z.object({
         credibility_check: z
           .string()
           .optional()
-          .describe("Legacy field — superseded by verification_status and verification_reason."),
+          .describe("Legacy field — superseded by evidence_strength and evidence_factors."),
         why_it_matters: z
           .string()
           .describe(
@@ -71,15 +71,15 @@ export const videoAnalysisSchema = z.object({
           .describe(
             "One sentence explaining the signal strength assignment. Reference the specific evidence type (e.g., 'First-person revenue figure stated by the speaker with no external source cited' or 'Cited academic study from a named institution').",
           ),
-        verification_status: z
-          .enum(["Verified", "Partially Verified", "Unverified", "Opinion", "Speculation"])
+        evidence_strength: z
+          .enum(["Strong", "Moderate", "Weak"])
           .describe(
-            "Verified = independently confirmable fact or data from a named external source. Partially Verified = specific claim that is plausible but not independently confirmed in this video. Unverified = assertion with no supporting evidence. Opinion = speaker's view presented as insight, not objectively verifiable. Speculation = forward-looking prediction.",
+            "Evidence quality rating based solely on what is present in the transcript — NOT internet verifiability. Strong = specific metrics/numbers cited, first-hand operating experience, concrete business examples, case studies, or multiple supporting references. Moderate = reasonable claim supported by speaker experience or some examples, but limited quantitative evidence. Weak = speculation, prediction, opinion, or assertion with no supporting evidence. Never default to Weak just because an external source is not cited.",
           ),
-        verification_reason: z
+        evidence_factors: z
           .string()
           .describe(
-            "One sentence explaining the verification status. Be specific about what evidence exists or is missing.",
+            "2–4 factor lines explaining this evidence_strength assignment. Each line starts with ✓ (supporting factor) or ⚠ (limiting factor), joined with newlines. Be specific to THIS claim's actual evidence — every claim must produce different factors. Supporting examples: '✓ Specific revenue figure stated by speaker', '✓ First-hand operating experience described', '✓ Multiple business examples provided', '✓ Consistent with creator consensus in this space'. Limiting examples: '⚠ No quantitative evidence cited', '⚠ Forward-looking prediction', '⚠ Single anecdote, no broader pattern', '⚠ Speaker opinion not corroborated'. Never repeat the same factor lines across different data points.",
           ),
 
         viewer_blind_spot: z
@@ -93,7 +93,7 @@ export const videoAnalysisSchema = z.object({
           .string()
           .optional()
           .describe(
-            "What happens next if this data point is true? Format: 'If [claim] is true, then [first-order consequence], which means [second-order consequence].' 2–3 sentences. Avoid generic phrasing — be specific to this speaker's argument.",
+            "What happens next if this data point is true — one level deeper than the obvious. Format: 'If [claim] is true, then [non-obvious first-order consequence], which means [second-order consequence for a founder/investor].' BANNED: obvious logical chains like 'higher LTV → more revenue' or 'lower cost → higher margin'. Instead surface competitive, structural, or market-level consequences a founder wouldn't immediately think of. Example: 'If LTV doubles, then founders can sustainably outbid competitors on paid acquisition, which means market consolidation accelerates toward whoever builds LTV fastest — not who has the cheapest product.' Be specific to this speaker's argument.",
           ),
 
         contrarian_view: z

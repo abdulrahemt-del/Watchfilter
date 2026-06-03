@@ -105,7 +105,12 @@ type DataPoint =
   | string;
 
 type SignalStrength = "Very High" | "High" | "Medium" | "Low";
-type VerificationStatus = "Verified" | "Partially Verified" | "Unverified" | "Opinion" | "Speculation";
+type EvidenceStrength = "Strong" | "Moderate" | "Weak";
+
+const LEGACY_EVIDENCE_MAP: Record<string, EvidenceStrength> = {
+  "Verified": "Strong", "Partially Verified": "Moderate",
+  "Unverified": "Weak", "Opinion": "Weak", "Speculation": "Weak",
+};
 
 type ResolvedPoint = {
   title: string;
@@ -120,8 +125,8 @@ type ResolvedPoint = {
   actionableTakeaway: string | null;
   signalStrength: SignalStrength | null;
   signalReason: string | null;
-  verificationStatus: VerificationStatus | null;
-  verificationReason: string | null;
+  evidenceStrength: EvidenceStrength | null;
+  evidenceFactors: string | null;
   viewerBlindSpot: string | null;
   secondOrderImplications: string | null;
   contrarianView: string | null;
@@ -133,7 +138,7 @@ const EMPTY_RESOLVED: ResolvedPoint = {
   title: "", speakerThesis: null, strategicIntent: null, causalChain: null,
   quote: null, contextExample: null, credibilityCheck: null, timestamp: null,
   whyItMatters: null, actionableTakeaway: null, signalStrength: null,
-  signalReason: null, verificationStatus: null, verificationReason: null,
+  signalReason: null, evidenceStrength: null, evidenceFactors: null,
   viewerBlindSpot: null, secondOrderImplications: null, contrarianView: null,
   opportunityPotential: null, opportunityReason: null,
 };
@@ -157,8 +162,10 @@ function resolveDataPoint(point: DataPoint): ResolvedPoint {
       actionableTakeaway:      (p.actionable_takeaway as string | undefined) ?? null,
       signalStrength:          (p.signal_strength as SignalStrength | undefined) ?? null,
       signalReason:            (p.signal_reason as string | undefined) ?? null,
-      verificationStatus:      (p.verification_status as VerificationStatus | undefined) ?? null,
-      verificationReason:      (p.verification_reason as string | undefined) ?? null,
+      evidenceStrength:        (p.evidence_strength as EvidenceStrength | undefined)
+                               ?? LEGACY_EVIDENCE_MAP[p.verification_status as string ?? ""] ?? null,
+      evidenceFactors:         (p.evidence_factors as string | undefined)
+                               ?? (p.verification_reason as string | undefined) ?? null,
       viewerBlindSpot:         (p.viewer_blind_spot as string | undefined) ?? null,
       secondOrderImplications: (p.second_order_implications as string | undefined) ?? null,
       contrarianView:          (p.contrarian_view as string | undefined) ?? null,
@@ -203,12 +210,10 @@ const SIGNAL_LABEL: Record<SignalStrength, string> = {
   "Low":       "EMERGING SIGNAL",
 };
 
-const VERIFICATION_STYLES: Record<VerificationStatus, string> = {
-  "Verified":           "av-verification-badge av-verification-badge--verified",
-  "Partially Verified": "av-verification-badge av-verification-badge--partial",
-  "Unverified":         "av-verification-badge av-verification-badge--unverified",
-  "Opinion":            "av-verification-badge av-verification-badge--opinion",
-  "Speculation":        "av-verification-badge av-verification-badge--speculation",
+const EVIDENCE_STYLES: Record<EvidenceStrength, string> = {
+  "Strong":   "av-evidence-badge av-evidence-badge--strong",
+  "Moderate": "av-evidence-badge av-evidence-badge--moderate",
+  "Weak":     "av-evidence-badge av-evidence-badge--weak",
 };
 
 function parseTakeawayBullets(text: string): string[] {
@@ -235,11 +240,11 @@ function MetricCard({
     title, speakerThesis, strategicIntent, causalChain, quote, contextExample,
     credibilityCheck, timestamp,
     whyItMatters, actionableTakeaway, signalStrength, signalReason,
-    verificationStatus, verificationReason,
+    evidenceStrength, evidenceFactors,
     viewerBlindSpot, secondOrderImplications, contrarianView,
     opportunityPotential, opportunityReason,
   } = resolveDataPoint(point);
-  const hasBody = !!(speakerThesis || whyItMatters || actionableTakeaway || verificationStatus || credibilityCheck || quote || viewerBlindSpot || opportunityPotential !== null || secondOrderImplications || contrarianView || strategicIntent || causalChain || contextExample);
+  const hasBody = !!(speakerThesis || whyItMatters || actionableTakeaway || evidenceStrength || credibilityCheck || quote || viewerBlindSpot || opportunityPotential !== null || secondOrderImplications || contrarianView || strategicIntent || causalChain || contextExample);
   const hasAdvanced = !!(whyItMatters || viewerBlindSpot || opportunityPotential !== null || strategicIntent || causalChain || contextExample);
   const takeawayBullets = actionableTakeaway ? parseTakeawayBullets(actionableTakeaway) : [];
 
@@ -337,13 +342,21 @@ function MetricCard({
                 </div>
               )}
 
-              {(verificationStatus || credibilityCheck) && (
+              {(evidenceStrength || credibilityCheck) && (
                 <div className="av-tier">
-                  <p className="av-tier-label av-tier-label--amber">⚖ Confidence</p>
-                  {verificationStatus ? (
+                  <p className="av-tier-label av-tier-label--amber">◎ Evidence Strength</p>
+                  {evidenceStrength ? (
                     <div className="flex flex-col gap-2 mt-1">
-                      <span className={VERIFICATION_STYLES[verificationStatus]}>{verificationStatus}</span>
-                      {verificationReason && <p className="av-credibility" style={{ marginTop: 0 }}>{verificationReason}</p>}
+                      <span className={EVIDENCE_STYLES[evidenceStrength]}>{evidenceStrength}</span>
+                      {evidenceFactors && (
+                        <ul className="av-evidence-factors">
+                          {evidenceFactors.split("\n").filter(Boolean).map((line, i) => (
+                            <li key={i} className={line.startsWith("✓") ? "av-evidence-factor--positive" : "av-evidence-factor--limiting"}>
+                              {line}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   ) : (
                     <p className="av-credibility">{credibilityCheck}</p>

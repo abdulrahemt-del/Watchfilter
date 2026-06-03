@@ -1510,7 +1510,36 @@ input {
   font-weight:500
 }
 
-/* ── Verification status badge ── */
+/* ── Evidence strength badge ── */
+.av-evidence-badge {
+  display:inline-block;
+  font-size:.65rem;
+  font-weight:700;
+  font-family:monospace;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+  padding:3px 9px;
+  border-radius:5px;
+  border:1px solid
+}
+.av-evidence-badge--strong   { color:var(--ok);   background:color-mix(in srgb,var(--ok)   10%,transparent); border-color:color-mix(in srgb,var(--ok)   25%,transparent) }
+.av-evidence-badge--moderate { color:var(--warn); background:color-mix(in srgb,var(--warn) 10%,transparent); border-color:color-mix(in srgb,var(--warn) 25%,transparent) }
+.av-evidence-badge--weak     { color:var(--muted);background:var(--surface);                                 border-color:var(--border) }
+
+/* ── Evidence factors list ── */
+.av-evidence-factors {
+  list-style:none;
+  padding:0;
+  margin:.25rem 0 0;
+  display:flex;
+  flex-direction:column;
+  gap:.25em;
+}
+.av-evidence-factors li { font-size:.8rem; line-height:1.4 }
+.av-evidence-factor--positive { color:var(--ok) }
+.av-evidence-factor--limiting { color:var(--warn) }
+
+/* ── Verification status badge (legacy) ── */
 .av-verification-badge {
   display:inline-block;
   font-size:.65rem;
