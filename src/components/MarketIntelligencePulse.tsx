@@ -86,6 +86,7 @@ export function MarketIntelligencePulse() {
   const [aiLoading, setAiLoading]         = useState(false);
   const [conLoading, setConLoading]       = useState(false);
   const [consensusKey, setConsensusKey]   = useState(0);
+  const [pipelineKey, setPipelineKey]     = useState(0); // bumped on hard refresh to re-run pipeline
 
   // ── Bootstrap: load feed data only ────────────────────────────────────────
   useEffect(() => {
@@ -171,7 +172,7 @@ export function MarketIntelligencePulse() {
       } catch { /* cloud unavailable — fall through to pipeline */ }
       runAIPipeline(structuralFilter, aiKey);
     })();
-  }, [structuralFilter.length, email]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [structuralFilter.length, email, pipelineKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function runAIPipeline(videos: FeedVideo[], aiKey: string) {
     // videos is already the structural filter output — channel blocks, title blocks,
@@ -576,11 +577,12 @@ export function MarketIntelligencePulse() {
     // Wipe both localStorage caches
     try { localStorage.removeItem(`wf_consensus_${email}`); } catch { /* ignore */ }
     try { localStorage.removeItem(`wf_ai_${email}`); } catch { /* ignore */ }
-    // Reset in-memory state and allow the AI pipeline to re-run
+    // Reset in-memory state — pipeline re-fires because pipelineKey changes
     setConsensus(null);
     setAiScores({});
     aiPipelineStarted.current = false;
     setConsensusKey(k => k + 1);
+    setPipelineKey(k => k + 1);
   }
 
   // ── Guards ─────────────────────────────────────────────────────────────────
