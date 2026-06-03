@@ -301,7 +301,6 @@ export const CHANNEL_AFFINITY: Record<string, number> = {
 
   // ── Politics / geopolitics: hard block (-100) ─────────────────────────────
   "middle east eye":        -100,
-  "the young turks":        -100,  // (duplicate-safe — already in news)
   "secular talk":           -100,
   "the hill":               -100,
   "breaking points":        -100,  // geopolitical commentary
