@@ -214,11 +214,18 @@ export const CHANNEL_AFFINITY: Record<string, number> = {
 
   // ── History / documentary / automotive: hard block (-100) ────────────────
   "history channel":        -100,
+  "history":                -100,  // catches "HISTORY" (the channel) which doesn't include "history channel"
   "national geographic":    -100,
+  "nat geo":                -100,
   "discovery channel":      -100,
+  "discovery+":             -100,
   "smithsonian channel":    -100,
   "nova pbs":               -100,
   "kurzgesagt":             -100,
+  "veritasium":             -100,
+  "wendover productions":   -100,
+  "real engineering":       -100,
+  "mustard":                -100,
   "top gear":               -100,
   "jay leno":               -100,
   "motortrend":             -100,
@@ -240,6 +247,12 @@ export const CHANNEL_AFFINITY: Record<string, number> = {
   "merciful servant":       -100,
   "one islam":              -100,
   "ummah network":          -100,
+  "chai with my bhai":      -100,
+  "mufti menk":             -100,
+  "nouman ali khan":        -100,
+  "yasmin mogahed":         -100,
+  "zakir naik":             -100,
+  "yusuf estes":            -100,
 
   // ── Sports: hard block (-100) ────────────────────────────────────────────
   "espn":                   -100,
@@ -249,6 +262,31 @@ export const CHANNEL_AFFINITY: Record<string, number> = {
   "five reasons sports":    -100,
   "the ringer":             -100,
   "barstool sports":        -100,
+  "ufc":                    -100,
+  "bellator mma":           -100,
+  "one championship":       -100,
+  "boxing news":            -100,
+  "fight hub":              -100,
+  "world boxing":           -100,
+  "nba":                    -100,
+  "nfl":                    -100,
+  "mlb":                    -100,
+  "nhl films":              -100,
+  "formula 1":              -100,
+  "f1":                     -100,
+  "cricket":                -100,
+
+  // ── Gaming: hard block (-100) ─────────────────────────────────────────────
+  "theradbrad":             -100,
+  "markiplier":             -100,
+  "jacksepticeye":          -100,
+  "pewdiepie":              -100,
+  "letsplay":               -100,
+  "gamespot":               -100,
+  "ign":                    -100,
+  "polygon":                -100,
+  "kotaku":                 -100,
+  "gameranx":               -100,
 
   // ── Chess: hard block (-100) ─────────────────────────────────────────────
   "gotham chess":           -100,
@@ -257,11 +295,21 @@ export const CHANNEL_AFFINITY: Record<string, number> = {
   "agadmator":              -100,
   "chess24":                -100,
 
+  // ── Politics / geopolitics: hard block (-100) ─────────────────────────────
+  "middle east eye":        -100,
+  "the young turks":        -100,  // (duplicate-safe — already in news)
+  "secular talk":           -100,
+  "the hill":               -100,
+  "breaking points":        -100,  // geopolitical commentary
+  "useful idiots":          -100,
+
   // ── Entertainment: hard block (-100) ─────────────────────────────────────
   "entertainment tonight":  -100,
   "tmz":                    -100,
   "e! news":                -100,
   "access hollywood":       -100,
+  "good mythical morning":  -100,
+  "smosh":                  -100,
 };
 
 // Returns the affinity score for a channel name.
@@ -279,10 +327,16 @@ export function getChannelAffinity(channelTitle: string): number {
   return bestScore;
 }
 
-// ── Inclusion iron curtain — title must contain ≥1 of these ──────────────────
-// Applied in business/founder modes even on trusted channels.
-// Catches off-topic episodes: Lex Fridman doing quantum physics, CNBC posting
-// sports interviews, Diary of a CEO doing pure lifestyle content, etc.
+// ── Inclusion terms — THREE tiers based on channel trust ─────────────────────
+//
+// Tier 1 (affinity ≥ 70): auto-pass — no keyword check needed.
+// Tier 2 (affinity 40–69): HIGH_SIGNAL_INCLUSION_TERMS in TITLE passes.
+// Tier 3 (affinity 0–39, unknown): STRONG_BUSINESS_TERMS in TITLE only.
+// Description fallback (all unknown channels): STRONG_DESCRIPTION_SIGNALS only.
+//
+// WHY: broad terms like "strategy", "interview", "podcast" legitimately appear
+// in gaming walkthroughs, fight previews, and documentaries — they cannot
+// reliably elevate unknown channels without causing leakage.
 
 export const HIGH_SIGNAL_INCLUSION_TERMS = [
   // Finance / markets
@@ -301,11 +355,44 @@ export const HIGH_SIGNAL_INCLUSION_TERMS = [
   "ceo", "cfo", "revenue", "profit", "saas",
   "agency", "scale", "marketing", "sales", "brand",
   "strategy", "growth", "b2b", "ecommerce",
-  // Content format signals (combined with channel trust)
+  // Content format signals (OK for Tier 2 channels with known track record)
   "masterclass", "deep dive", "framework",
   "podcast", "interview",
-  // Additional business signals from reference
-  "fed", "scale", "offers",
+  // Additional
+  "fed", "offers",
+];
+
+// Tier 3 gate: only unambiguous business signals pass for unknown channels.
+// "strategy", "interview", "podcast", "market" etc. are NOT here — they appear
+// in gaming, MMA, documentary, and religious content too often.
+const STRONG_BUSINESS_TERMS = [
+  "investing", "investments", "investor",
+  "startup", "founder", "entrepreneur", "entrepreneurship",
+  "venture capital", "private equity", "hedge fund",
+  "stock market", "ipo", "etf", "valuation",
+  "revenue", "profit", "saas", "b2b", "ecommerce",
+  "personal finance", "financial independence", "wealth management",
+  "inflation", "recession", "interest rate", "federal reserve",
+  "crypto", "bitcoin", "real estate investing",
+  "series a", "series b", "fundraising",
+  "ceo", "cfo", "acquisition", "merger",
+  "wealth building", "business strategy", "business model",
+  "venture", "vc fund", "angel investor",
+];
+
+// Description fallback — only used when title has zero inclusion terms.
+// Must be strong enough to reject "The Universe explained: a strategy guide"
+// or "Interview with a UFC champion".
+const STRONG_DESCRIPTION_SIGNALS = [
+  "investing", "investor", "venture capital", "private equity",
+  "entrepreneur", "startup", "founder", "fundraising",
+  "hedge fund", "stock market", "ipo", "valuation",
+  "saas", "b2b",
+  "personal finance", "financial independence", "wealth management",
+  "inflation", "recession",
+  "series a", "series b",
+  "ceo", "cfo",
+  "business model", "revenue model",
 ];
 
 // ── Hard title blocks — applied in EVERY mode ─────────────────────────────────
@@ -348,6 +435,20 @@ export const HARD_TITLE_BLOCKS = [
   "history of ", "ancient history", "world war ii",
   // Sports (categorical catch-all)
   "football", "soccer", "nba", "nfl", "cricket", "rugby", "chess",
+  // MMA / combat sports
+  "full fight", "fight night", "ufc ", " mma ", "knockout", "k.o.", "ppv fight",
+  "vs paddy", "vs conor", "vs mcgregor",
+  // Gaming
+  "gameplay", "walkthrough", "full game", "let's play", "lets play",
+  "playthrough", "game review", "gaming", "boss fight",
+  "part 1 -", "part 2 -", "part 3 -", "part 4 -", "part 5 -", "part 6 -",
+  // Documentaries / science / nature (non-business)
+  "full documentary", "full episode", "documentary film",
+  "the universe", "solar system", "ancient civilization",
+  "how the universe", "secrets of the",
+  // General entertainment
+  "music video", "official video", "official audio", "lyrics video",
+  "movie trailer", "tv show", "season 1", "season 2",
 ];
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -486,22 +587,26 @@ export function useFilteredFeed(rawVideos: FeedVideo[], mode: FeedMode): FeedVid
     // ── Step 4: Active modes — hard blocks + duration gate already applied ──
     const durationPassed = hardPassed;
 
-    // ── Step 5: Business / Founder — trusted bypass + inclusion gate ────────
-    // Trusted channels (affinity ≥ 70): pass without an inclusion check.
-    //   Title hard blocks already remove religion/sports/news episodes.
-    //   AI quality gate (threshold 40) catches off-topic episodes like physics
-    //   discussions or lifestyle content from otherwise business channels.
-    // Unknown channels (affinity 0–69): must prove relevance via:
-    //   • ≥1 inclusion term in title (high-confidence), OR
-    //   • ≥2 inclusion terms in description (lower-confidence fallback, catches
-    //     videos with generic titles but clearly business episode descriptions)
+    // ── Step 5: Business / Founder — three-tier inclusion gate ─────────────
+    // Tier 1 (affinity ≥ 70): trusted business channel — auto-pass.
+    //   Hard title blocks already stripped religion/sports/news/gaming above.
+    // Tier 2 (affinity 40–69): known-but-mixed channel — title must have any
+    //   HIGH_SIGNAL_INCLUSION_TERMS.  Description fallback uses STRONG list only.
+    // Tier 3 (affinity 0–39): unknown channel — title must have STRONG_BUSINESS_TERMS.
+    //   "interview", "strategy", "podcast" are NOT sufficient — they appear
+    //   too often in non-business content to be trusted on unknown channels.
+    //   Description fallback uses STRONG_DESCRIPTION_SIGNALS only.
     const trusted = durationPassed.filter((v) => {
       const aff = getChannelAffinity(v.channelTitle);
-      if (aff >= AFFINITY_PASS_THRESHOLD) return true;
+      if (aff >= AFFINITY_PASS_THRESHOLD) return true; // Tier 1
+
       const ti = v.title.toLowerCase();
-      if (HIGH_SIGNAL_INCLUSION_TERMS.some((kw) => ti.includes(kw))) return true;
+      const terms = aff >= 40 ? HIGH_SIGNAL_INCLUSION_TERMS : STRONG_BUSINESS_TERMS;
+      if (terms.some((kw) => ti.includes(kw))) return true;
+
+      // Description fallback — much stricter than title to prevent leakage
       const desc = (v.description ?? "").toLowerCase().slice(0, 400);
-      return HIGH_SIGNAL_INCLUSION_TERMS.some((kw) => desc.includes(kw));
+      return STRONG_DESCRIPTION_SIGNALS.some((kw) => desc.includes(kw));
     });
 
     // ── Step 6: Mode-specific topic gate ────────────────────────────────────

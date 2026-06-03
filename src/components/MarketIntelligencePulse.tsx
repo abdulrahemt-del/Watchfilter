@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { FeedVideo } from "@/app/api/youtube/feed/route";
 import type { AIScore } from "@/app/api/youtube/filter/route";
 import type { ConsensusResult } from "@/app/api/youtube/consensus/route";
-import { useFilteredFeed, isoToSeconds, INTEL_CATEGORY_BLOCKS, type FeedMode } from "@/hooks/useFilteredSubscriptionFeed";
+import { useFilteredFeed, isoToSeconds, INTEL_CATEGORY_BLOCKS, getChannelAffinity, AFFINITY_PASS_THRESHOLD, type FeedMode } from "@/hooks/useFilteredSubscriptionFeed";
 import { CorePulseMetrics } from "./widgets/CorePulseMetrics";
 import { OpportunityAlertsWidget, type OpportunityAlert } from "./widgets/OpportunityAlertsWidget";
 import { CollapsibleSignalCards, type EmergingSignalTheme } from "./widgets/CollapsibleSignalCards";
@@ -215,8 +215,12 @@ export function MarketIntelligencePulse() {
   const filteredVideos = useMemo<FeedVideo[]>(() => {
     const aiReady = Object.keys(aiScores).length > 0;
     const base = aiReady
-      ? structuralFilter.filter(v => aiScores[v.videoId]?.topicCategory !== "excluded")
-      : structuralFilter;
+      ? structuralFilter.filter(v => {
+          const ai = aiScores[v.videoId];
+          if (!ai) return getChannelAffinity(v.channelTitle) >= AFFINITY_PASS_THRESHOLD;
+          return ai.topicCategory !== "excluded";
+        })
+      : structuralFilter.filter(v => getChannelAffinity(v.channelTitle) >= AFFINITY_PASS_THRESHOLD);
     return [...base].sort((a, b) => (aiScores[b.videoId]?.score ?? 0) - (aiScores[a.videoId]?.score ?? 0));
   }, [structuralFilter, aiScores]);
 

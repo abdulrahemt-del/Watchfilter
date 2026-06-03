@@ -127,6 +127,40 @@ Otherwise: whyItMatters is REQUIRED. Never return an empty string for non-exclud
 
 Return ALL videos. Never skip any.`;
 
+// ── Server-side pre-filter ────────────────────────────────────────────────────
+// Reject obviously excluded videos before spending tokens on them.
+// Mirrors the structural filter's logic so clearly bad content never reaches the AI.
+
+const PRE_BLOCK_CHANNELS = [
+  "ufc", "espn", "nfl", "nba", "nhl", "mlb", "formula 1", " f1 ",
+  "bleacher report", "sky sports", "beinsports", "fight hub",
+  "theradbrad", "markiplier", "jacksepticeye", "pewdiepie",
+  "gamespot", "ign", "gameranx", "kotaku",
+  "history", "national geographic", "nat geo", "discovery",
+  "smithsonian", "kurzgesagt", "veritasium",
+  "al jazeera", "cnn", "fox news", "bbc news", "sky news", "msnbc",
+  "middle east eye", "the young turks", "secular talk",
+  "chai with my bhai", "huda tv", "ali dawah", "joel osteen",
+  "tmz", "entertainment tonight",
+];
+
+const PRE_BLOCK_TITLE_PATTERNS = [
+  "gameplay", "walkthrough", "full game", "full fight", "let's play", "playthrough",
+  "boss fight", "game review", "gaming",
+  "full documentary", "full episode", "nature documentary",
+  "quran", "allah", "islamic lecture", "bible study", "sermon",
+  "trump", "ukraine war", "russia ukraine", "geopolit",
+  "breaking news", "live news",
+];
+
+function isObviouslyExcluded(title: string, channelTitle: string): boolean {
+  const t = title.toLowerCase();
+  const c = channelTitle.toLowerCase();
+  if (PRE_BLOCK_CHANNELS.some(p => c.includes(p))) return true;
+  if (PRE_BLOCK_TITLE_PATTERNS.some(p => t.includes(p))) return true;
+  return false;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ContentType =
@@ -179,7 +213,24 @@ export async function POST(req: Request) {
     const { videos } = (await req.json()) as { videos: VideoInput[] };
     if (!videos?.length) return NextResponse.json({ results: [] });
 
-    const list = videos
+    // Pre-filter: short-circuit obviously excluded videos without spending tokens.
+    const preExcluded: AIScore[] = [];
+    const toScore: VideoInput[] = [];
+    for (const v of videos) {
+      if (isObviouslyExcluded(v.title, v.channelTitle)) {
+        preExcluded.push({
+          videoId: v.videoId, score: 0, topicCategory: "excluded", topicScore: 0,
+          contentType: "Other", categories: [], explanation: "", whyItMatters: "",
+          subScores: { businessRelevance: 0, educationalValue: 0, actionability: 0, informationDensity: 0 },
+        });
+      } else {
+        toScore.push(v);
+      }
+    }
+
+    if (!toScore.length) return NextResponse.json({ results: preExcluded });
+
+    const list = toScore
       .map((v, i) =>
         `${i + 1}. ID:${v.videoId}\nTitle: ${JSON.stringify(v.title)}\nChannel: ${JSON.stringify(v.channelTitle)}\nDescription: ${JSON.stringify(v.description.slice(0, 350))}`,
       )
@@ -208,7 +259,7 @@ export async function POST(req: Request) {
 
     const raw    = completion.choices[0].message.content ?? '{"results":[]}';
     const parsed = JSON.parse(raw) as { results?: AIScore[] };
-    return NextResponse.json({ results: parsed.results ?? [] });
+    return NextResponse.json({ results: [...preExcluded, ...(parsed.results ?? [])] });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Filter failed";
     console.error("[youtube/filter]", message);

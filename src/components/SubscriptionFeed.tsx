@@ -280,13 +280,15 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     const base = aiReady
       ? structuralFilter.filter((v) => {
           const ai = aiResults[v.videoId];
-          if (!ai) return true; // unscored → keep optimistically
-          // topicCategory is the only hard gate — score is used for ranking only.
-          // "excluded" means the AI confirmed this specific episode's topic is
-          // outside the business/investing domain regardless of channel.
+          if (!ai) {
+            // Unscored: only trusted channels show while AI runs.
+            // Unknown channels default-hide — never show before AI verdict.
+            return getChannelAffinity(v.channelTitle) >= AFFINITY_PASS_THRESHOLD;
+          }
           return ai.topicCategory !== "excluded";
         })
-      : structuralFilter;
+      // Before AI is ready: show only trusted channels to prevent junk flash
+      : structuralFilter.filter(v => getChannelAffinity(v.channelTitle) >= AFFINITY_PASS_THRESHOLD);
 
     // Sort: ranking score (AI) → channel affinity → duration
     return [...base].sort((a, b) => {
