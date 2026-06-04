@@ -363,11 +363,11 @@ export function MarketIntelligencePulse() {
     const savedHrs = Math.round(totalSecs * 0.6 / 3600);
     return [
       { label: "Feed Size",    value: String(feedVideos.length),    sub: "total videos",     trend: "flat"  as const },
-      { label: "Signal Yield", value: String(filteredVideos.length), sub: "approved signals", color: "text-[#4a6fa5]",   trend: "up"   as const },
-      { label: "Themes Found", value: String(todaysThemes.length),   sub: "active clusters",  color: "text-[#6b4fbb]", trend: "up"   as const },
-      { label: "Priority",     value: String(hp),                    sub: "high-priority",    color: "text-[#0a7a4a]",trend: "up"   as const },
-      { label: "Channels",     value: String(uniqueChannels),        sub: "unique sources",   color: "text-[#b45309]",  trend: "flat" as const },
-      { label: "Time Saved",   value: `${savedHrs}h`,               sub: "est. saved",       color: "text-cyan-400",   trend: "up"   as const },
+      { label: "Signal Yield", value: String(filteredVideos.length), sub: "approved signals", color: "text-[#274c77]",  trend: "up"   as const },
+      { label: "Themes Found", value: String(todaysThemes.length),   sub: "active clusters",  color: "text-[#6096ba]",  trend: "up"   as const },
+      { label: "Priority",     value: String(hp),                    sub: "high-priority",    color: "text-emerald-600",trend: "up"   as const },
+      { label: "Channels",     value: String(uniqueChannels),        sub: "unique sources",   color: "text-[#8b8c89]",  trend: "flat" as const },
+      { label: "Time Saved",   value: `${savedHrs}h`,               sub: "est. saved",       color: "text-[#6096ba]",  trend: "up"   as const },
     ];
   }, [feedVideos, filteredVideos, aiScores, todaysThemes]);
 
@@ -606,7 +606,7 @@ export function MarketIntelligencePulse() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-[#0f2244] flex items-center justify-center text-slate-500 font-mono text-sm">
+      <div className="min-h-screen bg-[#e7ecef] flex items-center justify-center text-[#8b8c89] font-mono text-sm">
         Connecting…
       </div>
     );
@@ -614,22 +614,22 @@ export function MarketIntelligencePulse() {
 
   if (status === "unauthenticated") {
     return (
-      <div className="min-h-screen bg-[#0f2244] flex flex-col items-center justify-center gap-4 text-slate-500">
+      <div className="min-h-screen bg-[#e7ecef] flex flex-col items-center justify-center gap-4 text-[#8b8c89]">
         <p className="font-mono text-sm">Sign in to view Market Intelligence.</p>
-        <Link href="/" className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors">← Return to Feed</Link>
+        <Link href="/" className="text-[#6096ba] hover:text-[#274c77] font-mono text-sm transition-colors">← Return to Feed</Link>
       </div>
     );
   }
 
   if (feedMissing) {
     return (
-      <div className="min-h-screen bg-[#0f2244] flex flex-col items-center justify-center gap-4 text-center px-6">
+      <div className="min-h-screen bg-[#e7ecef] flex flex-col items-center justify-center gap-4 text-center px-6">
         <span className="text-4xl">📡</span>
-        <h2 className="text-white font-black text-lg">No feed data yet</h2>
-        <p className="text-slate-500 font-mono text-xs max-w-xs">
+        <h2 className="text-[#274c77] font-black text-lg">No feed data yet</h2>
+        <p className="text-[#8b8c89] font-mono text-xs max-w-xs">
           Load your subscription feed first, then return here for your full intelligence briefing.
         </p>
-        <Link href="/" className="mt-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-5 py-2 rounded-lg transition-colors">
+        <Link href="/" className="mt-2 bg-[#274c77] hover:bg-[#6096ba] text-white font-bold text-sm px-5 py-2 rounded-lg transition-colors">
           ← Go to Feed
         </Link>
       </div>
@@ -639,40 +639,40 @@ export function MarketIntelligencePulse() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="bg-[#0f2244] min-h-screen text-slate-100 font-sans antialiased">
+    <div className="bg-[#e7ecef] min-h-screen text-[#274c77] font-sans antialiased">
     <div className="w-full px-4 md:px-6 py-6 space-y-8">
 
       {/* ── HEADER ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-4 gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-[#a3cef1]/50 pb-4 gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/" className="text-[10px] font-mono text-slate-500 hover:text-slate-300 transition-colors">
+          <Link href="/" className="text-[10px] font-mono text-[#8b8c89] hover:text-[#274c77] transition-colors">
             ← Feed
           </Link>
           <div>
-            <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+            <h1 className="text-xl font-black text-[#274c77] tracking-tight flex items-center gap-2">
               📡 WatchFilter Intelligence Terminal
             </h1>
-            <p className="text-xs text-slate-500 font-mono">
+            <p className="text-xs text-[#8b8c89] font-mono">
               Creator consensus synthesized from your subscription channels
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {isLoading && (
-            <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg animate-pulse">
+            <span className="text-[10px] font-mono text-amber-700 bg-amber-100 border border-amber-300/50 px-2.5 py-1 rounded-lg animate-pulse">
               {aiLoading ? "⚙ Scoring your feed… (first load ~30s, then cached for 12h)" : "⚙ Synthesizing…"}
             </span>
           )}
           <button
             onClick={handleForceRefresh}
             disabled={isLoading}
-            className="text-[10px] font-mono text-slate-400 bg-slate-900 hover:bg-slate-800 hover:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors"
+            className="text-[10px] font-mono text-[#274c77] bg-white hover:bg-[#a3cef1]/20 hover:text-[#274c77] disabled:opacity-40 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg border border-[#a3cef1]/60 transition-colors"
             title="Clear cached consensus and re-synthesize"
           >
             ↻ Refresh
           </button>
-          <div className="text-xs font-mono text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700">
-            Last Sync: <span className="text-blue-400">{feedTs ? timeAgo(feedTs) : "—"}</span>
+          <div className="text-xs font-mono text-[#8b8c89] bg-white px-3 py-1.5 rounded-lg border border-[#a3cef1]/50">
+            Last Sync: <span className="text-[#6096ba] font-bold">{feedTs ? timeAgo(feedTs) : "—"}</span>
           </div>
         </div>
       </div>
@@ -681,15 +681,15 @@ export function MarketIntelligencePulse() {
           1. HIGHEST CONVICTION SIGNAL — HERO
          ══════════════════════════════════════════════ */}
       {topInsight ? (
-        <div className="bg-gradient-to-br from-[#0d1f3c] via-[#0d1520] to-[#130d2a] border border-blue-500/30 rounded-2xl p-6 shadow-[0_0_48px_rgba(59,130,246,0.07)] space-y-4">
+        <div className="bg-gradient-to-br from-[#274c77] via-[#274c77] to-[#6096ba] border border-[#274c77]/20 rounded-2xl p-6 shadow-lg space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2 text-[10px] font-mono text-blue-400 font-black uppercase tracking-widest">
+            <div className="flex items-center gap-2 text-[10px] font-mono text-[#a3cef1] font-black uppercase tracking-widest">
               🎯 Highest Conviction Signal Today
             </div>
             {topInsight.trendDirection && (
               <span className={`text-[10px] font-mono font-black ${
-                topInsight.trendDirection === "growing"  ? "text-emerald-400" :
-                topInsight.trendDirection === "declining" ? "text-red-400" : "text-slate-400"
+                topInsight.trendDirection === "growing"  ? "text-emerald-300" :
+                topInsight.trendDirection === "declining" ? "text-red-300" : "text-[#a3cef1]"
               }`}>
                 {topInsight.trendDirection === "growing" ? "↑ Growing" : topInsight.trendDirection === "declining" ? "↓ Declining" : "→ Stable"}
               </span>
@@ -697,44 +697,44 @@ export function MarketIntelligencePulse() {
           </div>
           <p className="text-lg font-bold text-white leading-relaxed">{topInsight.statement}</p>
           {topInsight.whyItMatters && (
-            <p className="text-sm text-blue-200/70 leading-relaxed">{topInsight.whyItMatters}</p>
+            <p className="text-sm text-[#a3cef1]/80 leading-relaxed">{topInsight.whyItMatters}</p>
           )}
-          <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-blue-500/20">
+          <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-white/15">
             <div>
-              <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider mb-1">Evidence</p>
+              <p className="text-[9px] font-mono text-[#a3cef1]/60 uppercase tracking-wider mb-1">Evidence</p>
               <p className="text-sm font-black text-white">
                 {topInsight.supportingCreators} creators · {topInsight.videoCount} videos
               </p>
             </div>
             <div>
-              <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider mb-1">Confidence</p>
-              <p className={`text-sm font-black ${topInsight.confidence >= 70 ? "text-emerald-400" : "text-amber-400"}`}>
+              <p className="text-[9px] font-mono text-[#a3cef1]/60 uppercase tracking-wider mb-1">Confidence</p>
+              <p className={`text-sm font-black ${topInsight.confidence >= 70 ? "text-emerald-300" : "text-amber-300"}`}>
                 {topInsight.confidence}% — {topInsight.confidenceLabel}
               </p>
             </div>
             <div>
-              <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider mb-1">Theme</p>
-              <p className="text-sm font-black text-blue-300">{topInsight.topic}</p>
+              <p className="text-[9px] font-mono text-[#a3cef1]/60 uppercase tracking-wider mb-1">Theme</p>
+              <p className="text-sm font-black text-[#a3cef1]">{topInsight.topic}</p>
             </div>
           </div>
           {topInsight.suggestedAction && (
-            <div className="flex items-start gap-2 bg-blue-500/5 border border-blue-500/15 rounded-lg px-4 py-3">
-              <span className="text-blue-400 shrink-0">→</span>
-              <p className="text-xs text-slate-300 leading-relaxed">{topInsight.suggestedAction}</p>
+            <div className="flex items-start gap-2 bg-white/10 border border-white/15 rounded-lg px-4 py-3">
+              <span className="text-[#a3cef1] shrink-0">→</span>
+              <p className="text-xs text-white/80 leading-relaxed">{topInsight.suggestedAction}</p>
             </div>
           )}
           {topInsight.contrarianView && (
-            <div className="flex items-start gap-2 bg-amber-500/5 border border-amber-500/15 rounded-lg px-4 py-2.5">
-              <span className="text-amber-400 shrink-0 text-xs">⚡</span>
-              <p className="text-[11px] font-mono text-slate-400 italic leading-relaxed">{topInsight.contrarianView}</p>
+            <div className="flex items-start gap-2 bg-amber-400/10 border border-amber-300/20 rounded-lg px-4 py-2.5">
+              <span className="text-amber-300 shrink-0 text-xs">⚡</span>
+              <p className="text-[11px] font-mono text-[#a3cef1]/70 italic leading-relaxed">{topInsight.contrarianView}</p>
             </div>
           )}
         </div>
       ) : conLoading ? (
-        <div className="bg-[#0d1520] border border-slate-800 rounded-2xl p-6 animate-pulse space-y-4">
-          <div className="h-3 w-52 bg-slate-800 rounded" />
-          <div className="h-6 w-full bg-slate-800 rounded" />
-          <div className="h-4 w-3/4 bg-slate-800 rounded" />
+        <div className="bg-white border border-[#a3cef1]/40 rounded-2xl p-6 animate-pulse space-y-4">
+          <div className="h-3 w-52 bg-[#a3cef1]/30 rounded" />
+          <div className="h-6 w-full bg-[#e7ecef] rounded" />
+          <div className="h-4 w-3/4 bg-[#a3cef1]/20 rounded" />
         </div>
       ) : null}
 
@@ -743,12 +743,12 @@ export function MarketIntelligencePulse() {
          ══════════════════════════════════════════════ */}
       {whatChangedToday.length > 0 && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center justify-between border-b border-[#a3cef1]/40 pb-3">
             <div>
-              <h2 className="text-sm font-black font-mono tracking-wider text-slate-200 uppercase">↻ What Changed Today</h2>
-              <p className="text-xs text-slate-500 font-mono mt-0.5">Daily momentum shifts across your creator network</p>
+              <h2 className="text-sm font-black font-mono tracking-wider text-[#274c77] uppercase">↻ What Changed Today</h2>
+              <p className="text-xs text-[#8b8c89] font-mono mt-0.5">Daily momentum shifts across your creator network</p>
             </div>
-            <span className="text-[10px] font-mono text-slate-500">{whatChangedToday.length} signals</span>
+            <span className="text-[10px] font-mono text-[#8b8c89]">{whatChangedToday.length} signals</span>
           </div>
 
           <div className="space-y-2">
@@ -760,50 +760,48 @@ export function MarketIntelligencePulse() {
               const isDecline    = event.type === "declining";
               return (
                 <div key={i} className={`flex items-start gap-3 p-3.5 rounded-xl border transition-colors ${
-                  isNew     ? "bg-blue-500/5 border-blue-500/20 hover:border-blue-500/30" :
-                  isAccel   ? "bg-emerald-500/5 border-emerald-500/20 hover:border-emerald-500/30" :
-                  isUp      ? "bg-[#101520] border-slate-800/60 hover:border-slate-700" :
-                  isDecline ? "bg-red-500/5 border-red-500/15 hover:border-red-500/25" :
-                  "bg-[#101520] border-slate-800/60 hover:border-slate-700"
+                  isNew     ? "bg-[#a3cef1]/10 border-[#6096ba]/25 hover:border-[#6096ba]/40" :
+                  isAccel   ? "bg-emerald-50 border-emerald-300/40 hover:border-emerald-400/50" :
+                  isUp      ? "bg-white border-[#a3cef1]/40 hover:border-[#6096ba]/40" :
+                  isDecline ? "bg-red-50 border-red-300/30 hover:border-red-400/40" :
+                  "bg-white border-[#a3cef1]/40 hover:border-[#6096ba]/40"
                 }`}>
-                  {/* Direction pill */}
                   <div className="shrink-0 pt-0.5">
-                    {isNew     && <span className="text-[9px] font-mono font-black text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-1 rounded">NEW</span>}
-                    {isAccel   && <span className="text-emerald-400 font-black text-base leading-none">↑↑</span>}
-                    {isUp      && <span className="text-emerald-400 font-black text-base leading-none">↑</span>}
-                    {isDown    && <span className="text-amber-400 font-black text-base leading-none">↓</span>}
-                    {isDecline && <span className="text-red-400 font-black text-base leading-none">↓</span>}
+                    {isNew     && <span className="text-[9px] font-mono font-black text-[#274c77] bg-[#a3cef1]/20 border border-[#6096ba]/30 px-2 py-1 rounded">NEW</span>}
+                    {isAccel   && <span className="text-emerald-600 font-black text-base leading-none">↑↑</span>}
+                    {isUp      && <span className="text-emerald-600 font-black text-base leading-none">↑</span>}
+                    {isDown    && <span className="text-amber-500 font-black text-base leading-none">↓</span>}
+                    {isDecline && <span className="text-red-500 font-black text-base leading-none">↓</span>}
                   </div>
 
-                  {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-black text-white">{event.topic}</span>
+                      <span className="text-sm font-black text-[#274c77]">{event.topic}</span>
                       {event.prevRank && event.currRank && event.prevRank !== event.currRank && (
-                        <span className="text-[10px] font-mono text-slate-500">
-                          #{event.prevRank} → <span className={isUp || isAccel ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>#{event.currRank}</span>
+                        <span className="text-[10px] font-mono text-[#8b8c89]">
+                          #{event.prevRank} → <span className={isUp || isAccel ? "text-emerald-600 font-bold" : "text-amber-500 font-bold"}>#{event.currRank}</span>
                         </span>
                       )}
                       {event.pctChange !== undefined && event.pctChange !== 0 && (
-                        <span className={`text-[10px] font-mono font-black ${event.pctChange > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        <span className={`text-[10px] font-mono font-black ${event.pctChange > 0 ? "text-emerald-600" : "text-red-500"}`}>
                           {event.pctChange > 0 ? "+" : ""}{event.pctChange}%
                         </span>
                       )}
-                      {isNew && <span className="text-[10px] font-mono text-slate-500 italic">Appears in creator consensus for the first time</span>}
+                      {isNew && <span className="text-[10px] font-mono text-[#8b8c89] italic">Appears in creator consensus for the first time</span>}
                     </div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       {event.creators > 0 && (
-                        <span className="text-[10px] font-mono text-slate-500">{event.creators} creator{event.creators !== 1 ? "s" : ""}</span>
+                        <span className="text-[10px] font-mono text-[#8b8c89]">{event.creators} creator{event.creators !== 1 ? "s" : ""}</span>
                       )}
                       {event.currCount !== undefined && event.currCount > 0 && (
-                        <span className="text-[10px] font-mono text-slate-500">{event.currCount} video{event.currCount !== 1 ? "s" : ""}</span>
+                        <span className="text-[10px] font-mono text-[#8b8c89]">{event.currCount} video{event.currCount !== 1 ? "s" : ""}</span>
                       )}
                       {event.channelNames.slice(0, 2).map((ch, j) => (
-                        <span key={j} className="text-[9px] font-mono bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">{ch}</span>
+                        <span key={j} className="text-[9px] font-mono bg-[#a3cef1]/20 text-[#274c77] px-1.5 py-0.5 rounded">{ch}</span>
                       ))}
                     </div>
                     {event.whyItMatters && (
-                      <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{event.whyItMatters}</p>
+                      <p className="text-xs text-[#8b8c89] mt-1.5 leading-relaxed">{event.whyItMatters}</p>
                     )}
                   </div>
                 </div>
@@ -816,7 +814,7 @@ export function MarketIntelligencePulse() {
       {/* ══════════════════════════════════════════════
           3. OPPORTUNITY ALERTS
          ══════════════════════════════════════════════ */}
-      <div className="bg-[#101520] border border-emerald-500/15 rounded-xl p-5 space-y-4">
+      <div className="bg-white border border-[#a3cef1]/50 rounded-xl p-5 space-y-4 shadow-sm">
         <OpportunityAlertsWidget alerts={opportunityAlerts} loading={aiLoading} />
       </div>
 
@@ -824,16 +822,16 @@ export function MarketIntelligencePulse() {
           4. CREATOR CONSENSUS ENGINE
          ══════════════════════════════════════════════ */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="flex items-center justify-between border-b border-[#a3cef1]/40 pb-3">
           <div>
-            <h2 className="text-sm font-black font-mono tracking-wider text-slate-300 uppercase">
+            <h2 className="text-sm font-black font-mono tracking-wider text-[#274c77] uppercase">
               📂 Creator Consensus Engine
             </h2>
-            <p className="text-xs text-slate-500 font-mono mt-0.5">
+            <p className="text-xs text-[#8b8c89] font-mono mt-0.5">
               Click a signal card to expand verifiable source data trails
             </p>
           </div>
-          <span className="text-[10px] text-slate-600 font-mono">
+          <span className="text-[10px] text-[#8b8c89] font-mono">
             {emergingSignalThemes.filter(t => t.macroTakeaway).length} of {emergingSignalThemes.length} synthesized
           </span>
         </div>
@@ -844,17 +842,17 @@ export function MarketIntelligencePulse() {
           5. DO THIS TODAY — ACTIONABLE INTELLIGENCE
          ══════════════════════════════════════════════ */}
       {(consensusData?.actions?.length ?? 0) > 0 && (
-        <div className="bg-[#101520] border border-blue-500/20 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest">
+        <div className="bg-white border border-[#6096ba]/25 rounded-xl p-5 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between border-b border-[#a3cef1]/40 pb-3">
+            <h3 className="text-[10px] font-mono font-black text-[#274c77] uppercase tracking-widest">
               🎯 Do This Today
             </h3>
-            <span className="text-[10px] text-slate-600 font-mono">Based on creator consensus</span>
+            <span className="text-[10px] text-[#8b8c89] font-mono">Based on creator consensus</span>
           </div>
           <ol className="space-y-3">
             {consensusData!.actions.map((action, i) => (
-              <li key={i} className="flex gap-3 text-sm text-slate-300 leading-relaxed">
-                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[9px] flex items-center justify-center mt-0.5">
+              <li key={i} className="flex gap-3 text-sm text-[#274c77] leading-relaxed">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-[#274c77] text-white font-black text-[9px] flex items-center justify-center mt-0.5">
                   {i + 1}
                 </span>
                 {action}
@@ -867,7 +865,7 @@ export function MarketIntelligencePulse() {
       {/* ══════════════════════════════════════════════
           6. CREATOR INFLUENCE
          ══════════════════════════════════════════════ */}
-      <div className="bg-[#101520] border border-slate-700/60 rounded-xl p-5 space-y-4">
+      <div className="bg-white border border-[#a3cef1]/50 rounded-xl p-5 space-y-4 shadow-sm">
         <CreatorShareOfVoiceWidget creators={creatorVoices} loading={aiLoading} />
       </div>
 
@@ -875,7 +873,7 @@ export function MarketIntelligencePulse() {
           7. SIGNAL METRICS — SUPPORTING DATA
          ══════════════════════════════════════════════ */}
       <div className="space-y-3">
-        <h2 className="text-[10px] font-mono font-black text-slate-600 uppercase tracking-widest px-1">
+        <h2 className="text-[10px] font-mono font-black text-[#8b8c89] uppercase tracking-widest px-1">
           Signal Metrics
         </h2>
         <CorePulseMetrics metrics={coreMetrics} loading={isLoading && !coreMetrics.some(m => m.value !== "0")} />
