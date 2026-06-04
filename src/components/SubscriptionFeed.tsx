@@ -981,7 +981,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
         const topFeedChannels = [...feedChannels.entries()].sort((a,b) => b[1]-a[1]).slice(0, 8).map(([ch, n]) => `${ch}(${n})`).join(", ");
         const structChannels = [...new Set(structuralFilter.map(v => v.channelTitle))].join(", ");
         return (
-          <div style={{ fontFamily: "monospace", fontSize: 11, background: "#0a0f1a", border: "1px solid #1e2d45", borderRadius: 6, padding: "8px 12px", marginBottom: 8, color: "#64748b", lineHeight: "2" }}>
+          <div style={{ display: "none", fontFamily: "monospace", fontSize: 11, background: "#0a0f1a", border: "1px solid #1e2d45", borderRadius: 6, padding: "8px 12px", marginBottom: 8, color: "#64748b", lineHeight: "2" }}>
             <div>
               <span style={{ color: "#38bdf8", fontWeight: 700 }}>Pipeline: </span>
               <span>feed={videos.length}</span>
