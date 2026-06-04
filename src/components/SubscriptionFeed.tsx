@@ -974,22 +974,39 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
       {error && <p className="feed-error">⚠ {error}</p>}
 
       {/* ── Temporary pipeline diagnostics (remove after confirmed working) ── */}
-      {!loading && videos.length > 0 && (mode === "business" || mode === "founder" || mode === "finance") && (
-        <div style={{ fontFamily: "monospace", fontSize: 11, background: "#0a0f1a", border: "1px solid #1e2d45", borderRadius: 6, padding: "6px 12px", marginBottom: 8, color: "#64748b", lineHeight: "1.8" }}>
-          <span style={{ color: "#38bdf8", fontWeight: 700 }}>Pipeline: </span>
-          <span>feed={videos.length}</span>
-          <span style={{ color: "#475569" }}> → </span>
-          <span>structural={structuralFilter.length}</span>
-          <span style={{ color: "#475569" }}> → </span>
-          <span>filtered={filteredVideos.length}</span>
-          <span style={{ color: "#475569" }}> → </span>
-          <span>ai_scores={Object.keys(aiResults).length}</span>
-          <span style={{ color: "#475569" }}> | </span>
-          <span style={{ color: aiLoading ? "#f59e0b" : "#22c55e" }}>ai={aiLoading ? "scanning…" : aiReady ? "ready" : "pending"}</span>
-          <span style={{ color: "#475569" }}> | </span>
-          <span>scan_enabled={aiScanEnabled ? "✓" : "✗"}</span>
-        </div>
-      )}
+      {!loading && videos.length > 0 && (mode === "business" || mode === "founder" || mode === "finance") && (() => {
+        // Top channels in feed by video count
+        const feedChannels = new Map<string, number>();
+        videos.forEach(v => feedChannels.set(v.channelTitle, (feedChannels.get(v.channelTitle) ?? 0) + 1));
+        const topFeedChannels = [...feedChannels.entries()].sort((a,b) => b[1]-a[1]).slice(0, 8).map(([ch, n]) => `${ch}(${n})`).join(", ");
+        const structChannels = [...new Set(structuralFilter.map(v => v.channelTitle))].join(", ");
+        return (
+          <div style={{ fontFamily: "monospace", fontSize: 11, background: "#0a0f1a", border: "1px solid #1e2d45", borderRadius: 6, padding: "8px 12px", marginBottom: 8, color: "#64748b", lineHeight: "2" }}>
+            <div>
+              <span style={{ color: "#38bdf8", fontWeight: 700 }}>Pipeline: </span>
+              <span>feed={videos.length}</span>
+              <span style={{ color: "#475569" }}> → </span>
+              <span>structural={structuralFilter.length}</span>
+              <span style={{ color: "#475569" }}> → </span>
+              <span>filtered={filteredVideos.length}</span>
+              <span style={{ color: "#475569" }}> → </span>
+              <span>ai_scores={Object.keys(aiResults).length}</span>
+              <span style={{ color: "#475569" }}> | </span>
+              <span style={{ color: aiLoading ? "#f59e0b" : "#22c55e" }}>ai={aiLoading ? "scanning…" : aiReady ? "ready" : "pending"}</span>
+              <span style={{ color: "#475569" }}> | </span>
+              <span>scan_enabled={aiScanEnabled ? "✓" : "✗"}</span>
+            </div>
+            <div style={{ color: "#475569" }}>
+              <span style={{ color: "#64748b" }}>Top feed channels: </span>
+              <span style={{ color: "#94a3b8" }}>{topFeedChannels}</span>
+            </div>
+            <div style={{ color: "#475569" }}>
+              <span style={{ color: "#64748b" }}>Structural channels: </span>
+              <span style={{ color: "#94a3b8" }}>{structChannels || "none"}</span>
+            </div>
+          </div>
+        );
+      })()}
 
       {!loading && !error && filteredVideos.length === 0 && !aiLoading && (mode === "business" || mode === "founder" || mode === "finance") && (
         <p className="feed-empty">{MODE_META[mode].empty}</p>
