@@ -36,9 +36,9 @@ interface Props {
 }
 
 const TREND = {
-  growing:   { icon: "↑", label: "Growing",   color: "text-emerald-600" },
-  stable:    { icon: "→", label: "Stable",     color: "text-[#8b8c89]"  },
-  declining: { icon: "↓", label: "Declining",  color: "text-red-500"    },
+  growing:   { icon: "↑", label: "Growing",   color: "text-emerald-300" },
+  stable:    { icon: "→", label: "Stable",     color: "text-white/60"   },
+  declining: { icon: "↓", label: "Declining",  color: "text-red-300"    },
 };
 
 // ─── Grid card ────────────────────────────────────────────────────────────────
@@ -54,21 +54,21 @@ function IntelligenceGridCard({ theme, isOpen, onSelect }: CardProps) {
   return (
     <div
       onClick={onSelect}
-      className={`bg-white border rounded-xl p-4 flex flex-col justify-between h-48 transition-all duration-200 cursor-pointer select-none group ${
+      className={`border rounded-xl p-4 flex flex-col justify-between h-48 transition-all duration-200 cursor-pointer select-none group ${
         isOpen
-          ? 'border-[#6096ba] bg-[#f0f7ff] ring-1 ring-[#6096ba]/10 shadow-md'
-          : 'border-[#a3cef1]/50 hover:border-[#6096ba]/60 hover:bg-[#f5f9fe] hover:shadow-sm'
+          ? 'bg-[#2d5490] border-[#6096ba] ring-1 ring-white/10 shadow-md'
+          : 'bg-[#274c77] border-[#1e3a5f] hover:bg-[#2d5490] hover:border-[#6096ba]/60 hover:shadow-sm'
       }`}
     >
       {/* Top section */}
       <div className="space-y-2 min-h-0 flex-1 overflow-hidden">
         <div className="flex justify-between items-center text-[10px] font-mono gap-2">
-          <span className="bg-[#a3cef1]/20 text-[#274c77] border border-[#6096ba]/25 px-2 py-0.5 rounded font-black shrink-0">
+          <span className="bg-white/10 text-white border border-white/20 px-2 py-0.5 rounded font-black shrink-0">
             {theme.rankIndex}
           </span>
-          <div className="flex items-center gap-2 text-[#8b8c89] min-w-0">
+          <div className="flex items-center gap-2 text-white/60 min-w-0">
             {theme.opportunitySignal === 'High' && (
-              <span className="text-[8px] font-mono font-black text-emerald-700 bg-emerald-100 border border-emerald-300/50 px-1.5 py-0.5 rounded shrink-0">
+              <span className="text-[8px] font-mono font-black text-emerald-300 bg-white/10 border border-emerald-300/30 px-1.5 py-0.5 rounded shrink-0">
                 High Opp
               </span>
             )}
@@ -76,20 +76,20 @@ function IntelligenceGridCard({ theme, isOpen, onSelect }: CardProps) {
           </div>
         </div>
 
-        <h4 className="text-sm font-bold tracking-tight text-[#274c77] font-mono uppercase leading-tight">
+        <h4 className="text-sm font-bold tracking-tight text-white font-mono uppercase leading-tight">
           {theme.topicTitle}
         </h4>
 
-        <p className="text-xs text-[#8b8c89] leading-relaxed line-clamp-2">
+        <p className="text-xs text-white/70 leading-relaxed line-clamp-2">
           {theme.macroTakeaway}
         </p>
       </div>
 
       {/* Footer section */}
-      <div className="space-y-2 pt-2 border-t border-[#a3cef1]/30 mt-2 shrink-0">
-        <div className="w-full bg-[#e7ecef] rounded-full h-1 overflow-hidden">
+      <div className="space-y-2 pt-2 border-t border-white/15 mt-2 shrink-0">
+        <div className="w-full bg-white/15 rounded-full h-1 overflow-hidden">
           <div
-            className="bg-[#6096ba] h-1 rounded-full transition-all duration-300"
+            className="bg-[#a3cef1] h-1 rounded-full transition-all duration-300"
             style={{ width: `${theme.agreementPercentage}%` }}
           />
         </div>
@@ -97,14 +97,14 @@ function IntelligenceGridCard({ theme, isOpen, onSelect }: CardProps) {
         <div className="flex items-center justify-between text-[10px] font-mono">
           <div className="flex items-center gap-1.5">
             <span className={`font-bold ${trend.color}`}>{trend.icon} {trend.label}</span>
-            <span className="text-[#a3cef1]">·</span>
-            <span className="text-[#274c77] font-bold">{theme.agreementPercentage}%</span>
+            <span className="text-white/40">·</span>
+            <span className="text-white font-bold">{theme.agreementPercentage}%</span>
           </div>
 
           <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded border transition-colors ${
             isOpen
-              ? 'bg-[#a3cef1]/20 text-[#274c77] border-[#6096ba]/40'
-              : 'bg-[#e7ecef] text-[#8b8c89] border-[#a3cef1]/40 group-hover:text-[#274c77] group-hover:border-[#6096ba]/40'
+              ? 'bg-white/15 text-white border-white/30'
+              : 'bg-white/10 text-white/70 border-white/20 group-hover:text-white group-hover:border-white/30'
           }`}>
             <span>Sources</span>
             <span
@@ -275,7 +275,7 @@ export function CollapsibleSignalCards({ themes, loading }: Props) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {[1, 2, 3, 4, 5, 6].map(i => (
-          <div key={i} className="h-48 bg-white border border-[#a3cef1]/40 rounded-xl animate-pulse" />
+          <div key={i} className="h-48 bg-[#274c77] border border-[#1e3a5f] rounded-xl animate-pulse" />
         ))}
       </div>
     );
