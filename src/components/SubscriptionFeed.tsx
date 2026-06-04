@@ -345,7 +345,6 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             setVideos(cached.videos);
             setCacheAge(new Date(cached.ts));
             setAiResults(loadAiCache());
-            setAiScanEnabled(false);
             setConsensusData(null);
             setSelectedConsensusTheme(null);
             return;
@@ -896,7 +895,11 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
           <Link href="/intelligence" className="id-nav-link">Intelligence →</Link>
           <button
-            onClick={() => { setAiResults({}); loadFeed(true); }}
+            onClick={() => {
+              try { localStorage.removeItem(`wf_ai_${session?.user?.email ?? "anon"}`); } catch { /* ignore */ }
+              setAiResults({});
+              loadFeed(true);
+            }}
             disabled={loading}
             className="feed-refresh-btn"
             title="Force-refresh from YouTube (uses API quota)"
