@@ -53,10 +53,46 @@ export type FeedVideo = {
 };
 
 // ── Server-side feed cache (2-hour TTL per user) ─────────────────────────────
-// Prevents repeated YouTube API calls within the same server instance.
-// Sits on top of the client 24-hour localStorage cache.
-const SERVER_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const SERVER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const serverFeedCache = new Map<string, { ts: number; videos: FeedVideo[] }>();
+
+// ── Curated business/investing channels ──────────────────────────────────────
+// These are always included in the feed regardless of the user's subscriptions.
+// This ensures the intelligence feed has high-quality content even if the user's
+// YouTube account is primarily subscribed to non-business channels.
+// Handles are resolved to channel IDs once and cached in-memory.
+
+const CURATED_HANDLES = [
+  "@AlexHormozi",        // Alex Hormozi — offers, acquisition, sales
+  "@TheDiaryOfACEO",     // Diary of a CEO — founder/operator interviews
+  "@acquiredpodcast",    // Acquired — deep company analysis
+  "@MyFirstMillionPod",  // My First Million — Shaan Puri & Sam Parr
+  "@allinpodcast",       // All-In Podcast — macro + tech + investing
+  "@Valuetainment",      // Valuetainment / Patrick Bet-David
+  "@TwentyMinuteVC",     // 20VC / Harry Stebbings
+  "@CodieSanchez",       // Codie Sanchez / Contrarian Thinking
+  "@GrantCardone",       // Grant Cardone — sales & real estate
+  "@GaryVaynerchuk",     // Gary Vee — entrepreneurship & marketing
+];
+
+let curatedChannelIdsCache: string[] | null = null;
+
+async function getCuratedChannelIds(accessToken: string): Promise<string[]> {
+  if (curatedChannelIdsCache !== null) return curatedChannelIdsCache;
+  const results = await Promise.allSettled(
+    CURATED_HANDLES.map((handle) =>
+      ytGet<{ items?: Array<{ id: string }> }>(
+        `channels?part=id&forHandle=${encodeURIComponent(handle)}`,
+        accessToken,
+      ).then((r) => r.items?.[0]?.id ?? null),
+    ),
+  );
+  curatedChannelIdsCache = results
+    .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled" && r.value !== null)
+    .map((r) => r.value);
+  console.log(`[feed] curated channels resolved: ${curatedChannelIdsCache.length}/${CURATED_HANDLES.length}`);
+  return curatedChannelIdsCache;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -140,13 +176,17 @@ export async function GET(req: Request) {
       nextPage = subData.nextPageToken;
       if (!nextPage) break; // no more pages
     }
-    console.log(`[feed] subscriptions: ${channelIds.length}`);
-    if (!channelIds.length) return NextResponse.json({ videos: [] });
+    // Merge subscription channels with curated business channels (dedup by ID).
+    // Curated channels appear regardless of whether the user is subscribed.
+    const curatedIds = await getCuratedChannelIds(accessToken);
+    const allChannelIds = [...new Set([...channelIds, ...curatedIds])];
+    console.log(`[feed] subscriptions=${channelIds.length} curated=${curatedIds.length} total=${allChannelIds.length}`);
+    if (!allChannelIds.length) return NextResponse.json({ videos: [] });
 
     // 2 — Batch-fetch uploads playlist IDs
     const channelChunks: string[][] = [];
-    for (let i = 0; i < channelIds.length; i += 50)
-      channelChunks.push(channelIds.slice(i, i + 50));
+    for (let i = 0; i < allChannelIds.length; i += 50)
+      channelChunks.push(allChannelIds.slice(i, i + 50));
 
     const channelResults = await Promise.all(
       channelChunks.map((chunk) =>
