@@ -760,7 +760,7 @@ export function MarketIntelligencePulse() {
               const isDecline    = event.type === "declining";
               return (
                 <div key={i} className={`flex items-start gap-3 p-3.5 rounded-xl border transition-colors ${
-                  isNew     ? "bg-[#a3cef1]/10 border-[#6096ba]/25 hover:border-[#6096ba]/40" :
+                  isNew     ? "bg-white border-[#a3cef1]/40 hover:border-[#6096ba]/40" :
                   isAccel   ? "bg-emerald-50 border-emerald-300/40 hover:border-emerald-400/50" :
                   isUp      ? "bg-white border-[#a3cef1]/40 hover:border-[#6096ba]/40" :
                   isDecline ? "bg-red-50 border-red-300/30 hover:border-red-400/40" :
