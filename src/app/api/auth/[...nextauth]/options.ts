@@ -1,6 +1,6 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { saveRefreshToken } from "@/lib/db";
+import { saveRefreshToken, recordBetaEvent } from "@/lib/db";
 
 async function refreshAccessToken(token: Record<string, unknown>) {
   try {
@@ -54,6 +54,9 @@ export const authOptions: NextAuthOptions = {
           await saveRefreshToken(token.email as string, account.refresh_token).catch((err) => {
             console.error("[auth] failed to save refresh token:", err);
           });
+        }
+        if (token.email) {
+          recordBetaEvent("signup", token.email as string).catch(() => {});
         }
         return {
           ...token,

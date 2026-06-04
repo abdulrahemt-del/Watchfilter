@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/options";
-import { getFeedCache, setFeedCache } from "@/lib/db";
+import { getFeedCache, setFeedCache, recordBetaEvent } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -389,6 +389,9 @@ export async function GET(req: Request) {
     // Store in both cache tiers
     serverFeedCache.set(cacheKey, { ts: Date.now(), videos });
     setFeedCache(cacheKey, videos).catch((e) => console.warn("[feed] db-cache write failed (non-fatal):", e));
+
+    // Record first-time activation (INSERT OR IGNORE — fires once per user)
+    recordBetaEvent("activation", cacheKey).catch(() => {});
 
     return NextResponse.json({ videos });
   } catch (err) {

@@ -59,6 +59,19 @@ async function ensureSchema(): Promise<void> {
       cached_at TEXT NOT NULL,
       videos    TEXT NOT NULL
     )`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS waitlist (
+      id         TEXT PRIMARY KEY,
+      email      TEXT UNIQUE NOT NULL,
+      created_at TEXT NOT NULL
+    )`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS beta_events (
+      id         TEXT PRIMARY KEY,
+      event      TEXT NOT NULL,
+      user_id    TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(event, user_id)
+    )`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_beta_events_event ON beta_events (event)`, args: [] },
   ], "write");
 
   for (const sql of [
@@ -391,6 +404,41 @@ export async function upsertUserPipelineCache(
             pipeline_cached_at = excluded.pipeline_cached_at`,
     args: [randomUUID(), userId, now, JSON.stringify(aiScores), JSON.stringify(consensusData), now],
   });
+}
+
+// ── Waitlist ──────────────────────────────────────────────────────────────────
+
+export async function saveWaitlistEmail(email: string): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `INSERT OR IGNORE INTO waitlist (id, email, created_at) VALUES (?, ?, ?)`,
+    args: [randomUUID(), email, new Date().toISOString()],
+  });
+}
+
+// ── Beta events (signups + activations) ───────────────────────────────────────
+// UNIQUE(event, user_id) ensures each event type is recorded once per user.
+
+export async function recordBetaEvent(event: "signup" | "activation", userId: string): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `INSERT OR IGNORE INTO beta_events (id, event, user_id, created_at) VALUES (?, ?, ?, ?)`,
+    args: [randomUUID(), event, userId, new Date().toISOString()],
+  });
+}
+
+export async function getBetaStats(): Promise<{ waitlist: number; signups: number; activations: number }> {
+  const c = await db();
+  const [w, s, a] = await Promise.all([
+    c.execute(`SELECT COUNT(*) as n FROM waitlist`),
+    c.execute(`SELECT COUNT(*) as n FROM beta_events WHERE event = 'signup'`),
+    c.execute(`SELECT COUNT(*) as n FROM beta_events WHERE event = 'activation'`),
+  ]);
+  return {
+    waitlist:    Number(w.rows[0]?.n ?? 0),
+    signups:     Number(s.rows[0]?.n ?? 0),
+    activations: Number(a.rows[0]?.n ?? 0),
+  };
 }
 
 export async function upsertIntelligenceSnapshot(data: SnapshotUpsertData): Promise<void> {

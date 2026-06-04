@@ -7,6 +7,8 @@
 // --smart-blue:  #4a6fa5  (primary CTA, accents)
 // --baltic-blue: #166088  (headings, dark CTA section)
 
+import { WaitlistForm } from "@/components/WaitlistForm";
+
 const FEATURES = [
   {
     icon: "🎯",
@@ -97,16 +99,9 @@ export default function LandingPage() {
           WatchFilter analyzes your subscriptions, identifies creator consensus, uncovers emerging opportunities, and delivers a daily intelligence brief — helping founders, investors, and operators stay informed without spending hours watching videos.
         </p>
 
-        <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
-          <a href="/signin" style={{ display: "inline-flex", alignItems: "center", gap: "0.6rem", background: "#4a6fa5", color: "#fff", borderRadius: 12, fontSize: "0.95rem", fontWeight: 700, padding: "0.85rem 2rem", textDecoration: "none", boxShadow: "0 4px 24px rgba(74,111,165,0.30)" }}>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908C16.658 13.814 17.64 11.506 17.64 9.2z" fill="#fff" fillOpacity=".9"/>
-              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#fff" fillOpacity=".75"/>
-              <path d="M3.964 10.706A5.41 5.41 0 0 1 3.68 9c0-.59.102-1.163.284-1.706V4.962H.957A9.007 9.007 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#fff" fillOpacity=".6"/>
-              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.962L3.964 6.294C4.672 4.161 6.656 3.58 9 3.58z" fill="#fff" fillOpacity=".8"/>
-            </svg>
-            Request Beta Access
-          </a>
+        <WaitlistForm />
+
+        <div style={{ marginTop: "1rem" }}>
           <a
             href="#how-it-works"
             style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "transparent", color: "#4f6d7a", border: "1px solid #a8bfcb", borderRadius: 12, fontSize: "0.95rem", fontWeight: 600, padding: "0.85rem 1.75rem", textDecoration: "none" }}
@@ -234,18 +229,10 @@ export default function LandingPage() {
             <span style={{ color: "#c0d6df" }}>Start knowing.</span>
           </h2>
           <p style={{ fontSize: "1rem", color: "rgba(219,233,238,0.70)", lineHeight: 1.7, margin: "0 0 2.5rem" }}>
-            Beta access is limited. Connect your Google account to join the waitlist and get early access when a spot opens.
+            Beta access is limited. Drop your email to join the waitlist and connect Google to activate when your spot opens.
           </p>
-          <a href="/signin" style={{ display: "inline-flex", alignItems: "center", gap: "0.65rem", background: "#4a6fa5", color: "#fff", borderRadius: 14, fontSize: "1rem", fontWeight: 700, padding: "1rem 2.25rem", textDecoration: "none", boxShadow: "0 4px 32px rgba(0,0,0,0.25)" }}>
-            <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
-              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908C16.658 13.814 17.64 11.506 17.64 9.2z" fill="#fff" fillOpacity=".9"/>
-              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#fff" fillOpacity=".75"/>
-              <path d="M3.964 10.706A5.41 5.41 0 0 1 3.68 9c0-.59.102-1.163.284-1.706V4.962H.957A9.007 9.007 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#fff" fillOpacity=".6"/>
-              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.962L3.964 6.294C4.672 4.161 6.656 3.58 9 3.58z" fill="#fff" fillOpacity=".8"/>
-            </svg>
-            Get Early Access with Google
-          </a>
-          <p style={{ marginTop: "1rem", fontSize: "0.72rem", color: "rgba(192,214,223,0.65)", fontWeight: 500 }}>
+          <WaitlistForm />
+          <p style={{ marginTop: "1.25rem", fontSize: "0.72rem", color: "rgba(192,214,223,0.65)", fontWeight: 500 }}>
             No credit card. Read-only YouTube access. Cancel anytime.
           </p>
         </div>
