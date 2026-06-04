@@ -1542,7 +1542,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={e => e.stopPropagation()}
-                                    className="text-[8px] font-mono font-bold bg-blue-500/10 hover:bg-blue-500/20 text-white border border-blue-500/20 px-2 py-0.5 rounded transition-colors uppercase tracking-wider"
+                                    className="text-[8px] font-mono font-bold bg-white text-[#274c77] hover:bg-[#e7ecef] border border-white/80 px-2 py-0.5 rounded transition-colors uppercase tracking-wider font-black"
                                   >
                                     Filter Insights ↗
                                   </a>
