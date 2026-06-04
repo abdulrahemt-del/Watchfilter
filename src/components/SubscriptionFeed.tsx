@@ -404,7 +404,14 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
       if (raw) {
         const cached = JSON.parse(raw) as { ts: number; scores: Record<string, AIScore> };
         if (Date.now() - cached.ts < 24 * 60 * 60 * 1000 && Object.keys(cached.scores).length > 0) {
-          setAiResults(cached.scores);
+          // Strip score=0 entries — these are "excluded" verdicts from the old
+          // aggressive AI prompt. They'll be rescored fresh via scanTarget using
+          // the updated inclusive prompt. Non-zero scores are kept as-is.
+          const cleaned: Record<string, AIScore> = {};
+          for (const [id, score] of Object.entries(cached.scores)) {
+            if (score.score > 0) cleaned[id] = score;
+          }
+          setAiResults(cleaned);
         }
       }
     } catch { /* ignore */ }

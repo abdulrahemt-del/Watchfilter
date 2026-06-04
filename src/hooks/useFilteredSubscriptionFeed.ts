@@ -629,8 +629,12 @@ export function useFilteredFeed(rawVideos: FeedVideo[], mode: FeedMode): FeedVid
         "revenue model", "scaling a startup", "scaling a company",
       ];
       return trusted.filter((v) => {
+        // Trusted channels (affinity ≥ 70) skip the topic gate — the AI scoring
+        // handles topic refinement. The FOUNDER_TERMS gate is too narrow for broad
+        // business channels (Hormozi, DOAC, Grant Cardone etc.) whose titles don't
+        // use "founder"/"startup" language but are clearly relevant content.
+        if (getChannelAffinity(v.channelTitle) >= AFFINITY_PASS_THRESHOLD) return true;
         const t = (v.title + " " + (v.description ?? "").slice(0, 400)).toLowerCase();
-        // Extra block: AI tutorials / agency content (even if founder keyword present)
         if (FOUNDER_EXTRA_BLOCKS.some(b => t.includes(b))) return false;
         return FOUNDER_TERMS.some((kw) => t.includes(kw));
       });
@@ -651,8 +655,9 @@ export function useFilteredFeed(rawVideos: FeedVideo[], mode: FeedMode): FeedVid
         "rich list", "billionaire", "net worth",
       ];
       return trusted.filter((v) => {
+        // Same as founder: trusted channels skip the topic gate, let AI refine.
+        if (getChannelAffinity(v.channelTitle) >= AFFINITY_PASS_THRESHOLD) return true;
         const t = (v.title + " " + (v.description ?? "").slice(0, 400)).toLowerCase();
-        // Extra block: AI tutorials, agency, and marketing content
         if (FINANCE_EXTRA_BLOCKS.some(b => t.includes(b))) return false;
         return FINANCE_TERMS.some((kw) => t.includes(kw));
       });
