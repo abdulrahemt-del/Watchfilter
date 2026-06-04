@@ -648,7 +648,7 @@ export function MarketIntelligencePulse() {
       {/* ── HEADER ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-[#a3cef1]/50 pb-4 gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/" className="text-[10px] font-mono text-[#8b8c89] hover:text-[#274c77] transition-colors">
+          <Link href="/" className="text-sm font-bold font-mono text-[#274c77] hover:text-[#6096ba] bg-white border border-[#a3cef1]/60 hover:border-[#6096ba]/60 px-3 py-1.5 rounded-lg transition-colors">
             ← Feed
           </Link>
           <div>
