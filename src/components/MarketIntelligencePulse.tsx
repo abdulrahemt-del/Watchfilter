@@ -363,11 +363,11 @@ export function MarketIntelligencePulse() {
     const savedHrs = Math.round(totalSecs * 0.6 / 3600);
     return [
       { label: "Feed Size",    value: String(feedVideos.length),    sub: "total videos",     trend: "flat"  as const },
-      { label: "Signal Yield", value: String(filteredVideos.length), sub: "approved signals", color: "text-[#274c77]",  trend: "up"   as const },
-      { label: "Themes Found", value: String(todaysThemes.length),   sub: "active clusters",  color: "text-[#6096ba]",  trend: "up"   as const },
-      { label: "Priority",     value: String(hp),                    sub: "high-priority",    color: "text-emerald-600",trend: "up"   as const },
-      { label: "Channels",     value: String(uniqueChannels),        sub: "unique sources",   color: "text-[#8b8c89]",  trend: "flat" as const },
-      { label: "Time Saved",   value: `${savedHrs}h`,               sub: "est. saved",       color: "text-[#6096ba]",  trend: "up"   as const },
+      { label: "Signal Yield", value: String(filteredVideos.length), sub: "approved signals", color: "text-[#a3cef1]",   trend: "up"   as const },
+      { label: "Themes Found", value: String(todaysThemes.length),   sub: "active clusters",  color: "text-[#a3cef1]",   trend: "up"   as const },
+      { label: "Priority",     value: String(hp),                    sub: "high-priority",    color: "text-emerald-300", trend: "up"   as const },
+      { label: "Channels",     value: String(uniqueChannels),        sub: "unique sources",   color: "text-white/70",    trend: "flat" as const },
+      { label: "Time Saved",   value: `${savedHrs}h`,               sub: "est. saved",       color: "text-[#a3cef1]",   trend: "up"   as const },
     ];
   }, [feedVideos, filteredVideos, aiScores, todaysThemes]);
 
@@ -866,7 +866,7 @@ export function MarketIntelligencePulse() {
       {/* ══════════════════════════════════════════════
           6. CREATOR INFLUENCE
          ══════════════════════════════════════════════ */}
-      <div className="bg-white border border-[#a3cef1]/50 rounded-xl p-5 space-y-4 shadow-sm">
+      <div className="bg-[#274c77] border border-[#1e3a5f] rounded-xl p-5 space-y-4 shadow-sm">
         <CreatorShareOfVoiceWidget creators={creatorVoices} loading={aiLoading} />
       </div>
 
