@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import { analyzeYouTubeVideo, TranscriptFetchError } from "@/lib/analyzeVideo";
-import { saveAnalysis, getLatestAnalysisByVideoId } from "@/lib/db";
+import { saveAnalysis, getLatestAnalysisByVideoId, recordBetaEvent } from "@/lib/db";
 import { extractYouTubeVideoId } from "@/lib/youtube";
 import type { TranscriptFetchOverrides } from "@/lib/youtube";
 
@@ -101,6 +101,12 @@ export async function POST(request: Request) {
     // Save immediately — no audio yet — so the client gets the analysis fast.
     // Audio is generated after backfill (EnhanceButton) so nuggets are always included.
     const saved = await saveAnalysis(url, result, { id: analysisId });
+
+    // Track first analysis per user (INSERT OR IGNORE — fires once, silent on repeat)
+    const userId = session.user?.email ?? ip;
+    recordBetaEvent("first_analysis_generated", userId).then(() => {
+      console.log("[FIRST_ANALYSIS_GENERATED]", { userId, analysisId, timestamp: new Date().toISOString() });
+    }).catch(() => {});
 
     return NextResponse.json(saved);
   } catch (error) {

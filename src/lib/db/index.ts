@@ -419,7 +419,7 @@ export async function saveWaitlistEmail(email: string): Promise<void> {
 // ── Beta events (signups + activations) ───────────────────────────────────────
 // UNIQUE(event, user_id) ensures each event type is recorded once per user.
 
-export async function recordBetaEvent(event: "signup" | "activation", userId: string): Promise<void> {
+export async function recordBetaEvent(event: "signup" | "activation" | "first_analysis_generated", userId: string): Promise<void> {
   const c = await db();
   await c.execute({
     sql: `INSERT OR IGNORE INTO beta_events (id, event, user_id, created_at) VALUES (?, ?, ?, ?)`,
@@ -427,17 +427,19 @@ export async function recordBetaEvent(event: "signup" | "activation", userId: st
   });
 }
 
-export async function getBetaStats(): Promise<{ waitlist: number; signups: number; activations: number }> {
+export async function getBetaStats(): Promise<{ waitlist: number; signups: number; activations: number; firstAnalyses: number }> {
   const c = await db();
-  const [w, s, a] = await Promise.all([
+  const [w, s, a, f] = await Promise.all([
     c.execute(`SELECT COUNT(*) as n FROM waitlist`),
     c.execute(`SELECT COUNT(*) as n FROM beta_events WHERE event = 'signup'`),
     c.execute(`SELECT COUNT(*) as n FROM beta_events WHERE event = 'activation'`),
+    c.execute(`SELECT COUNT(*) as n FROM beta_events WHERE event = 'first_analysis_generated'`),
   ]);
   return {
-    waitlist:    Number(w.rows[0]?.n ?? 0),
-    signups:     Number(s.rows[0]?.n ?? 0),
-    activations: Number(a.rows[0]?.n ?? 0),
+    waitlist:      Number(w.rows[0]?.n ?? 0),
+    signups:       Number(s.rows[0]?.n ?? 0),
+    activations:   Number(a.rows[0]?.n ?? 0),
+    firstAnalyses: Number(f.rows[0]?.n ?? 0),
   };
 }
 
