@@ -236,6 +236,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   const [videos, setVideos]           = useState<FeedVideo[]>([]);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
+  const [needsReauth, setNeedsReauth] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [drawerVideo, setDrawerVideo] = useState<FeedVideo | null>(null);
   const [mode, setMode]               = useState<FeedMode>(() => {
@@ -355,9 +356,11 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
 
     setLoading(true);
     setError(null);
+    setNeedsReauth(false);
     fetch(forceRefresh ? "/api/youtube/feed?force=true" : "/api/youtube/feed")
       .then((r) => r.json())
-      .then((data: { videos?: FeedVideo[]; error?: string }) => {
+      .then((data: { videos?: FeedVideo[]; error?: string; code?: string }) => {
+        if (data.code === "INSUFFICIENT_SCOPES") { setNeedsReauth(true); throw new Error(data.error!); }
         if (data.error) throw new Error(data.error);
         const vids = data.videos ?? [];
         setVideos(vids);
@@ -971,7 +974,19 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
 
 
       {loading && <div className="feed-state-msg"><span className="spinner" /> Fetching your subscriptions…</div>}
-      {error && <p className="feed-error">⚠ {error}</p>}
+      {needsReauth ? (
+        <div className="feed-error" style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "flex-start" }}>
+          <p>⚠ WatchFilter needs permission to read your YouTube subscriptions. Please sign out and sign back in to grant access.</p>
+          <button
+            onClick={() => signOut({ callbackUrl: "/" })}
+            style={{ background: "#274c77", color: "#fff", border: "none", borderRadius: "8px", padding: "7px 16px", fontWeight: 700, cursor: "pointer", fontSize: "13px" }}
+          >
+            Sign out &amp; Re-authorize →
+          </button>
+        </div>
+      ) : error ? (
+        <p className="feed-error">⚠ {error}</p>
+      ) : null}
 
       {/* ── Temporary pipeline diagnostics (remove after confirmed working) ── */}
       {!loading && videos.length > 0 && (mode === "business" || mode === "founder" || mode === "finance") && (() => {

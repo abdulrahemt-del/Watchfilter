@@ -397,6 +397,9 @@ export async function GET(req: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load feed";
     console.error("[youtube/feed]", message);
+    if (message.toLowerCase().includes("insufficient authentication scopes")) {
+      return NextResponse.json({ error: message, code: "INSUFFICIENT_SCOPES" }, { status: 403 });
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
