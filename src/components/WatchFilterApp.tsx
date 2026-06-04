@@ -9,6 +9,7 @@ import { AppSidebar, type NavItem } from "./AppSidebar";
 import { GlobalAudioPlayer, type GlobalAudioPlayerHandle } from "./GlobalAudioPlayer";
 import { BriefingCard } from "./BriefingCard";
 import { SubscriptionFeed } from "./SubscriptionFeed";
+import { MarketIntelligencePulse } from "./MarketIntelligencePulse";
 import type {
   AnalysisSummary,
   ApiErrorBody,
@@ -762,7 +763,7 @@ export function WatchFilterApp() {
         </div>
 
         {/* ── Trends ── */}
-        {activeNav === "trends" && <TrendsView />}
+        {activeNav === "trends" && <MarketIntelligencePulse />}
 
         {/* ── Upgrade ── */}
         {activeNav === "upgrade" && <UpgradeView />}
