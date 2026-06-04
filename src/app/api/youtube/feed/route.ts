@@ -81,7 +81,7 @@ function isoSecs(iso: string): number {
 
 // ── Route ────────────────────────────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const accessToken = session?.accessToken;
@@ -96,35 +96,50 @@ export async function GET() {
       );
     }
 
+    const forceRefresh = new URL(req.url).searchParams.get("force") === "true";
     const DB_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
     const cacheKey = session.user?.email ?? accessToken.slice(0, 16);
 
     // Tier 1 — in-memory (fastest, survives within same server process)
     const memCached = serverFeedCache.get(cacheKey);
-    if (memCached && Date.now() - memCached.ts < SERVER_CACHE_TTL_MS) {
+    if (!forceRefresh && memCached && Date.now() - memCached.ts < SERVER_CACHE_TTL_MS) {
       console.log(`[feed] mem-cache HIT (age ${Math.round((Date.now() - memCached.ts) / 60000)}min)`);
       return NextResponse.json({ videos: memCached.videos });
     }
 
     // Tier 2 — DB cache (survives server restarts and deploys)
-    try {
-      const dbCached = await getFeedCache(cacheKey);
-      if (dbCached && Date.now() - dbCached.cachedAt.getTime() < DB_CACHE_TTL_MS) {
-        console.log(`[feed] db-cache HIT (age ${Math.round((Date.now() - dbCached.cachedAt.getTime()) / 60000)}min)`);
-        const videos = dbCached.videos as FeedVideo[];
-        serverFeedCache.set(cacheKey, { ts: dbCached.cachedAt.getTime(), videos });
-        return NextResponse.json({ videos });
+    if (!forceRefresh) {
+      try {
+        const dbCached = await getFeedCache(cacheKey);
+        if (dbCached && Date.now() - dbCached.cachedAt.getTime() < DB_CACHE_TTL_MS) {
+          console.log(`[feed] db-cache HIT (age ${Math.round((Date.now() - dbCached.cachedAt.getTime()) / 60000)}min)`);
+          const videos = dbCached.videos as FeedVideo[];
+          serverFeedCache.set(cacheKey, { ts: dbCached.cachedAt.getTime(), videos });
+          return NextResponse.json({ videos });
+        }
+      } catch (dbErr) {
+        console.warn("[feed] db-cache lookup failed (non-fatal):", dbErr);
       }
-    } catch (dbErr) {
-      console.warn("[feed] db-cache lookup failed (non-fatal):", dbErr);
+    } else {
+      // Invalidate in-memory cache so the fresh data is written back correctly
+      serverFeedCache.delete(cacheKey);
     }
 
-    // 1 — Fetch subscriptions: 1 page = 50 channels (order=relevance picks most-watched)
-    const subData = await ytGet<YTSubscriptionPage>(
-      `subscriptions?part=snippet&mine=true&maxResults=50&order=relevance`,
-      accessToken,
-    );
-    const channelIds = (subData.items ?? []).map((s) => s.snippet.resourceId.channelId);
+    // 1 — Fetch ALL subscriptions (paginate up to 5 pages = 250 channels).
+    // A single page (50 channels) misses channels ranked 51+ by relevance — which
+    // is the root cause when Hormozi, Codie, DOAC etc. don't appear in the feed.
+    const channelIds: string[] = [];
+    let nextPage: string | undefined;
+    const MAX_SUB_PAGES = 5;
+    for (let p = 0; p < MAX_SUB_PAGES; p++) {
+      const qs = nextPage
+        ? `subscriptions?part=snippet&mine=true&maxResults=50&order=relevance&pageToken=${nextPage}`
+        : `subscriptions?part=snippet&mine=true&maxResults=50&order=relevance`;
+      const subData = await ytGet<YTSubscriptionPage>(qs, accessToken);
+      (subData.items ?? []).forEach((s) => channelIds.push(s.snippet.resourceId.channelId));
+      nextPage = subData.nextPageToken;
+      if (!nextPage) break; // no more pages
+    }
     console.log(`[feed] subscriptions: ${channelIds.length}`);
     if (!channelIds.length) return NextResponse.json({ videos: [] });
 

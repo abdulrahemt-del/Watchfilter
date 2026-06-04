@@ -574,9 +574,26 @@ export function MarketIntelligencePulse() {
   function handleForceRefresh() {
     // Wipe cloud DB cache so next load doesn't restore stale data
     fetch("/api/intelligence/scores", { method: "DELETE" }).catch(() => { /* non-blocking */ });
-    // Wipe both localStorage caches
+    // Wipe all localStorage caches including the feed — subscription pagination
+    // may have changed so we want a fresh fetch with all channels
     try { localStorage.removeItem(`wf_consensus_${email}`); } catch { /* ignore */ }
     try { localStorage.removeItem(`wf_ai_${email}`); } catch { /* ignore */ }
+    try { localStorage.removeItem(`wf_feed_${email}`); } catch { /* ignore */ }
+    // Reset in-memory feed state so the component shows loading rather than stale cards
+    setFeedVideos([]);
+    setFeedTs(null);
+    // Fetch fresh feed (bypasses server-side cache) and write to localStorage so
+    // tryLoadFeed() and the storage listener pick it up and populate feedVideos
+    fetch("/api/youtube/feed?force=true")
+      .then(r => r.json())
+      .then((data: { videos?: FeedVideo[] }) => {
+        const vids = data.videos ?? [];
+        try { localStorage.setItem(`wf_feed_${email}`, JSON.stringify({ ts: Date.now(), videos: vids })); } catch { /* ignore */ }
+        setFeedVideos(vids);
+        setFeedTs(Date.now());
+        setFeedMissing(vids.length === 0);
+      })
+      .catch(() => setFeedMissing(true));
     // Reset in-memory state — pipeline re-fires because pipelineKey changes
     setConsensus(null);
     setAiScores({});

@@ -356,7 +356,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
 
     setLoading(true);
     setError(null);
-    fetch("/api/youtube/feed")
+    fetch(forceRefresh ? "/api/youtube/feed?force=true" : "/api/youtube/feed")
       .then((r) => r.json())
       .then((data: { videos?: FeedVideo[]; error?: string }) => {
         if (data.error) throw new Error(data.error);
