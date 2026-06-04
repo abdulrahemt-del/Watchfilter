@@ -802,7 +802,7 @@ export function MarketIntelligencePulse() {
                       ))}
                     </div>
                     {event.whyItMatters && (
-                      <p className="text-xs text-[#8b8c89] mt-1.5 leading-relaxed">{event.whyItMatters}</p>
+                      <p className="text-xs font-semibold text-[#8b8c89] mt-1.5 leading-relaxed">{event.whyItMatters}</p>
                     )}
                   </div>
                 </div>
