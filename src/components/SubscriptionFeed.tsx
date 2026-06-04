@@ -275,7 +275,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   const filteredVideos = useMemo<FeedVideo[]>(() => {
     if (mode === "off" || mode === "longform") return structuralFilter;
 
-    const aiReady = aiScanEnabled && !aiLoading && Object.keys(aiResults).length > 0;
+    const aiReady = !aiLoading && Object.keys(aiResults).length > 0;
 
     const base = aiReady
       ? structuralFilter.filter((v) => {
@@ -364,7 +364,8 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
         setVideos(vids);
         setCacheAge(new Date());
         setAiResults(forceRefresh ? {} : loadAiCache());
-        setAiScanEnabled(false);
+        // Do NOT touch aiScanEnabled here — the mode effect owns it.
+        // Clearing it here prevents AI from re-running after refresh.
         setConsensusData(null);
         setSelectedConsensusTheme(null);
         try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), videos: vids })); } catch { /* storage full */ }
@@ -508,7 +509,9 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   }
 
   const showAI  = mode === "business" || mode === "founder" || mode === "finance";
-  const aiReady = aiScanEnabled && !aiLoading && Object.keys(aiResults).length > 0;
+  // aiReady: do we have AI data to use? Decoupled from aiScanEnabled (which only
+  // controls whether the scan effect fires, not whether we display existing scores).
+  const aiReady = !aiLoading && Object.keys(aiResults).length > 0;
 
   // Today's Themes: top categories with creator counts
   const todaysThemes = useMemo(() => {
@@ -893,7 +896,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
           <Link href="/intelligence" className="id-nav-link">Intelligence →</Link>
           <button
-            onClick={() => { setAiResults({}); setAiScanEnabled(false); loadFeed(true); }}
+            onClick={() => { setAiResults({}); loadFeed(true); }}
             disabled={loading}
             className="feed-refresh-btn"
             title="Force-refresh from YouTube (uses API quota)"
