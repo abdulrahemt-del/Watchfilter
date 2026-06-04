@@ -523,11 +523,14 @@ export function MarketIntelligencePulse() {
       }
     });
 
+    const tierOf = (e: ChangeEvent) =>
+      e.type === "accelerating" || e.type === "rank_up"  ? 0 :
+      e.type === "new"                                   ? 1 :
+      2;
+    const magnitude = (e: ChangeEvent) => Math.abs(e.pctChange ?? 0) + Math.abs(e.rankChange ?? 0) * 15;
     return events.sort((a, b) => {
-      if (a.type === "new" && b.type !== "new") return -1;
-      if (b.type === "new" && a.type !== "new") return 1;
-      const score = (e: ChangeEvent) => Math.abs(e.pctChange ?? 0) + Math.abs(e.rankChange ?? 0) * 15;
-      return score(b) - score(a);
+      const td = tierOf(a) - tierOf(b);
+      return td !== 0 ? td : magnitude(b) - magnitude(a);
     }).slice(0, 7);
   }, [prevSnapshot, todaysThemes, consensusData]);
 
