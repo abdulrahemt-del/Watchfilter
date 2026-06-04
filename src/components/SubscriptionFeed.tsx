@@ -1330,10 +1330,10 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                     >
                       {/* Top meta row */}
                       <div className="flex items-center justify-between mb-3">
-                        <span className="text-[10px] font-mono font-black text-blue-400 bg-blue-950/60 border border-blue-900/40 px-2 py-0.5 rounded">
+                        <span className="text-xs font-mono font-black text-blue-400 bg-blue-950/60 border border-blue-900/40 px-2 py-0.5 rounded">
                           #{globalIdx + 1}
                         </span>
-                        <span className={`text-[9px] font-mono font-black px-2 py-0.5 rounded border ${strengthColor}`}>
+                        <span className={`text-[11px] font-mono font-black px-2 py-0.5 rounded border ${strengthColor}`}>
                           {strengthLabel}
                         </span>
                       </div>
@@ -1347,21 +1347,21 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                       <div className="flex-1 mb-2 space-y-1">
                         {cTheme?.consensus ? (
                           <>
-                            <span className="text-[9px] font-mono font-black text-slate-400 uppercase tracking-widest block">Key Consensus</span>
-                            <p className="text-xs text-white leading-relaxed font-medium">
+                            <span className="text-[11px] font-mono font-black text-slate-400 uppercase tracking-widest block">Key Consensus</span>
+                            <p className="text-sm text-white leading-relaxed font-medium">
                               {cTheme.consensus}
                             </p>
                           </>
                         ) : consensusLoading ? (
                           <>
-                            <span className="text-[9px] font-mono font-black text-slate-600 uppercase tracking-widest block">Key Consensus</span>
-                            <p className="text-xs text-slate-600 italic animate-pulse">Synthesizing consensus…</p>
+                            <span className="text-[11px] font-mono font-black text-slate-600 uppercase tracking-widest block">Key Consensus</span>
+                            <p className="text-sm text-slate-600 italic animate-pulse">Synthesizing consensus…</p>
                           </>
                         ) : null}
                       </div>
 
                       {/* Stats */}
-                      <p className="text-[10px] font-mono text-white mb-3">
+                      <p className="text-xs font-mono text-white mb-3">
                         {t.creators} creator{t.creators !== 1 ? "s" : ""} · {t.count} video{t.count !== 1 ? "s" : ""}
                         {signals > 0 && ` · ${signals} signal${signals !== 1 ? "s" : ""}`}
                       </p>
@@ -1372,12 +1372,12 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                         if (cardInsights.length === 0) return null;
                         return (
                           <div className="space-y-1 mb-3">
-                            <span className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest block">Cross-Creator Validation</span>
+                            <span className="text-[11px] font-mono font-black text-slate-400 uppercase tracking-widest block">Cross-Creator Validation</span>
                             <div className="space-y-1">
                               {cardInsights.slice(0, 2).map((ins, ii) => (
                                 <div key={ii} className="flex items-start gap-1.5">
-                                  <span className="text-[10px] font-mono font-black text-blue-400 shrink-0 mt-0.5 truncate max-w-[80px]">{ins.creator}:</span>
-                                  <p className="text-xs text-white leading-relaxed line-clamp-2">{ins.text}</p>
+                                  <span className="text-xs font-mono font-black text-blue-400 shrink-0 mt-0.5 truncate max-w-[80px]">{ins.creator}:</span>
+                                  <p className="text-sm text-white leading-relaxed line-clamp-2">{ins.text}</p>
                                 </div>
                               ))}
                             </div>
@@ -1388,8 +1388,8 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                       {/* Why It Matters */}
                       {cTheme?.whyItMatters ? (
                         <div className="space-y-0.5 mb-3">
-                          <span className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest block">Why It Matters</span>
-                          <p className="text-xs text-white leading-relaxed">{cTheme.whyItMatters}</p>
+                          <span className="text-[11px] font-mono font-black text-slate-400 uppercase tracking-widest block">Why It Matters</span>
+                          <p className="text-sm text-white leading-relaxed">{cTheme.whyItMatters}</p>
                         </div>
                       ) : consensusLoading ? (
                         <div className="h-3 bg-slate-800/50 animate-pulse rounded mb-3" style={{ width: '85%' }} />
@@ -1398,10 +1398,10 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                       {/* Recommended Action */}
                       {cTheme?.recommendedActions?.[0] ? (
                         <div className="space-y-0.5 mb-3">
-                          <span className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest block">Recommended Action</span>
+                          <span className="text-[11px] font-mono font-black text-slate-400 uppercase tracking-widest block">Recommended Action</span>
                           <div className="flex items-start gap-1.5">
                             <span className="text-emerald-400 text-xs shrink-0 leading-none mt-0.5">✓</span>
-                            <p className="text-xs text-white leading-snug">{cTheme.recommendedActions[0]}</p>
+                            <p className="text-sm text-white leading-snug">{cTheme.recommendedActions[0]}</p>
                           </div>
                         </div>
                       ) : null}
@@ -1410,25 +1410,25 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                       {allCreators.length > 0 && (
                         <div className="space-y-2 mb-3">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-[9px] font-mono font-black ${strengthColor}`}>
+                            <span className={`text-[11px] font-mono font-black ${strengthColor}`}>
                               {strengthLabel === "Very Strong" ? "↑↑ Very Strong Consensus" : strengthLabel === "Strong" ? "↑ Strong Consensus" : strengthLabel === "Moderate" ? "→ Moderate Consensus" : "↓ Weak Consensus"}
                             </span>
                             {isTopOpp && (
-                              <span className="text-[9px] font-mono font-black text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">
+                              <span className="text-[11px] font-mono font-black text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">
                                 Opportunity: High
                               </span>
                             )}
                           </div>
                           <div className="space-y-1">
-                            <span className="text-[9px] font-mono font-black text-slate-400 uppercase tracking-widest block">Top Contributors</span>
+                            <span className="text-[11px] font-mono font-black text-slate-400 uppercase tracking-widest block">Top Contributors</span>
                             {allCreators.slice(0, 3).map((ch, ci) => (
                               <div key={ci} className="flex items-center gap-2">
                                 <span className="text-sm leading-none">{MEDALS[ci]}</span>
-                                <span className="text-xs font-bold text-white">{ch}</span>
+                                <span className="text-sm font-bold text-white">{ch}</span>
                               </div>
                             ))}
                             {t.creators > Math.min(allCreators.length, 3) && (
-                              <span className="text-[10px] font-mono text-blue-400 pl-6 block">
+                              <span className="text-xs font-mono text-blue-400 pl-6 block">
                                 +{t.creators - Math.min(allCreators.length, 3)} more
                               </span>
                             )}
@@ -1446,8 +1446,8 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                           />
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono text-white">{confidence}% consensus</span>
-                          <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[9px] font-mono font-bold uppercase tracking-wider transition-all duration-200 ${
+                          <span className="text-xs font-mono text-white">{confidence}% consensus</span>
+                          <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-mono font-bold uppercase tracking-wider transition-all duration-200 ${
                             isActive
                               ? "bg-blue-500/15 text-blue-400 border-blue-500/40"
                               : "bg-slate-900 text-slate-500 border-slate-800 group-hover:text-slate-300 group-hover:border-slate-700"
