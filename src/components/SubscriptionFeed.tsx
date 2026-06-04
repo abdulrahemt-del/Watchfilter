@@ -842,7 +842,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             )}
           </div>
           <button onClick={() => setDrawerVideo(video)} className="feed-card__analyze-btn">
-            ⚡ Analyze Fluff
+            ⚡ Filter Insights
           </button>
           {DEBUG_BADGES && (
             <div className="feed-card__debug-badge">
@@ -1544,7 +1544,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                                     onClick={e => e.stopPropagation()}
                                     className="text-[8px] font-mono font-bold bg-blue-500/10 hover:bg-blue-500/20 text-white border border-blue-500/20 px-2 py-0.5 rounded transition-colors uppercase tracking-wider"
                                   >
-                                    Analyze Fluff ↗
+                                    Filter Insights ↗
                                   </a>
                                 </div>
                               </div>

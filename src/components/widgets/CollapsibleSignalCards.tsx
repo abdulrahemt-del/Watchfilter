@@ -215,7 +215,7 @@ function InlineAuditTrailDrawer({ theme }: { theme: EmergingSignalTheme }) {
                       onClick={e => e.stopPropagation()}
                       className="text-[9px] font-mono font-bold bg-[#a3cef1]/20 hover:bg-[#a3cef1]/35 text-[#274c77] border border-[#6096ba]/30 px-2 py-0.5 rounded transition-colors uppercase tracking-wider"
                     >
-                      Analyze Fluff ↗
+                      Filter Insights ↗
                     </a>
                   </div>
                 </div>
