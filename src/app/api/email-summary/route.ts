@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
   }
 
   const resend = new Resend(apiKey);
-  const from = process.env.RESEND_FROM_EMAIL ?? "briefings@watchfilter.app";
+  const from = process.env.RESEND_FROM_EMAIL ?? "hello@watchfilter.app";
   const title = analysis.title ?? `Video ${analysis.videoId}`;
 
   const { error } = await resend.emails.send({
