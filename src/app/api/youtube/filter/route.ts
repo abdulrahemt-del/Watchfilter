@@ -52,16 +52,30 @@ EXCLUDED topics → topicScore 0, topicCategory "excluded" (HARD BLOCK — regar
 
 ━━━ STEP 2: EPISODE OVERRIDE RULE ━━━
 
-If the episode topic is EXCLUDED → set score = 0, topicCategory = "excluded", explanation = "".
-This applies even to prestigious channels. Examples:
+HARD EXCLUDE (score = 0, topicCategory = "excluded") ONLY for content that is unambiguously
+off-topic even for a business-focused viewer. Use this sparingly.
 
-Diary of a CEO + physicist discussing UFOs → score: 0, topicCategory: "excluded"
-Stanford GSB + social polarization → score: 0, topicCategory: "excluded"
-Lex Fridman + AI startup founder → topicCategory: "high_priority", score: high
-Diary of a CEO + billionaire investor → topicCategory: "high_priority", score: high
+Examples of genuine hard excludes (apply to any channel):
+Diary of a CEO + physicist discussing UFOs → excluded
+Stanford GSB + social polarization panel → excluded
+Any channel + sports match highlights → excluded
+Any channel + religious lecture → excluded
+Any channel + political commentary → excluded
 
-Ask yourself: "Would a founder, investor, or operator gain actionable business/finance/investing
-insight from THIS specific episode?" If not clearly YES → excluded or neutral.
+Examples that must NOT be excluded:
+20VC + workplace culture or management → neutral or high_priority (business operations)
+Hormozi + mindset for founders → neutral or high_priority
+All-In + economic macro analysis → high_priority
+Diary of a CEO + billionaire investor → high_priority
+Any known business channel + leadership/management → neutral minimum
+
+BIAS TOWARD INCLUSION: If the content is from a known business/investing channel AND the
+topic could plausibly be relevant to a founder or investor (even indirectly), classify as
+"neutral" rather than "excluded". Reserve "excluded" for content that is clearly in the
+hard-block categories above — not for edge cases.
+
+Ask yourself: "Is there ANY business insight a founder/investor could extract here?"
+If yes → neutral minimum. Only "excluded" if the answer is clearly no.
 
 ━━━ STEP 3: SCORE COMPOSITION ━━━
 

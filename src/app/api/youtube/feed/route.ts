@@ -147,10 +147,10 @@ export async function GET() {
       .filter(Boolean);
     console.log(`[feed] playlists: ${playlists.length}`);
 
-    // 3 — Fetch 50 most-recent videos per channel (1 page)
+    // 3 — Fetch 50 most-recent videos per channel (API max per request)
     async function fetchPlaylistVideos(playlistId: string, token: string): Promise<YTPlaylistItem[]> {
       const page1 = await ytGet<{ items?: YTPlaylistItem[] }>(
-        `playlistItems?part=snippet&playlistId=${playlistId}&maxResults=25`,
+        `playlistItems?part=snippet&playlistId=${playlistId}&maxResults=50`,
         token,
       );
       return page1.items ?? [];

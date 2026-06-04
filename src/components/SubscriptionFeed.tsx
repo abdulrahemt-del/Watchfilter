@@ -253,7 +253,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   const [consensusData, setConsensusData]         = useState<ConsensusResult | null>(null);
   const [consensusLoading, setConsensusLoading]   = useState(false);
   const [selectedConsensusTheme, setSelectedConsensusTheme] = useState<string | null>(null);
-  const [showAllSources, setShowAllSources] = useState(false);
+  // showAllSources removed — filteredVideos now always contains the full approved pool
 
   // ── Structural filter ──────────────────────────────────────────────────────
   // business/founder: all 40-min+ videos with ≥1 business keyword in title,
@@ -280,11 +280,17 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     const base = aiReady
       ? structuralFilter.filter((v) => {
           const ai = aiResults[v.videoId];
+          const affinity = getChannelAffinity(v.channelTitle);
           if (!ai) {
             // Unscored: only trusted channels show while AI runs.
-            // Unknown channels default-hide — never show before AI verdict.
-            return getChannelAffinity(v.channelTitle) >= AFFINITY_PASS_THRESHOLD;
+            return affinity >= AFFINITY_PASS_THRESHOLD;
           }
+          // Trusted channels (affinity ≥ 70): only gate on explicit score=0.
+          // The structural filter already blocked bad titles for these channels;
+          // topicCategory="excluded" from the AI is not reliable enough to
+          // hide content from channels the user deliberately subscribed to.
+          if (affinity >= AFFINITY_PASS_THRESHOLD) return ai.score > 0;
+          // Unknown channels: enforce strict AI gate
           return ai.topicCategory !== "excluded";
         })
       // Before AI is ready: show only trusted channels to prevent junk flash
@@ -765,14 +771,13 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
 
   // Videos shown in the proof grid — filtered to selected consensus theme when one is active
   const displayVideos = useMemo(() => {
-    const pool = showAllSources ? structuralFilter : filteredVideos;
-    if (!selectedConsensusTheme || !aiReady) return pool;
-    return pool.filter((v) =>
+    if (!selectedConsensusTheme || !aiReady) return filteredVideos;
+    return filteredVideos.filter((v) =>
       aiResults[v.videoId]?.categories?.some(
         (c) => c.toLowerCase() === selectedConsensusTheme.toLowerCase()
       )
     );
-  }, [filteredVideos, structuralFilter, showAllSources, selectedConsensusTheme, aiResults, aiReady]);
+  }, [filteredVideos, selectedConsensusTheme, aiResults, aiReady]);
 
   const userName     = session?.user?.name?.split(" ")[0] ?? session?.user?.email?.split("@")[0] ?? "there";
   const hour         = new Date().getHours();
@@ -1637,8 +1642,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                       🗄️ Supporting Verified Video Proof Streams
                     </h3>
                     <p className="dash-proof-streams__count">
-                      Showing {displayVideos.length} of {showAllSources ? structuralFilter.length : filteredVideos.length} source assets
-                      {showAllSources ? " · extended view" : ""}
+                      Showing {displayVideos.length} of {filteredVideos.length} source assets
                       {selectedConsensusTheme ? ` · filtered by "${selectedConsensusTheme}"` : ""}
                     </p>
                   </div>
@@ -1649,19 +1653,6 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                         className="dash-proof-streams__clear-btn"
                       >
                         Clear filter: <strong>{selectedConsensusTheme}</strong> ✕
-                      </button>
-                    )}
-                    {structuralFilter.length > filteredVideos.length && (
-                      <button
-                        onClick={() => setShowAllSources(v => !v)}
-                        className="text-[10px] font-mono font-bold px-3 py-1.5 rounded-lg border transition-colors"
-                        style={showAllSources
-                          ? { background: 'rgba(59,130,246,0.1)', color: '#60a5fa', borderColor: 'rgba(59,130,246,0.3)' }
-                          : { background: 'rgba(30,41,59,0.6)', color: '#ffffff', borderColor: 'rgba(51,65,85,0.6)' }}
-                      >
-                        {showAllSources
-                          ? `↑ Show approved only (${filteredVideos.length})`
-                          : `↓ Show all sources (+${structuralFilter.length - filteredVideos.length} more)`}
                       </button>
                     )}
                   </div>
