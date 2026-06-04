@@ -213,7 +213,7 @@ function InlineAuditTrailDrawer({ theme }: { theme: EmergingSignalTheme }) {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={e => e.stopPropagation()}
-                      className="text-[9px] font-mono font-bold bg-white/10 hover:bg-white/20 text-white border border-white/20 px-2 py-0.5 rounded transition-colors uppercase tracking-wider"
+                      className="text-[9px] font-mono font-bold bg-[#274c77] hover:bg-[#2d5490] text-white border border-[#1e3a5f] px-2 py-0.5 rounded transition-colors uppercase tracking-wider"
                     >
                       Filter Insights ↗
                     </a>
