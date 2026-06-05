@@ -394,18 +394,50 @@ function LibraryView({
   );
 }
 
-// ── Creator Trends ────────────────────────────────────────────────
+// ── Team Workspace ────────────────────────────────────────────────
 
 function TrendsView() {
   return (
     <div className="placeholder-view">
-      <div className="placeholder-view__icon">📈</div>
-      <h1 className="view-title">Market &amp; Creator Trends</h1>
+      <div className="placeholder-view__icon">👥</div>
+      <h1 className="view-title">Team Workspace</h1>
       <p className="view-sub">
-        Browse the top pre-analyzed videos across finance, business, and investing — without
-        pasting a single link. New users get instant value on day one.
+        Collaborate with your team on intelligence briefings. Share analyses, annotate
+        insights, and build a shared knowledge base — all in one place.
       </p>
-      <div className="placeholder-badge">Coming in Phase 2</div>
+
+      <div className="workspace-features">
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">📋</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Shared Briefings</h3>
+            <p className="workspace-feature-card__desc">Push any analysis directly to your team's shared library. Everyone stays on the same page.</p>
+          </div>
+        </div>
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">💬</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Inline Annotations</h3>
+            <p className="workspace-feature-card__desc">Highlight key insights and leave context for your team directly inside any briefing.</p>
+          </div>
+        </div>
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">🔔</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Daily Intelligence Brief</h3>
+            <p className="workspace-feature-card__desc">Auto-deliver a curated morning brief to your whole team — no manual curation required.</p>
+          </div>
+        </div>
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">📊</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Team Signal Board</h3>
+            <p className="workspace-feature-card__desc">A live view of every emerging signal your team is tracking, ranked by consensus strength.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="placeholder-badge">Coming in Phase 2 — Upgrade to Pro for Early Access</div>
     </div>
   );
 }
@@ -426,12 +458,12 @@ function UpgradeView() {
           <span className="upgrade-card__period">/month</span>
         </div>
         <ul className="upgrade-card__features">
-          <li>✓ Unlimited video analyses</li>
-          <li>✓ Priority GPT-4o pipeline</li>
-          <li>✓ Full audio briefings (all voices)</li>
+          <li>✓ Daily Intelligence Brief</li>
+          <li>✓ Cross-Creator Consensus</li>
+          <li>✓ Opportunity Detection</li>
+          <li>✓ Emerging Signals</li>
+          <li>✓ Full Audio Briefings</li>
           <li>✓ Team workspace &amp; sharing</li>
-          <li>✓ CSV / PDF export</li>
-          <li>✓ Creator Trends early access</li>
         </ul>
         <button type="button" className="btn btn-primary upgrade-card__cta">
           Get Executive Access →

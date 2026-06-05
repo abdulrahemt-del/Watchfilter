@@ -16,7 +16,7 @@ const PRIMARY_NAV: { id: NavItem; icon: string; label: string; primary?: true }[
   { id: "analyze",   icon: "🔍", label: "Analyze Video", primary: true },
   { id: "feed",      icon: "📺", label: "Subscription Feed" },
   { id: "library",   icon: "💾", label: "Saved Briefings" },
-  { id: "trends",    icon: "📈", label: "Creator Trends" },
+  { id: "trends",    icon: "👥", label: "Team Workspace" },
 ];
 
 type FeedbackType = "Bug Report" | "Feature Request" | "General Feedback";

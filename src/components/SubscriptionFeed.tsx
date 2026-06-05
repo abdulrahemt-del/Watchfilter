@@ -1091,7 +1091,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                 const whyText = mii?.whyItMatters ?? ct?.whyItMatters;
                 return (
                   <div className="border border-[#1e2d45] rounded-xl p-6 space-y-4" style={{ background: 'linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)', boxShadow: '0 4px 32px #0000002e,inset 0 1px #ffffff08' }}>
-                    <p className="text-[9px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">🔥 Most Important Insight Today</p>
+                    <p className="text-sm font-mono font-black text-[#38bdf8] uppercase tracking-widest">🔥 Most Important Insight Today</p>
 
                     {insightText ? (
                       <p className="text-base text-white font-semibold leading-relaxed">{insightText}</p>
@@ -1485,7 +1485,16 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                   if (!activeT) return null;
 
                   const cTheme = consensusData?.themes.find(ct => ct.topic.toLowerCase() === activeT.topic.toLowerCase());
-                  const topVideos = themeVideoMap.get(activeT.topic) ?? [];
+                  const isHeroTopic = activeT.topic === todaysThemes[0]?.topic;
+                  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+                  const allTopVideos = themeVideoMap.get(activeT.topic) ?? [];
+                  const thisWeekTopVideos = isHeroTopic
+                    ? allTopVideos.filter(v => new Date(v.publishedAt).getTime() >= weekAgo)
+                    : allTopVideos;
+                  // Fallback: if hero topic has no videos this week, show this week's videos from any topic
+                  const topVideos = (isHeroTopic && thisWeekTopVideos.length === 0)
+                    ? filteredVideos.filter(v => new Date(v.publishedAt).getTime() >= weekAgo)
+                    : thisWeekTopVideos;
                   const allCreators = themeDataMap.get(activeT.topic)?.creators ?? activeT.channelNames;
                   const insights = themeDataMap.get(activeT.topic)?.insights ?? [];
                   const reportSlug = activeT.topic.toLowerCase().replace(/\s+/g, '-');

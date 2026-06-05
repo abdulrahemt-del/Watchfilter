@@ -3611,6 +3611,46 @@ input {
   font-weight:700
 }
 
+.workspace-features {
+  display:flex;
+  flex-direction:column;
+  gap:.85rem;
+  width:100%;
+  max-width:520px;
+  margin:.25rem 0 1.5rem
+}
+
+.workspace-feature-card {
+  display:flex;
+  align-items:flex-start;
+  gap:1rem;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:1rem 1.25rem
+}
+
+.workspace-feature-card__icon {
+  font-size:1.35rem;
+  line-height:1;
+  margin-top:.1rem;
+  flex-shrink:0
+}
+
+.workspace-feature-card__title {
+  font-size:.85rem;
+  font-weight:700;
+  color:var(--text);
+  margin:0 0 .2rem
+}
+
+.workspace-feature-card__desc {
+  font-size:.78rem;
+  color:var(--text-muted);
+  line-height:1.5;
+  margin:0
+}
+
 .upgrade-card {
   background:var(--surface);
   border:1px solid var(--border);
