@@ -407,14 +407,13 @@ function TrendsView() {
 // ── Cross-Channel Consensus ───────────────────────────────────────
 
 function CrossChannelConsensusView() {
-  const [briefings, setBriefings]           = useState<AnalysisSummary[]>([]);
-  const [loading, setLoading]               = useState(true);
-  const [compareMode, setCompareMode]       = useState(false);
-  const [selected, setSelected]             = useState<Set<string>>(new Set());
-  const [comparing, setComparing]           = useState(false);
-  const [consensus, setConsensus]           = useState<ConsensusResult | null>(null);
+  const [briefings, setBriefings]               = useState<AnalysisSummary[]>([]);
+  const [loading, setLoading]                   = useState(true);
+  const [selected, setSelected]                 = useState<Set<string>>(new Set());
+  const [comparing, setComparing]               = useState(false);
+  const [consensus, setConsensus]               = useState<ConsensusResult | null>(null);
   const [consensusSources, setConsensusSources] = useState<AnalysisSummary[]>([]);
-  const [error, setError]                   = useState<string | null>(null);
+  const [error, setError]                       = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/analyses")
@@ -431,12 +430,6 @@ function CrossChannelConsensusView() {
       else if (next.size < 5) next.add(id);
       return next;
     });
-  }
-
-  function exitCompare() {
-    setCompareMode(false);
-    setSelected(new Set());
-    setError(null);
   }
 
   async function runCompare() {
@@ -465,13 +458,18 @@ function CrossChannelConsensusView() {
       <ConsensusView
         result={consensus}
         sources={consensusSources}
-        onBack={() => { setConsensus(null); exitCompare(); }}
+        onBack={() => { setConsensus(null); setSelected(new Set()); setError(null); }}
       />
     );
   }
 
+  const count = selected.size;
+  const atMax = count === 5;
+  const canCompare = count >= 2;
+  const remaining = Math.max(0, 2 - count);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", paddingBottom: count > 0 ? "88px" : "0" }}>
 
       {/* Header */}
       <div>
@@ -485,71 +483,38 @@ function CrossChannelConsensusView() {
 
       {/* 2×2 feature cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">📡</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Multi-Creator Signal Detection</h3>
-            <p className="workspace-feature-card__desc">Automatically surfaces topics that 3+ creators have covered independently within the same time window.</p>
+        {[
+          { icon: "📡", title: "Multi-Creator Signal Detection", desc: "Automatically surfaces topics that 3+ creators have covered independently within the same time window." },
+          { icon: "📊", title: "Agreement Strength Score",       desc: "Ranks consensus signals by how strongly creators agree — not just that they mentioned the same topic, but that their conclusions align." },
+          { icon: "⚡", title: "Contrarian Alerts",              desc: "Flags when one creator breaks from the consensus — often the most valuable signal of all." },
+          { icon: "🗂️", title: "Evidence Audit Trail",           desc: "Every consensus point links back to the exact timestamp and quote from each creator that contributed to it." },
+        ].map((f) => (
+          <div key={f.title} className="workspace-feature-card">
+            <span className="workspace-feature-card__icon">{f.icon}</span>
+            <div>
+              <h3 className="workspace-feature-card__title">{f.title}</h3>
+              <p className="workspace-feature-card__desc">{f.desc}</p>
+            </div>
           </div>
-        </div>
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">📊</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Agreement Strength Score</h3>
-            <p className="workspace-feature-card__desc">Ranks consensus signals by how strongly creators agree — not just that they mentioned the same topic, but that their conclusions align.</p>
-          </div>
-        </div>
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">⚡</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Contrarian Alerts</h3>
-            <p className="workspace-feature-card__desc">Flags when one creator breaks from the consensus — often the most valuable signal of all.</p>
-          </div>
-        </div>
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">🗂️</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Evidence Audit Trail</h3>
-            <p className="workspace-feature-card__desc">Every consensus point links back to the exact timestamp and quote from each creator that contributed to it.</p>
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Briefing grid */}
       <div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.85rem" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
           <p style={{ margin: 0, fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
             Your Saved Briefings
           </p>
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            {compareMode && selected.size >= 2 && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{ padding: "0.38rem 0.9rem", fontSize: "0.8rem" }}
-                disabled={comparing}
-                onClick={() => void runCompare()}
-              >
-                {comparing ? <><span className="spinner" style={{ width: 10, height: 10, borderWidth: 2 }} /></> : null}
-                {comparing ? "Comparing…" : `Compare ${selected.size}`}
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{ padding: "0.38rem 0.9rem", fontSize: "0.8rem" }}
-              onClick={() => (compareMode ? exitCompare() : setCompareMode(true))}
-            >
-              {compareMode ? "Cancel" : "Compare"}
-            </button>
-          </div>
-        </div>
-
-        {compareMode && (
-          <p style={{ margin: "0 0 0.75rem", fontSize: "0.78rem", color: "var(--muted)" }}>
-            Select 2–5 briefings to compare. {selected.size > 0 ? `${selected.size} selected.` : ""}
+          <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--muted)" }}>
+            {count === 0
+              ? "Click any briefing to select it for comparison"
+              : atMax
+                ? "Maximum reached — deselect one to swap"
+                : canCompare
+                  ? `${count} selected — ready to compare`
+                  : `${count} selected — pick ${remaining} more`}
           </p>
-        )}
+        </div>
 
         {error && (
           <div className="status-box status-error" style={{ marginBottom: "0.75rem" }}>{error}</div>
@@ -567,19 +532,111 @@ function CrossChannelConsensusView() {
           </div>
         ) : (
           <div className="bc-grid">
-            {briefings.map((b) => (
-              <BriefingCard
-                key={b.id}
-                item={b}
-                compareMode={compareMode}
-                compareSelected={selected.has(b.id)}
-                onSelect={() => { if (compareMode) toggleItem(b.id); }}
-                onToggleCompare={() => toggleItem(b.id)}
-              />
-            ))}
+            {briefings.map((b) => {
+              const isSelected = selected.has(b.id);
+              const isDisabled = atMax && !isSelected;
+              return (
+                <div
+                  key={b.id}
+                  onClick={() => !isDisabled && toggleItem(b.id)}
+                  style={{
+                    cursor: isDisabled ? "not-allowed" : "pointer",
+                    borderRadius: 14,
+                    outline: isSelected ? "2.5px solid var(--accent)" : "2.5px solid transparent",
+                    outlineOffset: 2,
+                    opacity: isDisabled ? 0.45 : 1,
+                    transform: isSelected ? "scale(1.015)" : "scale(1)",
+                    transition: "outline 0.15s, opacity 0.15s, transform 0.15s, box-shadow 0.15s",
+                    boxShadow: isSelected ? "0 4px 20px rgba(74,111,165,0.22)" : undefined,
+                    position: "relative" as const,
+                  }}
+                >
+                  {isSelected && (
+                    <div style={{
+                      position: "absolute", top: 10, right: 10, zIndex: 10,
+                      width: 24, height: 24, borderRadius: "50%",
+                      background: "var(--accent)", display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                      boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                    }}>
+                      <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+                        <path d="M1 5l3 3 7-7" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  )}
+                  <BriefingCard
+                    item={b}
+                    compareMode
+                    compareSelected={isSelected}
+                    onSelect={() => !isDisabled && toggleItem(b.id)}
+                    onToggleCompare={() => !isDisabled && toggleItem(b.id)}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Floating action bar */}
+      {count > 0 && (
+        <div style={{
+          position: "fixed", bottom: 0, left: 280, right: 0, zIndex: 100,
+          background: "rgba(15,23,42,0.96)", backdropFilter: "blur(10px)",
+          borderTop: "1px solid rgba(255,255,255,0.1)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "0.9rem 2rem", gap: "1rem",
+        }}>
+          {/* Left — selection dots */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+            <div style={{ display: "flex", gap: "0.3rem" }}>
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} style={{
+                  width: 10, height: 10, borderRadius: "50%",
+                  background: i <= count ? "var(--accent)" : "rgba(255,255,255,0.15)",
+                  transition: "background 0.2s",
+                }} />
+              ))}
+            </div>
+            <span style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.82rem" }}>
+              {count} of 5 selected
+              {!canCompare && <span style={{ color: "rgba(255,255,255,0.45)" }}> — select {remaining} more to compare</span>}
+            </span>
+          </div>
+
+          {/* Right — actions */}
+          <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={() => { setSelected(new Set()); setError(null); }}
+              style={{
+                background: "transparent", border: "1px solid rgba(255,255,255,0.2)",
+                color: "rgba(255,255,255,0.6)", borderRadius: 8,
+                padding: "0.45rem 0.9rem", fontSize: "0.8rem", cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              Clear all
+            </button>
+            <button
+              type="button"
+              disabled={!canCompare || comparing}
+              onClick={() => void runCompare()}
+              style={{
+                background: canCompare ? "var(--accent)" : "rgba(255,255,255,0.1)",
+                border: "none", color: canCompare ? "#fff" : "rgba(255,255,255,0.35)",
+                borderRadius: 8, padding: "0.45rem 1.2rem",
+                fontSize: "0.85rem", fontWeight: 700, cursor: canCompare ? "pointer" : "not-allowed",
+                display: "flex", alignItems: "center", gap: "0.4rem",
+                transition: "all 0.2s",
+              }}
+            >
+              {comparing && <span className="spinner" style={{ width: 10, height: 10, borderWidth: 2, borderTopColor: "#fff", borderColor: "rgba(255,255,255,0.3)" }} />}
+              {comparing ? "Comparing…" : `Compare ${count} briefing${count > 1 ? "s" : ""} →`}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
