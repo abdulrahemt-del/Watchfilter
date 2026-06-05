@@ -470,6 +470,31 @@ function CrossChannelConsensusView() {
     );
   }
 
+  if (comparing) {
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        minHeight: "60vh", gap: "1.5rem",
+      }}>
+        <div style={{ position: "relative", width: 72, height: 72 }}>
+          <svg width="72" height="72" viewBox="0 0 72 72" fill="none" style={{ animation: "spin 0.9s linear infinite" }}>
+            <circle cx="36" cy="36" r="30" stroke="#e2e8f0" strokeWidth="6" />
+            <circle cx="36" cy="36" r="30" stroke="var(--accent)" strokeWidth="6"
+              strokeLinecap="round" strokeDasharray="94 100" strokeDashoffset="0" />
+          </svg>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: "1rem", color: "var(--text)" }}>
+            Comparing {selected.size} briefings…
+          </p>
+          <p style={{ margin: "0.35rem 0 0", fontSize: "0.82rem", color: "var(--muted)" }}>
+            Cross-examining creators for consensus signals
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const count = selected.size;
   const atMax = count === 5;
   const canCompare = count >= 2;
@@ -665,8 +690,7 @@ function CrossChannelConsensusView() {
                 display: "flex", alignItems: "center", gap: "0.45rem",
               }}
             >
-              {comparing && <span className="spinner" style={{ width: 11, height: 11, borderWidth: 2, borderTopColor: "#fff", borderColor: "rgba(255,255,255,0.3)" }} />}
-              {comparing ? "Comparing…" : canCompare ? `Compare ${count} Briefings →` : "Select 2+ to Compare"}
+              {canCompare ? `Compare ${count} Briefings →` : "Select 2+ to Compare"}
             </button>
           </div>
         </div>
