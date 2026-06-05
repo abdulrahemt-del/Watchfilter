@@ -497,22 +497,24 @@ function CrossChannelConsensusView() {
             const isSelected = selected.has(b.id);
             const isDisabled = !isSelected && selected.size >= 5;
             return (
-              <button
+              <div
                 key={b.id}
-                type="button"
-                disabled={isDisabled}
-                onClick={() => toggleSelect(b.id)}
                 className={[
-                  "ccv-card",
-                  isSelected ? "ccv-card--selected" : "",
-                  isDisabled ? "ccv-card--disabled" : "",
+                  "ccv-card-wrap",
+                  isSelected ? "ccv-card-wrap--selected" : "",
+                  isDisabled ? "ccv-card-wrap--disabled" : "",
                 ].filter(Boolean).join(" ")}
+                onClick={() => !isDisabled && toggleSelect(b.id)}
               >
-                <div className="ccv-card__check">{isSelected ? "✓" : ""}</div>
-                <p className="ccv-card__channel">{b.channelName ?? "Unknown"}</p>
-                <p className="ccv-card__title">{b.title ?? b.videoId}</p>
-                <p className="ccv-card__subject">{b.primarySubject}</p>
-              </button>
+                {isSelected && <div className="ccv-card-check">✓</div>}
+                <BriefingCard
+                  item={b}
+                  compareMode
+                  compareSelected={isSelected}
+                  onSelect={() => !isDisabled && toggleSelect(b.id)}
+                  onToggleCompare={() => !isDisabled && toggleSelect(b.id)}
+                />
+              </div>
             );
           })}
         </div>
