@@ -3656,7 +3656,8 @@ input {
   display:grid !important;
   grid-template-columns:1fr 1fr;
   gap:.85rem;
-  max-width:none
+  max-width:none;
+  width:100%
 }
 
 .ccv-root {
@@ -3668,7 +3669,7 @@ input {
 }
 
 .ccv-header {
-  max-width:640px
+  width:100%
 }
 
 .ccv-grid {
