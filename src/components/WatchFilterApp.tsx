@@ -394,9 +394,25 @@ function LibraryView({
   );
 }
 
-// ── Team Workspace ────────────────────────────────────────────────
+// ── Creator Trends ────────────────────────────────────────────────
 
 function TrendsView() {
+  return (
+    <div className="placeholder-view">
+      <div className="placeholder-view__icon">📈</div>
+      <h1 className="view-title">Market &amp; Creator Trends</h1>
+      <p className="view-sub">
+        Browse the top pre-analyzed videos across finance, business, and investing — without
+        pasting a single link. New users get instant value on day one.
+      </p>
+      <div className="placeholder-badge">Coming in Phase 2</div>
+    </div>
+  );
+}
+
+// ── Team Workspace ────────────────────────────────────────────────
+
+function TeamWorkspaceView() {
   return (
     <div className="placeholder-view">
       <div className="placeholder-view__icon">👥</div>
@@ -796,6 +812,9 @@ export function WatchFilterApp() {
 
         {/* ── Trends ── */}
         {activeNav === "trends" && <MarketIntelligencePulse />}
+
+        {/* ── Team Workspace ── */}
+        {activeNav === "workspace" && <TeamWorkspaceView />}
 
         {/* ── Upgrade ── */}
         {activeNav === "upgrade" && <UpgradeView />}
