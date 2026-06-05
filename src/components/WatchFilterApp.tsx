@@ -470,8 +470,38 @@ function CrossChannelConsensusView() {
         <h1 className="view-title">Custom Consensus Builder</h1>
         <p className="view-sub">
           Select 2–5 saved briefings to force a consensus analysis across those exact videos.
-          When unconnected creators converge on the same signal, that&apos;s the opportunity.
+          When unconnected creators converge on the same signal, that&apos;s where the real opportunity is.
         </p>
+        <div className="workspace-features" style={{ marginTop: "1.25rem" }}>
+          <div className="workspace-feature-card">
+            <span className="workspace-feature-card__icon">📡</span>
+            <div>
+              <h3 className="workspace-feature-card__title">Multi-Creator Signal Detection</h3>
+              <p className="workspace-feature-card__desc">Automatically surfaces topics that 3+ creators have covered independently within the same time window.</p>
+            </div>
+          </div>
+          <div className="workspace-feature-card">
+            <span className="workspace-feature-card__icon">📊</span>
+            <div>
+              <h3 className="workspace-feature-card__title">Agreement Strength Score</h3>
+              <p className="workspace-feature-card__desc">Ranks consensus signals by how strongly creators agree — not just that they mentioned the same topic, but that their conclusions align.</p>
+            </div>
+          </div>
+          <div className="workspace-feature-card">
+            <span className="workspace-feature-card__icon">⚡</span>
+            <div>
+              <h3 className="workspace-feature-card__title">Contrarian Alerts</h3>
+              <p className="workspace-feature-card__desc">Flags when one creator breaks from the consensus — often the most valuable signal of all.</p>
+            </div>
+          </div>
+          <div className="workspace-feature-card">
+            <span className="workspace-feature-card__icon">🗂️</span>
+            <div>
+              <h3 className="workspace-feature-card__title">Evidence Audit Trail</h3>
+              <p className="workspace-feature-card__desc">Every consensus point links back to the exact timestamp and quote from each creator that contributed to it.</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {loadingBriefings ? (
