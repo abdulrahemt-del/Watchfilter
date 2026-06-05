@@ -407,8 +407,14 @@ function TrendsView() {
 // ── Cross-Channel Consensus ───────────────────────────────────────
 
 function CrossChannelConsensusView() {
-  const [briefings, setBriefings] = useState<AnalysisSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [briefings, setBriefings]           = useState<AnalysisSummary[]>([]);
+  const [loading, setLoading]               = useState(true);
+  const [compareMode, setCompareMode]       = useState(false);
+  const [selected, setSelected]             = useState<Set<string>>(new Set());
+  const [comparing, setComparing]           = useState(false);
+  const [consensus, setConsensus]           = useState<ConsensusResult | null>(null);
+  const [consensusSources, setConsensusSources] = useState<AnalysisSummary[]>([]);
+  const [error, setError]                   = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/analyses")
@@ -417,6 +423,52 @@ function CrossChannelConsensusView() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  function toggleItem(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < 5) next.add(id);
+      return next;
+    });
+  }
+
+  function exitCompare() {
+    setCompareMode(false);
+    setSelected(new Set());
+    setError(null);
+  }
+
+  async function runCompare() {
+    const ids = Array.from(selected);
+    setComparing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/consensus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = (await res.json()) as ConsensusResult & ApiErrorBody;
+      if (!res.ok) throw new Error((data as ApiErrorBody).error ?? "Consensus failed");
+      setConsensus(data);
+      setConsensusSources(briefings.filter((b) => ids.includes(b.id)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Consensus failed");
+    } finally {
+      setComparing(false);
+    }
+  }
+
+  if (consensus) {
+    return (
+      <ConsensusView
+        result={consensus}
+        sources={consensusSources}
+        onBack={() => { setConsensus(null); exitCompare(); }}
+      />
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
@@ -463,11 +515,46 @@ function CrossChannelConsensusView() {
         </div>
       </div>
 
-      {/* Briefing browse grid */}
+      {/* Briefing grid */}
       <div>
-        <p style={{ margin: "0 0 0.85rem", fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)" }}>
-          Your Saved Briefings
-        </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.85rem" }}>
+          <p style={{ margin: 0, fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
+            Your Saved Briefings
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            {compareMode && selected.size >= 2 && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ padding: "0.38rem 0.9rem", fontSize: "0.8rem" }}
+                disabled={comparing}
+                onClick={() => void runCompare()}
+              >
+                {comparing ? <><span className="spinner" style={{ width: 10, height: 10, borderWidth: 2 }} /></> : null}
+                {comparing ? "Comparing…" : `Compare ${selected.size}`}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ padding: "0.38rem 0.9rem", fontSize: "0.8rem" }}
+              onClick={() => (compareMode ? exitCompare() : setCompareMode(true))}
+            >
+              {compareMode ? "Cancel" : "Compare"}
+            </button>
+          </div>
+        </div>
+
+        {compareMode && (
+          <p style={{ margin: "0 0 0.75rem", fontSize: "0.78rem", color: "var(--muted)" }}>
+            Select 2–5 briefings to compare. {selected.size > 0 ? `${selected.size} selected.` : ""}
+          </p>
+        )}
+
+        {error && (
+          <div className="status-box status-error" style={{ marginBottom: "0.75rem" }}>{error}</div>
+        )}
+
         {loading ? (
           <div className="bc-grid">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -481,13 +568,18 @@ function CrossChannelConsensusView() {
         ) : (
           <div className="bc-grid">
             {briefings.map((b) => (
-              <BriefingCard key={b.id} item={b} onSelect={() => {}} />
+              <BriefingCard
+                key={b.id}
+                item={b}
+                compareMode={compareMode}
+                compareSelected={selected.has(b.id)}
+                onSelect={() => { if (compareMode) toggleItem(b.id); }}
+                onToggleCompare={() => toggleItem(b.id)}
+              />
             ))}
           </div>
         )}
       </div>
-
-      <div className="placeholder-badge" style={{ alignSelf: "flex-start" }}>Coming in Phase 2 — Upgrade to Pro for Early Access</div>
     </div>
   );
 }
