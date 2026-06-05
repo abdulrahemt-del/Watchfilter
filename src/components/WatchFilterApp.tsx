@@ -254,12 +254,6 @@ function LibraryView({
           <p className="view-sub">{history.length} {history.length === 1 ? "briefing" : "briefings"} saved</p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          {compareMode && selected.size >= 2 && (
-            <button type="button" className="btn btn-primary" onClick={handleCompare}>Compare {selected.size} →</button>
-          )}
-          <button type="button" className="btn btn-ghost" onClick={toggleCompareMode}>
-            {compareMode ? "✕ Cancel" : "⊕ Compare"}
-          </button>
           <button type="button" className="btn btn-ghost" onClick={onRefresh} disabled={loading} title="Refresh">↻</button>
         </div>
       </div>
