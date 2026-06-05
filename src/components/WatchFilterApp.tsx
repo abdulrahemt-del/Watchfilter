@@ -472,7 +472,7 @@ function CrossChannelConsensusView() {
           Select 2–5 saved briefings to force a consensus analysis across those exact videos.
           When unconnected creators converge on the same signal, that&apos;s where the real opportunity is.
         </p>
-        <div className="workspace-features" style={{ marginTop: "1.25rem" }}>
+        <div className="workspace-features ccv-features-grid" style={{ marginTop: "1.25rem" }}>
           <div className="workspace-feature-card">
             <span className="workspace-feature-card__icon">📡</span>
             <div>

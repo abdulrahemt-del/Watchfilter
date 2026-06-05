@@ -3652,6 +3652,13 @@ input {
 }
 
 /* ── Cross-Channel Consensus Workbench ─────────────────────────── */
+.ccv-features-grid {
+  display:grid !important;
+  grid-template-columns:1fr 1fr;
+  gap:.85rem;
+  max-width:none
+}
+
 .ccv-root {
   display:flex;
   flex-direction:column;
