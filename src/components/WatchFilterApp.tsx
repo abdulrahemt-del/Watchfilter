@@ -407,15 +407,87 @@ function TrendsView() {
 // ── Cross-Channel Consensus ───────────────────────────────────────
 
 function CrossChannelConsensusView() {
+  const [briefings, setBriefings] = useState<AnalysisSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/analyses")
+      .then((r) => r.json())
+      .then((data: HistoryResponse & ApiErrorBody) => setBriefings(data.analyses ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
-    <div className="placeholder-view">
-      <div className="placeholder-view__icon">🔗</div>
-      <h1 className="view-title">Cross-Channel Consensus</h1>
-      <p className="view-sub">
-        When unconnected creators converge on the same signal, that&apos;s where the real
-        opportunity is. Cross-channel consensus surfaces those moments automatically.
-      </p>
-      <div className="placeholder-badge">Coming in Phase 2</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+
+      {/* Header */}
+      <div>
+        <h1 className="view-title">Cross-Channel Consensus</h1>
+        <p className="view-sub">
+          See what multiple creators are independently agreeing on — across channels, niches,
+          and audiences. When unconnected voices converge on the same signal, that&apos;s where
+          the real opportunity is.
+        </p>
+      </div>
+
+      {/* 2×2 feature cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">📡</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Multi-Creator Signal Detection</h3>
+            <p className="workspace-feature-card__desc">Automatically surfaces topics that 3+ creators have covered independently within the same time window.</p>
+          </div>
+        </div>
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">📊</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Agreement Strength Score</h3>
+            <p className="workspace-feature-card__desc">Ranks consensus signals by how strongly creators agree — not just that they mentioned the same topic, but that their conclusions align.</p>
+          </div>
+        </div>
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">⚡</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Contrarian Alerts</h3>
+            <p className="workspace-feature-card__desc">Flags when one creator breaks from the consensus — often the most valuable signal of all.</p>
+          </div>
+        </div>
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">🗂️</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Evidence Audit Trail</h3>
+            <p className="workspace-feature-card__desc">Every consensus point links back to the exact timestamp and quote from each creator that contributed to it.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Briefing browse grid */}
+      <div>
+        <p style={{ margin: "0 0 0.85rem", fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)" }}>
+          Your Saved Briefings
+        </p>
+        {loading ? (
+          <div className="bc-grid">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} style={{ height: 320, borderRadius: 14, background: "var(--surface)", border: "1px solid var(--border)", animation: "skeleton-pulse 1.4s ease-in-out infinite" }} />
+            ))}
+          </div>
+        ) : briefings.length === 0 ? (
+          <div className="dash-empty">
+            <p className="dash-empty__text">No briefings yet. Analyze a video to get started.</p>
+          </div>
+        ) : (
+          <div className="bc-grid">
+            {briefings.map((b) => (
+              <BriefingCard key={b.id} item={b} onSelect={() => {}} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="placeholder-badge" style={{ alignSelf: "flex-start" }}>Coming in Phase 2 — Upgrade to Pro for Early Access</div>
     </div>
   );
 }
