@@ -409,6 +409,7 @@ function TrendsView() {
 function CrossChannelConsensusView() {
   const [briefings, setBriefings]               = useState<AnalysisSummary[]>([]);
   const [loading, setLoading]                   = useState(true);
+  const [compareMode, setCompareMode]           = useState(false);
   const [selected, setSelected]                 = useState<Set<string>>(new Set());
   const [comparing, setComparing]               = useState(false);
   const [consensus, setConsensus]               = useState<ConsensusResult | null>(null);
@@ -430,6 +431,12 @@ function CrossChannelConsensusView() {
       else if (next.size < 5) next.add(id);
       return next;
     });
+  }
+
+  function cancelCompare() {
+    setCompareMode(false);
+    setSelected(new Set());
+    setError(null);
   }
 
   async function runCompare() {
@@ -458,7 +465,7 @@ function CrossChannelConsensusView() {
       <ConsensusView
         result={consensus}
         sources={consensusSources}
-        onBack={() => { setConsensus(null); setSelected(new Set()); setError(null); }}
+        onBack={() => { setConsensus(null); cancelCompare(); }}
       />
     );
   }
@@ -466,10 +473,9 @@ function CrossChannelConsensusView() {
   const count = selected.size;
   const atMax = count === 5;
   const canCompare = count >= 2;
-  const remaining = Math.max(0, 2 - count);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", paddingBottom: count > 0 ? "88px" : "0" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", paddingBottom: compareMode ? "88px" : "0" }}>
 
       {/* Header */}
       <div>
@@ -499,140 +505,168 @@ function CrossChannelConsensusView() {
         ))}
       </div>
 
-      {/* Briefing grid */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+      {/* Briefing grid header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
           <p style={{ margin: 0, fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
             Your Saved Briefings
           </p>
-          <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--muted)" }}>
-            {count === 0
-              ? "Click any briefing to select it for comparison"
-              : atMax
-                ? "Maximum reached — deselect one to swap"
-                : canCompare
-                  ? `${count} selected — ready to compare`
-                  : `${count} selected — pick ${remaining} more`}
-          </p>
+          {compareMode && (
+            <p style={{ margin: "0.2rem 0 0", fontSize: "0.78rem", color: "var(--muted)" }}>
+              {count === 0
+                ? "Tap the briefings you want to compare"
+                : atMax
+                  ? "Max 5 reached — deselect one to swap"
+                  : canCompare
+                    ? `${count} selected — hit Compare when ready`
+                    : `${count} selected — pick ${2 - count} more to compare`}
+            </p>
+          )}
         </div>
 
-        {error && (
-          <div className="status-box status-error" style={{ marginBottom: "0.75rem" }}>{error}</div>
-        )}
-
-        {loading ? (
-          <div className="bc-grid">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} style={{ height: 320, borderRadius: 14, background: "var(--surface)", border: "1px solid var(--border)", animation: "skeleton-pulse 1.4s ease-in-out infinite" }} />
-            ))}
-          </div>
-        ) : briefings.length === 0 ? (
-          <div className="dash-empty">
-            <p className="dash-empty__text">No briefings yet. Analyze a video to get started.</p>
-          </div>
+        {!compareMode ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ padding: "0.55rem 1.25rem", fontSize: "0.85rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.4rem" }}
+            onClick={() => setCompareMode(true)}
+          >
+            ⚖ Compare Briefings
+          </button>
         ) : (
-          <div className="bc-grid">
-            {briefings.map((b) => {
-              const isSelected = selected.has(b.id);
-              const isDisabled = atMax && !isSelected;
-              return (
-                <div
-                  key={b.id}
-                  onClick={() => !isDisabled && toggleItem(b.id)}
-                  style={{
-                    cursor: isDisabled ? "not-allowed" : "pointer",
-                    borderRadius: 14,
-                    outline: isSelected ? "2.5px solid var(--accent)" : "2.5px solid transparent",
-                    outlineOffset: 2,
-                    opacity: isDisabled ? 0.45 : 1,
-                    transform: isSelected ? "scale(1.015)" : "scale(1)",
-                    transition: "outline 0.15s, opacity 0.15s, transform 0.15s, box-shadow 0.15s",
-                    boxShadow: isSelected ? "0 4px 20px rgba(74,111,165,0.22)" : undefined,
-                    position: "relative" as const,
-                  }}
-                >
-                  {isSelected && (
-                    <div style={{
-                      position: "absolute", top: 10, right: 10, zIndex: 10,
-                      width: 24, height: 24, borderRadius: "50%",
-                      background: "var(--accent)", display: "flex",
-                      alignItems: "center", justifyContent: "center",
-                      boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
-                    }}>
-                      <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
-                        <path d="M1 5l3 3 7-7" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                  )}
-                  <BriefingCard
-                    item={b}
-                    compareMode
-                    compareSelected={isSelected}
-                    onSelect={() => !isDisabled && toggleItem(b.id)}
-                    onToggleCompare={() => !isDisabled && toggleItem(b.id)}
-                  />
-                </div>
-              );
-            })}
-          </div>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ padding: "0.45rem 1rem", fontSize: "0.82rem" }}
+            onClick={cancelCompare}
+          >
+            ✕ Cancel
+          </button>
         )}
       </div>
 
-      {/* Floating action bar */}
-      {count > 0 && (
+      {error && (
+        <div className="status-box status-error">{error}</div>
+      )}
+
+      {/* Grid */}
+      {loading ? (
+        <div className="bc-grid">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} style={{ height: 320, borderRadius: 14, background: "var(--surface)", border: "1px solid var(--border)", animation: "skeleton-pulse 1.4s ease-in-out infinite" }} />
+          ))}
+        </div>
+      ) : briefings.length === 0 ? (
+        <div className="dash-empty">
+          <p className="dash-empty__text">No briefings yet. Analyze a video to get started.</p>
+        </div>
+      ) : (
+        <div className="bc-grid">
+          {briefings.map((b) => {
+            const isSelected = selected.has(b.id);
+            const isDisabled = compareMode && atMax && !isSelected;
+            return (
+              <div
+                key={b.id}
+                onClick={() => compareMode && !isDisabled && toggleItem(b.id)}
+                style={{
+                  cursor: compareMode ? (isDisabled ? "not-allowed" : "pointer") : "default",
+                  borderRadius: 14,
+                  outline: isSelected ? "2.5px solid var(--accent)" : "2.5px solid transparent",
+                  outlineOffset: 2,
+                  opacity: isDisabled ? 0.4 : 1,
+                  transform: isSelected ? "scale(1.015)" : "scale(1)",
+                  transition: "outline 0.15s, opacity 0.15s, transform 0.15s, box-shadow 0.15s",
+                  boxShadow: isSelected ? "0 4px 20px rgba(74,111,165,0.22)" : undefined,
+                  position: "relative" as const,
+                }}
+              >
+                {compareMode && isSelected && (
+                  <div style={{
+                    position: "absolute", top: 10, right: 10, zIndex: 10,
+                    width: 26, height: 26, borderRadius: "50%",
+                    background: "var(--accent)", display: "flex",
+                    alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+                  }}>
+                    <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+                      <path d="M1 5l3 3 7-7" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                )}
+                {compareMode && !isSelected && !isDisabled && (
+                  <div style={{
+                    position: "absolute", top: 10, right: 10, zIndex: 10,
+                    width: 26, height: 26, borderRadius: "50%",
+                    border: "2px solid rgba(74,111,165,0.4)",
+                    background: "rgba(255,255,255,0.9)",
+                  }} />
+                )}
+                <BriefingCard
+                  item={b}
+                  compareMode={compareMode}
+                  compareSelected={isSelected}
+                  onSelect={() => compareMode && !isDisabled && toggleItem(b.id)}
+                  onToggleCompare={() => compareMode && !isDisabled && toggleItem(b.id)}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Sticky compare bar — only in compare mode */}
+      {compareMode && (
         <div style={{
           position: "fixed", bottom: 0, left: 280, right: 0, zIndex: 100,
-          background: "rgba(15,23,42,0.96)", backdropFilter: "blur(10px)",
+          background: "rgba(15,23,42,0.97)", backdropFilter: "blur(12px)",
           borderTop: "1px solid rgba(255,255,255,0.1)",
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0.9rem 2rem", gap: "1rem",
+          padding: "1rem 2rem", gap: "1rem",
         }}>
-          {/* Left — selection dots */}
-          <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
-            <div style={{ display: "flex", gap: "0.3rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <div style={{ display: "flex", gap: "0.35rem" }}>
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} style={{
-                  width: 10, height: 10, borderRadius: "50%",
-                  background: i <= count ? "var(--accent)" : "rgba(255,255,255,0.15)",
+                  width: 12, height: 12, borderRadius: "50%",
+                  background: i <= count ? "var(--accent)" : "rgba(255,255,255,0.12)",
+                  border: i <= count ? "none" : "1px solid rgba(255,255,255,0.2)",
                   transition: "background 0.2s",
                 }} />
               ))}
             </div>
-            <span style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.82rem" }}>
-              {count} of 5 selected
-              {!canCompare && <span style={{ color: "rgba(255,255,255,0.45)" }}> — select {remaining} more to compare</span>}
+            <span style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.83rem" }}>
+              {count === 0
+                ? "No briefings selected yet"
+                : `${count} briefing${count > 1 ? "s" : ""} selected`}
             </span>
           </div>
 
-          {/* Right — actions */}
-          <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "0.65rem", alignItems: "center" }}>
             <button
               type="button"
-              onClick={() => { setSelected(new Set()); setError(null); }}
+              onClick={cancelCompare}
               style={{
-                background: "transparent", border: "1px solid rgba(255,255,255,0.2)",
-                color: "rgba(255,255,255,0.6)", borderRadius: 8,
-                padding: "0.45rem 0.9rem", fontSize: "0.8rem", cursor: "pointer",
-                transition: "all 0.15s",
+                background: "transparent", border: "1px solid rgba(255,255,255,0.18)",
+                color: "rgba(255,255,255,0.55)", borderRadius: 8,
+                padding: "0.5rem 1rem", fontSize: "0.8rem", cursor: "pointer",
               }}
             >
-              Clear all
+              Cancel
             </button>
             <button
               type="button"
               disabled={!canCompare || comparing}
               onClick={() => void runCompare()}
+              className="btn btn-primary"
               style={{
-                background: canCompare ? "var(--accent)" : "rgba(255,255,255,0.1)",
-                border: "none", color: canCompare ? "#fff" : "rgba(255,255,255,0.35)",
-                borderRadius: 8, padding: "0.45rem 1.2rem",
-                fontSize: "0.85rem", fontWeight: 700, cursor: canCompare ? "pointer" : "not-allowed",
-                display: "flex", alignItems: "center", gap: "0.4rem",
-                transition: "all 0.2s",
+                padding: "0.5rem 1.4rem", fontSize: "0.88rem", fontWeight: 700,
+                opacity: canCompare ? 1 : 0.4,
+                display: "flex", alignItems: "center", gap: "0.45rem",
               }}
             >
-              {comparing && <span className="spinner" style={{ width: 10, height: 10, borderWidth: 2, borderTopColor: "#fff", borderColor: "rgba(255,255,255,0.3)" }} />}
-              {comparing ? "Comparing…" : `Compare ${count} briefing${count > 1 ? "s" : ""} →`}
+              {comparing && <span className="spinner" style={{ width: 11, height: 11, borderWidth: 2, borderTopColor: "#fff", borderColor: "rgba(255,255,255,0.3)" }} />}
+              {comparing ? "Comparing…" : canCompare ? `Compare ${count} Briefings →` : "Select 2+ to Compare"}
             </button>
           </div>
         </div>
