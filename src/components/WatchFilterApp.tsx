@@ -513,7 +513,7 @@ function CrossChannelConsensusView() {
       </div>
 
       {/* 2×2 feature cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+      <div className="feature-grid-2col">
         {[
           { icon: "📡", title: "Multi-Creator Signal Detection", desc: "Automatically surfaces topics that 3+ creators have covered independently within the same time window." },
           { icon: "📊", title: "Agreement Strength Score",       desc: "Ranks consensus signals by how strongly creators agree — not just that they mentioned the same topic, but that their conclusions align." },
@@ -642,13 +642,7 @@ function CrossChannelConsensusView() {
 
       {/* Sticky compare bar — only in compare mode */}
       {compareMode && (
-        <div style={{
-          position: "fixed", bottom: 0, left: 280, right: 0, zIndex: 100,
-          background: "rgba(15,23,42,0.97)", backdropFilter: "blur(12px)",
-          borderTop: "1px solid rgba(255,255,255,0.1)",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "1rem 2rem", gap: "1rem",
-        }}>
+        <div className="ccv-sticky-bar">
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
             <div style={{ display: "flex", gap: "0.35rem" }}>
               {[1, 2, 3, 4, 5].map((i) => (

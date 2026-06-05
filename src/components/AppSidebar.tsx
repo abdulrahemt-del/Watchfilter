@@ -134,12 +134,47 @@ function FeedbackModal({ onClose }: { onClose: () => void }) {
 
 export function AppSidebar({ active, onNav, analysisCount }: Props) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  function handleNav(id: NavItem) {
+    onNav(id);
+    setMobileOpen(false);
+  }
 
   return (
     <>
-      <aside className="app-sidebar">
+      {/* Mobile top bar */}
+      <div className="mobile-topbar">
+        <img src="/logo.png" alt="WatchFilter" className="mobile-topbar__logo" />
+        <span className="mobile-topbar__brand">WatchFilter</span>
+        <button
+          type="button"
+          className="mobile-topbar__hamburger"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open menu"
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="3" y1="5" x2="17" y2="5" />
+            <line x1="3" y1="10" x2="17" y2="10" />
+            <line x1="3" y1="15" x2="17" y2="15" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Backdrop */}
+      {mobileOpen && (
+        <div className="mobile-backdrop" onClick={() => setMobileOpen(false)} />
+      )}
+
+      <aside className={`app-sidebar${mobileOpen ? " app-sidebar--mobile-open" : ""}`}>
         <div className="app-sidebar__brand">
           <img src="/logo.png" alt="WatchFilter" className="app-sidebar__brand-icon" />
+          <button
+            type="button"
+            className="mobile-sidebar-close"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close menu"
+          >✕</button>
         </div>
 
         <nav className="app-sidebar__nav">
@@ -153,7 +188,7 @@ export function AppSidebar({ active, onNav, analysisCount }: Props) {
                 primary && active === id ? "sidebar-nav-item--primary-active" : "",
                 primary ? "sidebar-nav-item--primary" : "",
               ].filter(Boolean).join(" ")}
-              onClick={() => onNav(id)}
+              onClick={() => handleNav(id)}
             >
               <span className="sidebar-nav-item__icon">{icon}</span>
               <span className="sidebar-nav-item__label">{label}</span>
@@ -164,7 +199,6 @@ export function AppSidebar({ active, onNav, analysisCount }: Props) {
           ))}
         </nav>
 
-        {/* Feedback button — sits between nav and footer */}
         <div className="sidebar-feedback-wrap">
           <button
             type="button"
@@ -186,7 +220,7 @@ export function AppSidebar({ active, onNav, analysisCount }: Props) {
               "sidebar-nav-item--upgrade",
               active === "upgrade" ? "sidebar-nav-item--active" : "",
             ].filter(Boolean).join(" ")}
-            onClick={() => onNav("upgrade")}
+            onClick={() => handleNav("upgrade")}
           >
             <span className="sidebar-nav-item__icon">👑</span>
             <span className="sidebar-nav-item__label">Upgrade to Pro</span>

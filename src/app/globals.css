@@ -8461,3 +8461,179 @@ to {
 }
 .av-advanced-toggle:hover { color:var(--fg) }
 .av-advanced-body { margin-top:10px }
+
+/* ── Feature grid ────────────────────────────────────────────────── */
+.feature-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+/* ── Consensus sticky action bar ─────────────────────────────────── */
+.ccv-sticky-bar {
+  position: fixed;
+  bottom: 0;
+  left: 280px;
+  right: 0;
+  z-index: 100;
+  background: rgba(15,23,42,0.97);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  gap: 1rem;
+}
+
+/* ── Mobile top bar (hidden on desktop) ──────────────────────────── */
+.mobile-topbar { display: none; }
+.mobile-backdrop { display: none; }
+.mobile-sidebar-close { display: none; }
+
+/* ── Mobile breakpoint ───────────────────────────────────────────── */
+@media (max-width: 860px) {
+
+  /* Top bar */
+  .mobile-topbar {
+    display: flex;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 56px;
+    z-index: 200;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    padding: 0 1rem;
+    gap: 0.6rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+
+  .mobile-topbar__logo {
+    width: 28px; height: 28px; object-fit: contain;
+  }
+
+  .mobile-topbar__brand {
+    flex: 1;
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  .mobile-topbar__hamburger {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.35rem 0.5rem;
+    cursor: pointer;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Drawer backdrop */
+  .mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 250;
+  }
+
+  /* Close button inside sidebar */
+  .mobile-sidebar-close {
+    display: flex;
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  /* Sidebar becomes a slide-in drawer */
+  .app-shell {
+    grid-template-columns: 1fr;
+    padding-top: 56px;
+  }
+
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    left: -300px;
+    bottom: 0;
+    width: 280px;
+    z-index: 300;
+    transition: left 0.25s ease;
+    height: 100dvh;
+    overflow-y: auto;
+  }
+
+  .app-sidebar--mobile-open {
+    left: 0;
+    box-shadow: 6px 0 24px rgba(0,0,0,0.18);
+  }
+
+  /* Main panel */
+  .main-panel {
+    padding: 1rem;
+  }
+
+  /* Compare sticky bar */
+  .ccv-sticky-bar {
+    left: 0;
+    padding: 0.75rem 1rem;
+  }
+
+  /* Audio player */
+  .audio-player {
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+    bottom: 0.5rem;
+  }
+
+  /* BriefingCard grid — 1 column on small screens */
+  .bc-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Feature 2-col grid → 1 col */
+  .feature-grid-2col {
+    grid-template-columns: 1fr;
+  }
+
+  /* Dashboard form wraps */
+  .dash-deck-form {
+    flex-wrap: wrap;
+  }
+
+  .dash-deck-voices {
+    order: 3;
+  }
+
+  /* Workspace feature cards */
+  .workspace-features {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* View headers */
+  .view-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  /* Analyze form */
+  .analyze-form {
+    flex-wrap: wrap;
+  }
+
+  .voice-toggle {
+    order: 3;
+  }
+}
