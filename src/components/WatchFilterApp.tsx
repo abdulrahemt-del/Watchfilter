@@ -17,6 +17,8 @@ import type {
   SavedAnalysis,
 } from "@/lib/client-types";
 import type { ConsensusResult } from "@/lib/consensus";
+import type { SynthesisResult } from "@/lib/synthesis";
+import { SynthesisView } from "./SynthesisView";
 
 // ── Dashboard ─────────────────────────────────────────────────────
 
@@ -407,48 +409,71 @@ function TrendsView() {
 // ── Cross-Channel Consensus ───────────────────────────────────────
 
 function CrossChannelConsensusView() {
-  const [briefings, setBriefings] = useState<AnalysisSummary[]>([]);
+  const [briefings, setBriefings]           = useState<AnalysisSummary[]>([]);
   const [loadingBriefings, setLoadingBriefings] = useState(true);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [building, setBuilding] = useState(false);
-  const [result, setResult] = useState<ConsensusResult | null>(null);
-  const [resultSources, setResultSources] = useState<AnalysisSummary[]>([]);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [tokens, setTokens]                 = useState<AnalysisSummary[]>([]);
+  const [query, setQuery]                   = useState("");
+  const [dropdownOpen, setDropdownOpen]     = useState(false);
+  const [building, setBuilding]             = useState(false);
+  const [result, setResult]                 = useState<SynthesisResult | null>(null);
+  const [error, setError]                   = useState<string | null>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/analyses")
       .then((r) => r.json())
       .then((data: HistoryResponse & ApiErrorBody) => setBriefings(data.analyses ?? []))
-      .catch(() => setFetchError("Failed to load saved briefings."))
+      .catch(() => setError("Failed to load saved briefings."))
       .finally(() => setLoadingBriefings(false));
   }, []);
 
-  function toggleSelect(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) { next.delete(id); } else if (next.size < 5) { next.add(id); }
-      return next;
-    });
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+        setQuery("");
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = briefings.filter(
+    (b) =>
+      !tokens.find((t) => t.id === b.id) &&
+      (query === "" ||
+        (b.title ?? "").toLowerCase().includes(query.toLowerCase()) ||
+        (b.channelName ?? "").toLowerCase().includes(query.toLowerCase()) ||
+        b.primarySubject.toLowerCase().includes(query.toLowerCase())),
+  );
+
+  function addToken(b: AnalysisSummary) {
+    if (tokens.length >= 5) return;
+    setTokens((prev) => [...prev, b]);
+    setQuery("");
+    setDropdownOpen(false);
   }
 
-  async function handleBuildConsensus() {
-    if (selected.size < 2) return;
+  function removeToken(id: string) {
+    setTokens((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  async function runSynthesis() {
+    if (tokens.length < 2) return;
     setBuilding(true);
-    setFetchError(null);
-    const ids = Array.from(selected);
-    const sources = briefings.filter((b) => ids.includes(b.id));
+    setError(null);
     try {
-      const res = await fetch("/api/consensus", {
+      const res = await fetch("/api/synthesis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify({ ids: tokens.map((t) => t.id) }),
       });
-      const data = (await res.json()) as ConsensusResult & ApiErrorBody;
-      if (!res.ok) throw new Error((data as ApiErrorBody).error ?? "Consensus analysis failed");
+      const data = (await res.json()) as SynthesisResult & ApiErrorBody;
+      if (!res.ok) throw new Error((data as ApiErrorBody).error ?? "Synthesis failed");
       setResult(data);
-      setResultSources(sources);
     } catch (err) {
-      setFetchError(err instanceof Error ? err.message : "Consensus analysis failed");
+      setError(err instanceof Error ? err.message : "Synthesis failed");
     } finally {
       setBuilding(false);
     }
@@ -456,20 +481,22 @@ function CrossChannelConsensusView() {
 
   if (result) {
     return (
-      <ConsensusView
+      <SynthesisView
         result={result}
-        sources={resultSources}
-        onBack={() => { setResult(null); setResultSources([]); setSelected(new Set()); }}
+        sources={tokens}
+        onBack={() => { setResult(null); }}
       />
     );
   }
 
   return (
     <div className="ccv-root">
+
+      {/* Page header */}
       <div className="ccv-header">
-        <h1 className="view-title">Custom Consensus Builder</h1>
+        <h1 className="view-title">Custom Consensus Workbench</h1>
         <p className="view-sub">
-          Select 2–5 saved briefings to force a consensus analysis across those exact videos.
+          Select 2–5 saved briefings to force a forensic synthesis across those exact videos.
           When unconnected creators converge on the same signal, that&apos;s where the real opportunity is.
         </p>
         <div className="workspace-features ccv-features-grid" style={{ marginTop: "1.25rem" }}>
@@ -477,98 +504,176 @@ function CrossChannelConsensusView() {
             <span className="workspace-feature-card__icon">📡</span>
             <div>
               <h3 className="workspace-feature-card__title">Multi-Creator Signal Detection</h3>
-              <p className="workspace-feature-card__desc">Automatically surfaces topics that 3+ creators have covered independently within the same time window.</p>
+              <p className="workspace-feature-card__desc">Surfaces topics 3+ creators covered independently within the same window.</p>
             </div>
           </div>
           <div className="workspace-feature-card">
             <span className="workspace-feature-card__icon">📊</span>
             <div>
               <h3 className="workspace-feature-card__title">Agreement Strength Score</h3>
-              <p className="workspace-feature-card__desc">Ranks consensus signals by how strongly creators agree — not just that they mentioned the same topic, but that their conclusions align.</p>
+              <p className="workspace-feature-card__desc">Quantitative 0–100 match score based on overlapping conclusions, not just topic overlap.</p>
             </div>
           </div>
           <div className="workspace-feature-card">
             <span className="workspace-feature-card__icon">⚡</span>
             <div>
               <h3 className="workspace-feature-card__title">Contrarian Alerts</h3>
-              <p className="workspace-feature-card__desc">Flags when one creator breaks from the consensus — often the most valuable signal of all.</p>
+              <p className="workspace-feature-card__desc">Flags explicit claim-level contradictions — Creator A asserts X, Creator B warns against X because Y.</p>
             </div>
           </div>
           <div className="workspace-feature-card">
             <span className="workspace-feature-card__icon">🗂️</span>
             <div>
               <h3 className="workspace-feature-card__title">Evidence Audit Trail</h3>
-              <p className="workspace-feature-card__desc">Every consensus point links back to the exact timestamp and quote from each creator that contributed to it.</p>
+              <p className="workspace-feature-card__desc">Every consensus point mapped to the exact direct quotes and data from each source.</p>
             </div>
           </div>
         </div>
       </div>
 
-      {loadingBriefings ? (
-        <div className="ccv-grid">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="ccv-card ccv-card--skeleton" />
+      {/* Token bar */}
+      <div className="ccv-workbench">
+        <p className="ccv-workbench-label">Select briefings to synthesise</p>
+
+        {/* Selected tokens */}
+        {tokens.length > 0 && (
+          <div className="ccv-tokens">
+            {tokens.map((t) => (
+              <div key={t.id} className="ccv-token">
+                <span className="ccv-token-avatar">{(t.channelName ?? "?")[0].toUpperCase()}</span>
+                <span className="ccv-token-text">
+                  <span className="ccv-token-channel">{t.channelName ?? "Unknown"}</span>
+                  <span className="ccv-token-title">{(t.title ?? t.videoId).slice(0, 45)}{(t.title ?? "").length > 45 ? "…" : ""}</span>
+                </span>
+                <button
+                  type="button"
+                  className="ccv-token-remove"
+                  onClick={() => removeToken(t.id)}
+                  aria-label="Remove"
+                >×</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Search dropdown */}
+        {tokens.length < 5 && (
+          <div className="ccv-search-wrap" ref={searchRef}>
+            <input
+              type="text"
+              className="ccv-search"
+              placeholder={tokens.length === 0 ? "Search saved briefings by title, channel, or topic…" : "Add another briefing…"}
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setDropdownOpen(true); }}
+              onFocus={() => setDropdownOpen(true)}
+            />
+            {dropdownOpen && (
+              <div className="ccv-dropdown">
+                {loadingBriefings ? (
+                  <p className="ccv-dropdown-empty">Loading briefings…</p>
+                ) : filtered.length === 0 ? (
+                  <p className="ccv-dropdown-empty">
+                    {query ? "No matches found." : "All briefings already selected."}
+                  </p>
+                ) : (
+                  filtered.slice(0, 8).map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      className="ccv-dropdown-item"
+                      onMouseDown={() => addToken(b)}
+                    >
+                      <span className="ccv-dropdown-avatar">{(b.channelName ?? "?")[0].toUpperCase()}</span>
+                      <span className="ccv-dropdown-info">
+                        <span className="ccv-dropdown-channel">{b.channelName ?? "Unknown"}</span>
+                        <span className="ccv-dropdown-title">{b.title ?? b.videoId}</span>
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Action row */}
+        <div className="ccv-run-row">
+          <span className="ccv-run-count">
+            {tokens.length} / 5 selected
+            {tokens.length < 2 && tokens.length > 0 && (
+              <span className="ccv-run-hint"> — add at least {2 - tokens.length} more</span>
+            )}
+          </span>
+          <button
+            type="button"
+            className="ccv-run-btn"
+            disabled={tokens.length < 2 || building}
+            onClick={() => void runSynthesis()}
+          >
+            {building ? (
+              <><span className="ccv-run-spinner" /> Running Synthesis…</>
+            ) : (
+              <>⚡ Run Custom Synthesis</>
+            )}
+          </button>
+        </div>
+
+        {error && <p className="ccv-error">{error}</p>}
+      </div>
+
+      {/* Selected card preview grid */}
+      {tokens.length > 0 && (
+        <div className="ccv-preview-grid">
+          {tokens.map((b) => (
+            <div key={b.id} className="ccv-card-wrap ccv-card-wrap--selected">
+              <div className="ccv-card-check">✓</div>
+              <BriefingCard
+                item={b}
+                compareMode
+                compareSelected
+                onSelect={() => removeToken(b.id)}
+                onToggleCompare={() => removeToken(b.id)}
+              />
+            </div>
           ))}
         </div>
-      ) : briefings.length === 0 ? (
-        <div className="ccv-empty">
-          <p>No saved briefings yet.</p>
-          <p className="ccv-empty__sub">Analyze some videos first, then come back to build a consensus.</p>
-        </div>
-      ) : (
-        <div className="ccv-grid">
-          {briefings.map((b) => {
-            const isSelected = selected.has(b.id);
-            const isDisabled = !isSelected && selected.size >= 5;
-            return (
-              <div
-                key={b.id}
-                className={[
-                  "ccv-card-wrap",
-                  isSelected ? "ccv-card-wrap--selected" : "",
-                  isDisabled ? "ccv-card-wrap--disabled" : "",
-                ].filter(Boolean).join(" ")}
-                onClick={() => !isDisabled && toggleSelect(b.id)}
-              >
-                {isSelected && <div className="ccv-card-check">✓</div>}
-                <BriefingCard
-                  item={b}
-                  compareMode
-                  compareSelected={isSelected}
-                  onSelect={() => !isDisabled && toggleSelect(b.id)}
-                  onToggleCompare={() => !isDisabled && toggleSelect(b.id)}
-                />
-              </div>
-            );
-          })}
-        </div>
       )}
 
-      {selected.size > 0 && (
-        <div className="ccv-action-bar">
-          <span className="ccv-action-bar__count">
-            {selected.size} / 5 selected
-            {selected.size < 2 && <span className="ccv-action-bar__hint"> — pick at least 2</span>}
-          </span>
-          <div className="ccv-action-bar__btns">
-            {selected.size >= 2 && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={building}
-                onClick={() => void handleBuildConsensus()}
-              >
-                {building ? "Building Consensus…" : `Build Consensus (${selected.size}) →`}
-              </button>
-            )}
-            <button type="button" className="btn btn-ghost" onClick={() => setSelected(new Set())}>
-              Clear
-            </button>
-          </div>
-        </div>
+      {/* Browse grid — unselected */}
+      {tokens.length < 5 && (
+        <>
+          <p className="ccv-browse-label">
+            {tokens.length === 0 ? "Or browse and click to select:" : "Add more:"}
+          </p>
+          {loadingBriefings ? (
+            <div className="ccv-grid">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="ccv-card--skeleton" style={{ height: 320, borderRadius: 14, background: "var(--surface)", animation: "skeleton-pulse 1.4s ease-in-out infinite" }} />
+              ))}
+            </div>
+          ) : (
+            <div className="ccv-grid">
+              {briefings
+                .filter((b) => !tokens.find((t) => t.id === b.id))
+                .map((b) => (
+                  <div
+                    key={b.id}
+                    className="ccv-card-wrap"
+                    onClick={() => addToken(b)}
+                  >
+                    <BriefingCard
+                      item={b}
+                      compareMode
+                      compareSelected={false}
+                      onSelect={() => addToken(b)}
+                      onToggleCompare={() => addToken(b)}
+                    />
+                  </div>
+                ))}
+            </div>
+          )}
+        </>
       )}
-
-      {fetchError && <p className="ccv-error">{fetchError}</p>}
     </div>
   );
 }
