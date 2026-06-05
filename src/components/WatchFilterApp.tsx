@@ -410,6 +410,55 @@ function TrendsView() {
   );
 }
 
+// ── Cross-Channel Consensus ───────────────────────────────────────
+
+function CrossChannelConsensusView() {
+  return (
+    <div className="placeholder-view">
+      <div className="placeholder-view__icon">🔗</div>
+      <h1 className="view-title">Cross-Channel Consensus</h1>
+      <p className="view-sub">
+        See what multiple creators are independently agreeing on — across channels, niches,
+        and audiences. When unconnected voices converge on the same signal, that's where
+        the real opportunity is.
+      </p>
+
+      <div className="workspace-features">
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">📡</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Multi-Creator Signal Detection</h3>
+            <p className="workspace-feature-card__desc">Automatically surfaces topics that 3+ creators have covered independently within the same time window.</p>
+          </div>
+        </div>
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">📊</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Agreement Strength Score</h3>
+            <p className="workspace-feature-card__desc">Ranks consensus signals by how strongly creators agree — not just that they mentioned the same topic, but that their conclusions align.</p>
+          </div>
+        </div>
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">⚡</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Contrarian Alerts</h3>
+            <p className="workspace-feature-card__desc">Flags when one creator breaks from the consensus — often the most valuable signal of all.</p>
+          </div>
+        </div>
+        <div className="workspace-feature-card">
+          <span className="workspace-feature-card__icon">🗂️</span>
+          <div>
+            <h3 className="workspace-feature-card__title">Evidence Audit Trail</h3>
+            <p className="workspace-feature-card__desc">Every consensus point links back to the exact timestamp and quote from each creator that contributed to it.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="placeholder-badge">Coming in Phase 2 — Upgrade to Pro for Early Access</div>
+    </div>
+  );
+}
+
 // ── Team Workspace ────────────────────────────────────────────────
 
 function TeamWorkspaceView() {
@@ -812,6 +861,9 @@ export function WatchFilterApp() {
 
         {/* ── Trends ── */}
         {activeNav === "trends" && <MarketIntelligencePulse />}
+
+        {/* ── Cross-Channel Consensus ── */}
+        {activeNav === "consensus-page" && <CrossChannelConsensusView />}
 
         {/* ── Team Workspace ── */}
         {activeNav === "workspace" && <TeamWorkspaceView />}
