@@ -413,48 +413,136 @@ function TrendsView() {
 // ── Cross-Channel Consensus ───────────────────────────────────────
 
 function CrossChannelConsensusView() {
-  return (
-    <div className="placeholder-view">
-      <div className="placeholder-view__icon">🔗</div>
-      <h1 className="view-title">Cross-Channel Consensus</h1>
-      <p className="view-sub">
-        See what multiple creators are independently agreeing on — across channels, niches,
-        and audiences. When unconnected voices converge on the same signal, that's where
-        the real opportunity is.
-      </p>
+  const [briefings, setBriefings] = useState<AnalysisSummary[]>([]);
+  const [loadingBriefings, setLoadingBriefings] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [building, setBuilding] = useState(false);
+  const [result, setResult] = useState<ConsensusResult | null>(null);
+  const [resultSources, setResultSources] = useState<AnalysisSummary[]>([]);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-      <div className="workspace-features">
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">📡</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Multi-Creator Signal Detection</h3>
-            <p className="workspace-feature-card__desc">Automatically surfaces topics that 3+ creators have covered independently within the same time window.</p>
-          </div>
-        </div>
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">📊</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Agreement Strength Score</h3>
-            <p className="workspace-feature-card__desc">Ranks consensus signals by how strongly creators agree — not just that they mentioned the same topic, but that their conclusions align.</p>
-          </div>
-        </div>
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">⚡</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Contrarian Alerts</h3>
-            <p className="workspace-feature-card__desc">Flags when one creator breaks from the consensus — often the most valuable signal of all.</p>
-          </div>
-        </div>
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">🗂️</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Evidence Audit Trail</h3>
-            <p className="workspace-feature-card__desc">Every consensus point links back to the exact timestamp and quote from each creator that contributed to it.</p>
-          </div>
-        </div>
+  useEffect(() => {
+    fetch("/api/analyses")
+      .then((r) => r.json())
+      .then((data: HistoryResponse & ApiErrorBody) => setBriefings(data.analyses ?? []))
+      .catch(() => setFetchError("Failed to load saved briefings."))
+      .finally(() => setLoadingBriefings(false));
+  }, []);
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else if (next.size < 5) { next.add(id); }
+      return next;
+    });
+  }
+
+  async function handleBuildConsensus() {
+    if (selected.size < 2) return;
+    setBuilding(true);
+    setFetchError(null);
+    const ids = Array.from(selected);
+    const sources = briefings.filter((b) => ids.includes(b.id));
+    try {
+      const res = await fetch("/api/consensus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = (await res.json()) as ConsensusResult & ApiErrorBody;
+      if (!res.ok) throw new Error((data as ApiErrorBody).error ?? "Consensus analysis failed");
+      setResult(data);
+      setResultSources(sources);
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : "Consensus analysis failed");
+    } finally {
+      setBuilding(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <ConsensusView
+        result={result}
+        sources={resultSources}
+        onBack={() => { setResult(null); setResultSources([]); setSelected(new Set()); }}
+      />
+    );
+  }
+
+  return (
+    <div className="ccv-root">
+      <div className="ccv-header">
+        <h1 className="view-title">Custom Consensus Builder</h1>
+        <p className="view-sub">
+          Select 2–5 saved briefings to force a consensus analysis across those exact videos.
+          When unconnected creators converge on the same signal, that&apos;s the opportunity.
+        </p>
       </div>
 
-      <div className="placeholder-badge">Coming in Phase 2 — Upgrade to Pro for Early Access</div>
+      {loadingBriefings ? (
+        <div className="ccv-grid">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="ccv-card ccv-card--skeleton" />
+          ))}
+        </div>
+      ) : briefings.length === 0 ? (
+        <div className="ccv-empty">
+          <p>No saved briefings yet.</p>
+          <p className="ccv-empty__sub">Analyze some videos first, then come back to build a consensus.</p>
+        </div>
+      ) : (
+        <div className="ccv-grid">
+          {briefings.map((b) => {
+            const isSelected = selected.has(b.id);
+            const isDisabled = !isSelected && selected.size >= 5;
+            return (
+              <button
+                key={b.id}
+                type="button"
+                disabled={isDisabled}
+                onClick={() => toggleSelect(b.id)}
+                className={[
+                  "ccv-card",
+                  isSelected ? "ccv-card--selected" : "",
+                  isDisabled ? "ccv-card--disabled" : "",
+                ].filter(Boolean).join(" ")}
+              >
+                <div className="ccv-card__check">{isSelected ? "✓" : ""}</div>
+                <p className="ccv-card__channel">{b.channelName ?? "Unknown"}</p>
+                <p className="ccv-card__title">{b.title ?? b.videoId}</p>
+                <p className="ccv-card__subject">{b.primarySubject}</p>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {selected.size > 0 && (
+        <div className="ccv-action-bar">
+          <span className="ccv-action-bar__count">
+            {selected.size} / 5 selected
+            {selected.size < 2 && <span className="ccv-action-bar__hint"> — pick at least 2</span>}
+          </span>
+          <div className="ccv-action-bar__btns">
+            {selected.size >= 2 && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={building}
+                onClick={() => void handleBuildConsensus()}
+              >
+                {building ? "Building Consensus…" : `Build Consensus (${selected.size}) →`}
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost" onClick={() => setSelected(new Set())}>
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      {fetchError && <p className="ccv-error">{fetchError}</p>}
     </div>
   );
 }
