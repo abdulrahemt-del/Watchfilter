@@ -323,11 +323,10 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
   const cacheKey = `wf_feed_${session?.user?.email ?? "anon"}`;
 
-  // AI score cache — 24h TTL. Reused across sessions so already-scored videos skip the API.
+  // AI score cache — 24h TTL. Keyed globally (not per-user) so scores survive logout/login.
   function loadAiCache(): Record<string, AIScore> {
     try {
-      const aiKey = `wf_ai_${session?.user?.email ?? "anon"}`;
-      const raw = localStorage.getItem(aiKey);
+      const raw = localStorage.getItem("wf_ai_scores");
       if (raw) {
         const cached = JSON.parse(raw) as { ts: number; scores: Record<string, AIScore> };
         if (Date.now() - cached.ts < 24 * 60 * 60 * 1000 && cached.scores) return cached.scores;
@@ -403,7 +402,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     if (!session?.user?.email || aiRestoredRef.current) return;
     aiRestoredRef.current = true;
     try {
-      const raw = localStorage.getItem(`wf_ai_${session.user.email}`);
+      const raw = localStorage.getItem("wf_ai_scores");
       if (raw) {
         const cached = JSON.parse(raw) as { ts: number; scores: Record<string, AIScore> };
         if (Date.now() - cached.ts < 24 * 60 * 60 * 1000 && Object.keys(cached.scores).length > 0) {
@@ -479,8 +478,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
       .then(() => {
         setAiResults(prev => {
           try {
-            const aiKey = `wf_ai_${session?.user?.email ?? "anon"}`;
-            localStorage.setItem(aiKey, JSON.stringify({ ts: Date.now(), scores: prev }));
+            localStorage.setItem("wf_ai_scores", JSON.stringify({ ts: Date.now(), scores: prev }));
           } catch { /* storage full */ }
           return prev;
         });
