@@ -406,6 +406,8 @@ export const HARD_TITLE_BLOCKS = [
   // Politics / geopolitics
   "trump", "iran", "geopolit",
   "ukraine war", "russia ukraine", "israel hamas",
+  "separatism", "trade war", "sanctions", "nato ",
+  "election", "political party", "prime minister", "parliament",
   // War / conflict
   "war in ", "war rages", "war update", "war with ", "war crime",
   "drone strike", "air strike", "missile strike", "military operation",
@@ -440,9 +442,11 @@ export const HARD_TITLE_BLOCKS = [
   "history of ", "ancient history", "world war ii",
   // Sports (categorical catch-all)
   "football", "soccer", "nba", "nfl", "cricket", "rugby", "chess",
-  // MMA / combat sports
+  // MMA / combat sports / athletes
   "full fight", "fight night", "ufc ", " mma ", "knockout", "k.o.", "ppv fight",
   "vs paddy", "vs conor", "vs mcgregor",
+  "khabib", "training with khabib", "full exclusive footage",
+  "conor mcgregor", "israel adesanya", "jon jones", "francis ngannou",
   // Gaming
   "gameplay", "walkthrough", "full game", "let's play", "lets play",
   "playthrough", "game review", "gaming", "boss fight",
@@ -451,15 +455,17 @@ export const HARD_TITLE_BLOCKS = [
   "full documentary", "full episode", "documentary film",
   "the universe", "solar system", "ancient civilization",
   "how the universe", "secrets of the",
-  // General entertainment
+  // Music / entertainment
   "music video", "official video", "official audio", "lyrics video",
   "movie trailer", "tv show", "season 1", "season 2",
+  "greatest guitarist", "history of music", "future of music",
+  "greatest musician", "history & future of music",
+  "rock music", "jazz music", "hip hop history",
 ];
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const LONGFORM_MIN_SECS        = 1500; // 25 min — longform mode only
-export const BUSINESS_MIN_SECS        = 600;  // 10 min — business/founder/finance modes
+export const LONGFORM_MIN_SECS        = 1500; // 25 min — all active modes
 export const AFFINITY_PASS_THRESHOLD  = 70;   // trusted business channel — structural pass
 export const AFFINITY_BLOCK_THRESHOLD = -80;  // hard block threshold
 export const UNKNOWN_AI_THRESHOLD     = 85;   // AI businessRelevance gate for unknown channels
@@ -571,14 +577,13 @@ export function useFilteredFeed(rawVideos: FeedVideo[], mode: FeedMode): FeedVid
     if (!rawVideos?.length) return [];
 
     // ── Step 1: Hard blocks + duration gate — every mode ───────────────────
-    // Longform mode: 25 min minimum. Business/founder/finance/off: 10 min minimum.
-    const minSecs = (mode === "longform") ? LONGFORM_MIN_SECS : BUSINESS_MIN_SECS;
+    // 25 min minimum applies to all active modes.
     const hardPassed: FeedVideo[] = [];
     for (const video of rawVideos) {
       if (getChannelAffinity(video.channelTitle) <= AFFINITY_BLOCK_THRESHOLD) continue;
       const ti = video.title.toLowerCase();
       if (HARD_TITLE_BLOCKS.some((p) => ti.includes(p))) continue;
-      if (isoToSeconds(video.duration) < minSecs) continue;
+      if (isoToSeconds(video.duration) < LONGFORM_MIN_SECS) continue;
       hardPassed.push(video);
     }
 

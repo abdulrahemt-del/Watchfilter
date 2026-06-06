@@ -286,11 +286,10 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             // Unscored: only trusted channels show while AI runs.
             return affinity >= AFFINITY_PASS_THRESHOLD;
           }
-          // Trusted channels (affinity ≥ 70): only gate on explicit score=0.
-          // The structural filter already blocked bad titles for these channels;
-          // topicCategory="excluded" from the AI is not reliable enough to
-          // hide content from channels the user deliberately subscribed to.
-          if (affinity >= AFFINITY_PASS_THRESHOLD) return ai.score > 0;
+          // Trusted channels (affinity ≥ 70): enforce both score > 0 AND not excluded.
+          // Trusted channels can still produce off-topic episodes (music, MMA, politics)
+          // that the AI correctly marks as excluded.
+          if (affinity >= AFFINITY_PASS_THRESHOLD) return ai.score > 0 && ai.topicCategory !== "excluded";
           // Unknown channels: enforce strict AI gate
           return ai.topicCategory !== "excluded";
         })
