@@ -619,7 +619,7 @@ export function MarketIntelligencePulse({ onNavigate }: { onNavigate?: (nav: Nav
     return (
       <div className="min-h-screen bg-[#e7ecef] flex flex-col items-center justify-center gap-4 text-[#8b8c89]">
         <p className="font-mono text-sm">Sign in to view Market Intelligence.</p>
-        <button onClick={() => onNavigate?.("feed")} className="text-[#6096ba] hover:text-[#274c77] font-mono text-sm transition-colors">← Return to Feed</button>
+        <button onClick={() => onNavigate ? onNavigate("feed") : (window.location.href = "/")} className="text-[#6096ba] hover:text-[#274c77] font-mono text-sm transition-colors">← Return to Feed</button>
       </div>
     );
   }
@@ -632,7 +632,7 @@ export function MarketIntelligencePulse({ onNavigate }: { onNavigate?: (nav: Nav
         <p className="text-[#8b8c89] font-mono text-xs max-w-xs">
           Load your subscription feed first, then return here for your full intelligence briefing.
         </p>
-        <button onClick={() => onNavigate?.("feed")} className="mt-2 bg-[#274c77] hover:bg-[#6096ba] text-white font-bold text-sm px-5 py-2 rounded-lg transition-colors">
+        <button onClick={() => onNavigate ? onNavigate("feed") : (window.location.href = "/")} className="mt-2 bg-[#274c77] hover:bg-[#6096ba] text-white font-bold text-sm px-5 py-2 rounded-lg transition-colors">
           ← Go to Feed
         </button>
       </div>
@@ -648,7 +648,7 @@ export function MarketIntelligencePulse({ onNavigate }: { onNavigate?: (nav: Nav
       {/* ── HEADER ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-[#a3cef1]/50 pb-4 gap-4">
         <div className="flex items-center gap-4">
-          <button onClick={() => onNavigate?.("feed")} className="text-sm font-bold font-mono text-[#274c77] hover:text-[#6096ba] bg-white border border-[#a3cef1]/60 hover:border-[#6096ba]/60 px-3 py-1.5 rounded-lg transition-colors">
+          <button onClick={() => onNavigate ? onNavigate("feed") : (window.location.href = "/")} className="text-sm font-bold font-mono text-[#274c77] hover:text-[#6096ba] bg-white border border-[#a3cef1]/60 hover:border-[#6096ba]/60 px-3 py-1.5 rounded-lg transition-colors">
             ← Feed
           </button>
           <div>
