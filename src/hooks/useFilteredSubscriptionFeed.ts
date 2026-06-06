@@ -458,7 +458,8 @@ export const HARD_TITLE_BLOCKS = [
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const LONGFORM_MIN_SECS        = 1500; // 25 min
+export const LONGFORM_MIN_SECS        = 1500; // 25 min — longform mode only
+export const BUSINESS_MIN_SECS        = 600;  // 10 min — business/founder/finance modes
 export const AFFINITY_PASS_THRESHOLD  = 70;   // trusted business channel — structural pass
 export const AFFINITY_BLOCK_THRESHOLD = -80;  // hard block threshold
 export const UNKNOWN_AI_THRESHOLD     = 85;   // AI businessRelevance gate for unknown channels
@@ -570,14 +571,14 @@ export function useFilteredFeed(rawVideos: FeedVideo[], mode: FeedMode): FeedVid
     if (!rawVideos?.length) return [];
 
     // ── Step 1: Hard blocks + duration gate — every mode ───────────────────
-    // 25 min minimum applies universally. "off" mode disables topic/trust gates
-    // but never the duration floor — sub-25min videos are always excluded.
+    // Longform mode: 25 min minimum. Business/founder/finance/off: 10 min minimum.
+    const minSecs = (mode === "longform") ? LONGFORM_MIN_SECS : BUSINESS_MIN_SECS;
     const hardPassed: FeedVideo[] = [];
     for (const video of rawVideos) {
       if (getChannelAffinity(video.channelTitle) <= AFFINITY_BLOCK_THRESHOLD) continue;
       const ti = video.title.toLowerCase();
       if (HARD_TITLE_BLOCKS.some((p) => ti.includes(p))) continue;
-      if (isoToSeconds(video.duration) < LONGFORM_MIN_SECS) continue;
+      if (isoToSeconds(video.duration) < minSecs) continue;
       hardPassed.push(video);
     }
 

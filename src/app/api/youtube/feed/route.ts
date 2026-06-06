@@ -365,7 +365,7 @@ export async function GET(req: Request) {
       "marriage", "relationship advice", "dating tips",
     ];
 
-    const MIN_SERVER_SECS = 600; // 10 min — client modes apply their own gates
+    const MIN_SERVER_SECS = 480; // 8 min — client modes apply their own gates
     const videos: FeedVideo[] = rawVideos
       .map((v) => ({
         ...v,
