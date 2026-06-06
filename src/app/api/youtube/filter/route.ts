@@ -247,7 +247,7 @@ export async function POST(req: Request) {
 
     const list = toScore
       .map((v, i) =>
-        `${i + 1}. ID:${v.videoId}\nTitle: ${JSON.stringify(v.title)}\nChannel: ${JSON.stringify(v.channelTitle)}\nDescription: ${JSON.stringify(v.description.slice(0, 120))}`,
+        `${i + 1}. ID:${v.videoId}\nTitle: ${JSON.stringify(v.title)}\nChannel: ${JSON.stringify(v.channelTitle)}\nDescription: ${JSON.stringify(v.description.slice(0, 150))}`,
       )
       .join("\n\n");
 
