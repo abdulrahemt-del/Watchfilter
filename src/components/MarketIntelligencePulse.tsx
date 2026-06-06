@@ -518,15 +518,8 @@ export function MarketIntelligencePulse({ onNavigate }: { onNavigate?: (nav: Nav
       }
     });
 
-    prevSnapshot.themes.slice(0, 8).forEach((pt, i) => {
-      const stillPresent = todaysThemes.some(t => t.topic.toLowerCase() === pt.topic.toLowerCase());
-      if (!stillPresent && pt.count > 1) {
-        events.push({
-          topic: pt.topic, type: "declining", prevRank: i + 1, prevCount: pt.count,
-          currCount: 0, pctChange: -100, creators: 0, channelNames: [],
-        });
-      }
-    });
+    // Deliberately omit topics that dropped to zero — they have no videos or
+    // creators to show and render as empty cards with just "-100%".
 
     const tierOf = (e: ChangeEvent) =>
       e.type === "accelerating" || e.type === "rank_up"  ? 0 :
