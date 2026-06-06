@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import type { NavItem } from "./AppSidebar";
 import type { FeedVideo } from "@/app/api/youtube/feed/route";
 import type { AIScore } from "@/app/api/youtube/filter/route";
 import type { ConsensusResult } from "@/app/api/youtube/consensus/route";
@@ -42,7 +42,7 @@ function readCacheSync<T>(key: string): T | null {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function MarketIntelligencePulse({ onNavigate }: { onNavigate?: (nav: string) => void }) {
+export function MarketIntelligencePulse({ onNavigate }: { onNavigate?: (nav: NavItem) => void }) {
   const { data: session, status } = useSession();
   const email = session?.user?.email ?? "anon";
 
