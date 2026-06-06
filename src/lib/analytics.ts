@@ -8,7 +8,10 @@ export type AnalyticsEvent =
   | "consensus_opened"
   | "opportunity_clicked"
   | "dashboard_viewed"
-  | "feedback_submitted";
+  | "feedback_submitted"
+  | "team_workspace_page_viewed"
+  | "team_workspace_request_clicked"
+  | "team_workspace_waitlist_joined";
 
 export interface TrackPayload {
   event: AnalyticsEvent;

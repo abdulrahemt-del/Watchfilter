@@ -282,7 +282,7 @@ function LibraryView({
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{
-            minWidth: "100%", borderCollapse: "separate", borderSpacing: 0,
+            minWidth: 560, width: "100%", borderCollapse: "separate", borderSpacing: 0,
             background: "white", border: "1px solid #e2e8f0", borderRadius: "0.75rem",
             overflow: "hidden", boxShadow: "0 1px 3px 0 rgb(0 0 0 / 0.07)", fontSize: "0.875rem",
           }}>
@@ -695,7 +695,54 @@ function CrossChannelConsensusView() {
 
 // ── Team Workspace ────────────────────────────────────────────────
 
+const TEAM_SIZES = ["Just me", "2–5 people", "6–20 people", "21–50 people", "50+"];
+
 function TeamWorkspaceView() {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
+  const [teamSize, setTeamSize] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [count, setCount] = useState<number | null>(null);
+  const [formErr, setFormErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    track("team_workspace_page_viewed");
+    fetch("/api/waitlist/team-workspace")
+      .then((r) => r.json())
+      .then((d: { count: number }) => setCount(d.count))
+      .catch(() => null);
+  }, []);
+
+  function openModal() {
+    track("team_workspace_request_clicked");
+    setModalOpen(true);
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!teamSize) { setFormErr("Please select a team size."); return; }
+    setSubmitting(true);
+    setFormErr(null);
+    try {
+      const res = await fetch("/api/waitlist/team-workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, company, teamSize }),
+      });
+      const d = await res.json() as { success?: boolean; count?: number; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Failed");
+      if (d.count) setCount(d.count);
+      track("team_workspace_waitlist_joined", { label: teamSize, value: company.length > 0 ? 1 : 0 });
+      setSubmitted(true);
+    } catch (err) {
+      setFormErr(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="placeholder-view">
       <div className="placeholder-view__icon">👥</div>
@@ -705,38 +752,114 @@ function TeamWorkspaceView() {
         insights, and build a shared knowledge base — all in one place.
       </p>
 
+      {/* Planned features */}
+      <p style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted, #94a3b8)", marginBottom: "0.5rem" }}>Planned Features</p>
       <div className="workspace-features">
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">📋</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Shared Briefings</h3>
-            <p className="workspace-feature-card__desc">Push any analysis directly to your team's shared library. Everyone stays on the same page.</p>
+        {[
+          { icon: "📋", title: "Shared Briefings", desc: "Push any analysis directly to your team's shared library. Everyone stays on the same page." },
+          { icon: "💬", title: "Inline Annotations", desc: "Highlight key insights and leave context for your team directly inside any briefing." },
+          { icon: "🔔", title: "Daily Intelligence Brief", desc: "Auto-deliver a curated morning brief to your whole team — no manual curation required." },
+          { icon: "📊", title: "Team Signal Board", desc: "A live view of every emerging signal your team is tracking, ranked by consensus strength." },
+        ].map((f) => (
+          <div key={f.title} className="workspace-feature-card">
+            <span className="workspace-feature-card__icon">{f.icon}</span>
+            <div>
+              <h3 className="workspace-feature-card__title">{f.title}</h3>
+              <p className="workspace-feature-card__desc">{f.desc}</p>
+            </div>
           </div>
-        </div>
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">💬</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Inline Annotations</h3>
-            <p className="workspace-feature-card__desc">Highlight key insights and leave context for your team directly inside any briefing.</p>
-          </div>
-        </div>
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">🔔</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Daily Intelligence Brief</h3>
-            <p className="workspace-feature-card__desc">Auto-deliver a curated morning brief to your whole team — no manual curation required.</p>
-          </div>
-        </div>
-        <div className="workspace-feature-card">
-          <span className="workspace-feature-card__icon">📊</span>
-          <div>
-            <h3 className="workspace-feature-card__title">Team Signal Board</h3>
-            <p className="workspace-feature-card__desc">A live view of every emerging signal your team is tracking, ranked by consensus strength.</p>
-          </div>
-        </div>
+        ))}
       </div>
 
-      <div className="placeholder-badge">Coming in Phase 2 — Upgrade to Pro for Early Access</div>
+      {/* Early access CTA */}
+      <div style={{ marginTop: "2rem", background: "var(--surface, #fff)", border: "1.5px solid var(--border, #e2e8f0)", borderRadius: 16, padding: "1.75rem", textAlign: "center", maxWidth: 480, margin: "2rem auto 0" }}>
+        <p style={{ fontWeight: 700, fontSize: "1.05rem", margin: "0 0 0.4rem", color: "var(--text, #0f172a)" }}>Interested in Team Workspaces?</p>
+        <p style={{ fontSize: "0.875rem", color: "var(--muted, #64748b)", margin: "0 0 1.25rem", lineHeight: 1.55 }}>
+          Help shape the future of collaborative intelligence. Join the early access list and we&apos;ll notify you when Team Workspaces become available.
+        </p>
+        {count !== null && count > 0 && (
+          <p style={{ fontSize: "0.78rem", color: "var(--muted, #64748b)", marginBottom: "0.85rem" }}>
+            🙋 {count} professional{count !== 1 ? "s have" : " has"} already requested access.
+          </p>
+        )}
+        <button type="button" className="btn btn-primary" onClick={openModal}>
+          Request Early Access
+        </button>
+      </div>
+
+      {/* Modal */}
+      {modalOpen && (
+        <div className="fb-overlay" onClick={() => !submitting && setModalOpen(false)}>
+          <div className="fb-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal aria-label="Request early access">
+            <div className="fb-dialog__header">
+              <div className="fb-dialog__title">👥 Request Early Access</div>
+              <button type="button" className="fb-dialog__close" onClick={() => setModalOpen(false)} disabled={submitting}>✕</button>
+            </div>
+            {submitted ? (
+              <div className="fb-dialog__sent">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+                <p style={{ fontWeight: 700, fontSize: "1rem", margin: "0.5rem 0 0.25rem" }}>You&apos;re on the list.</p>
+                <p style={{ fontSize: "0.85rem", color: "var(--muted, #64748b)", margin: 0 }}>We&apos;ll let you know when Team Workspaces become available.</p>
+                {count !== null && count > 0 && (
+                  <p style={{ fontSize: "0.78rem", color: "var(--muted, #94a3b8)", marginTop: "0.75rem" }}>
+                    {count} professional{count !== 1 ? "s have" : " has"} already requested access.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <form onSubmit={(e) => void handleSubmit(e)} className="fb-dialog__body">
+                <label className="fb-label">
+                  Email Address <span style={{ color: "#ef4444" }}>*</span>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@company.com"
+                    required
+                    disabled={submitting}
+                    className="fb-textarea"
+                    style={{ height: "auto", padding: "0.5rem 0.75rem" }}
+                  />
+                </label>
+                <label className="fb-label">
+                  Company Name <span style={{ fontSize: "0.75rem", color: "var(--muted, #94a3b8)" }}>(optional)</span>
+                  <input
+                    type="text"
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    placeholder="Acme Inc."
+                    disabled={submitting}
+                    className="fb-textarea"
+                    style={{ height: "auto", padding: "0.5rem 0.75rem" }}
+                  />
+                </label>
+                <label className="fb-label">
+                  Team Size <span style={{ color: "#ef4444" }}>*</span>
+                  <select
+                    value={teamSize}
+                    onChange={(e) => setTeamSize(e.target.value)}
+                    required
+                    disabled={submitting}
+                    className="fb-select"
+                  >
+                    <option value="">Select team size…</option>
+                    {TEAM_SIZES.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </label>
+                {formErr && <p className="fb-error">{formErr}</p>}
+                <div className="fb-dialog__footer">
+                  <button type="button" className="btn btn-ghost" onClick={() => setModalOpen(false)} disabled={submitting}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={submitting || !email || !teamSize}>
+                    {submitting ? <><span className="spinner" /> Submitting…</> : "Join Early Access"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -744,6 +867,78 @@ function TeamWorkspaceView() {
 // ── Upgrade ───────────────────────────────────────────────────────
 
 function UpgradeView() {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [isPro, setIsPro] = useState<boolean | null>(null);
+  const [cancelAt, setCancelAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/subscription")
+      .then((r) => r.json())
+      .then((d: { isPro: boolean; cancelAt: string | null }) => {
+        setIsPro(d.isPro);
+        setCancelAt(d.cancelAt);
+      })
+      .catch(() => setIsPro(false));
+  }, []);
+
+  async function handleUpgrade() {
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/checkout", { method: "POST" });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Failed to start checkout");
+      window.location.href = data.url;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Something went wrong");
+      setLoading(false);
+    }
+  }
+
+  if (isPro) {
+    return (
+      <div className="placeholder-view">
+        <div className="placeholder-view__icon">✅</div>
+        <h1 className="view-title">You&apos;re on WatchFilter Pro</h1>
+        <p className="view-sub">All executive features are active on your account.</p>
+        {cancelAt && (
+          <div style={{
+            background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a",
+            borderRadius: 10, padding: "0.6rem 0.9rem", marginBottom: "1rem",
+            fontSize: "0.82rem", fontWeight: 500,
+          }}>
+            ⚠️ Your subscription will cancel on{" "}
+            <strong>{new Date(cancelAt).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}</strong>.
+            You keep Pro access until then.
+          </div>
+        )}
+        <div className="upgrade-card">
+          <ul className="upgrade-card__features">
+            <li>✓ Daily Intelligence Brief</li>
+            <li>✓ Cross-Creator Consensus</li>
+            <li>✓ Opportunity Detection</li>
+            <li>✓ Emerging Signals</li>
+            <li>✓ Full Audio Briefings</li>
+            <li>✓ Team workspace &amp; sharing</li>
+          </ul>
+          <button
+            type="button"
+            className="btn btn-ghost upgrade-card__cta"
+            style={{ marginTop: "1rem" }}
+            onClick={async () => {
+              const res = await fetch("/api/portal", { method: "POST" });
+              const d = await res.json() as { url?: string };
+              if (d.url) window.location.href = d.url;
+            }}
+          >
+            Manage subscription →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="placeholder-view">
       <div className="placeholder-view__icon">👑</div>
@@ -752,6 +947,14 @@ function UpgradeView() {
         Executive-tier intelligence. Unlimited briefings, priority processing, and team access.
       </p>
       <div className="upgrade-card">
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: "0.4rem",
+          background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a",
+          borderRadius: 20, padding: "0.25rem 0.75rem", fontSize: "0.75rem",
+          fontWeight: 600, marginBottom: "0.85rem",
+        }}>
+          🧪 Beta — payments not active yet
+        </div>
         <div className="upgrade-card__price">
           <span className="upgrade-card__amount">$29</span>
           <span className="upgrade-card__period">/month</span>
@@ -764,8 +967,14 @@ function UpgradeView() {
           <li>✓ Full Audio Briefings</li>
           <li>✓ Team workspace &amp; sharing</li>
         </ul>
-        <button type="button" className="btn btn-primary upgrade-card__cta">
-          Get Executive Access →
+        {err && <p style={{ color: "#ef4444", fontSize: "0.82rem", marginBottom: "0.5rem" }}>{err}</p>}
+        <button
+          type="button"
+          className="btn btn-primary upgrade-card__cta"
+          onClick={() => void handleUpgrade()}
+          disabled={loading || isPro === null}
+        >
+          {loading ? "Redirecting…" : "Get Executive Access →"}
         </button>
       </div>
     </div>
@@ -785,11 +994,23 @@ export function WatchFilterApp() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeNav, setActiveNav] = useState<NavItem>("dashboard");
+  const [upgradedBanner, setUpgradedBanner] = useState(false);
 
   function handleNav(nav: NavItem) {
     setActiveNav(nav);
     if (nav === "dashboard") track("dashboard_viewed");
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("upgraded") === "1") {
+      setUpgradedBanner(true);
+      setActiveNav("dashboard");
+      window.history.replaceState({}, "", window.location.pathname);
+      setTimeout(() => setUpgradedBanner(false), 6000);
+    }
+  }, []);
   const [globalAudio, setGlobalAudio] = useState<{
     src: string; title: string; analysisId: string; autoPlay?: boolean;
   } | null>(null);
@@ -982,6 +1203,21 @@ export function WatchFilterApp() {
       />
 
       <main className="main-panel">
+        {upgradedBanner && (
+          <div style={{
+            background: "linear-gradient(90deg,#059669,#0d9488)", color: "#fff",
+            borderRadius: 12, padding: "1rem 1.25rem", marginBottom: "1.25rem",
+            display: "flex", alignItems: "center", gap: "0.75rem",
+            boxShadow: "0 4px 16px rgba(5,150,105,0.25)",
+          }}>
+            <span style={{ fontSize: "1.4rem" }}>🎉</span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: "1rem" }}>Welcome to WatchFilter Pro!</p>
+              <p style={{ margin: "0.2rem 0 0", fontSize: "0.82rem", opacity: 0.9 }}>Your subscription is active. All Pro features are now unlocked.</p>
+            </div>
+            <button type="button" onClick={() => setUpgradedBanner(false)} style={{ marginLeft: "auto", background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: "1.1rem", opacity: 0.8 }}>✕</button>
+          </div>
+        )}
         {/* ── Dashboard — always mounted so feedTab + feed state survive nav changes ── */}
         <div style={{ display: activeNav === "dashboard" ? "contents" : "none" }}>
           <DashboardView

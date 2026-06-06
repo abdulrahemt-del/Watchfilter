@@ -22,6 +22,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "resend": "^4.0.0",
+    "stripe": "^22.2.0",
     "undici": "^7.0.0",
     "youtube-transcript": "^1.2.1",
     "zod": "^3.25.56"

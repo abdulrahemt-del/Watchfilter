@@ -5724,7 +5724,8 @@ to {
 }
 
 .intel-scoreboard {
-  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  grid-template-columns:repeat(7,1fr);
+  justify-content:center;
   gap:.7rem;
   margin-bottom:1.5rem;
   display:grid
@@ -8510,7 +8511,7 @@ to {
   }
 
   .mobile-topbar__logo {
-    width: 28px; height: 28px; object-fit: contain;
+    width: 40px; height: 40px; object-fit: contain;
   }
 
   .mobile-topbar__brand {

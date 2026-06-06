@@ -64,6 +64,14 @@ async function ensureSchema(): Promise<void> {
       email      TEXT UNIQUE NOT NULL,
       created_at TEXT NOT NULL
     )`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS team_workspace_waitlist (
+      id           TEXT PRIMARY KEY,
+      email        TEXT UNIQUE NOT NULL,
+      company      TEXT,
+      team_size    TEXT NOT NULL,
+      user_id      TEXT,
+      created_at   TEXT NOT NULL
+    )`, args: [] },
     { sql: `CREATE TABLE IF NOT EXISTS beta_events (
       id         TEXT PRIMARY KEY,
       event      TEXT NOT NULL,
@@ -441,6 +449,32 @@ export async function getBetaStats(): Promise<{ waitlist: number; signups: numbe
     activations:   Number(a.rows[0]?.n ?? 0),
     firstAnalyses: Number(f.rows[0]?.n ?? 0),
   };
+}
+
+// ── Team Workspace Waitlist ───────────────────────────────────────────────────
+
+export async function joinTeamWorkspaceWaitlist(
+  email: string,
+  teamSize: string,
+  company: string | null,
+  userId: string | null,
+): Promise<{ alreadyJoined: boolean }> {
+  const c = await db();
+  try {
+    await c.execute({
+      sql: `INSERT INTO team_workspace_waitlist (id, email, company, team_size, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [randomUUID(), email, company, teamSize, userId, new Date().toISOString()],
+    });
+    return { alreadyJoined: false };
+  } catch {
+    return { alreadyJoined: true };
+  }
+}
+
+export async function getTeamWorkspaceWaitlistCount(): Promise<number> {
+  const c = await db();
+  const r = await c.execute(`SELECT COUNT(*) as n FROM team_workspace_waitlist`);
+  return Number(r.rows[0]?.n ?? 0);
 }
 
 export async function upsertIntelligenceSnapshot(data: SnapshotUpsertData): Promise<void> {
