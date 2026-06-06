@@ -434,7 +434,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
 
     const toScan  = scanTarget;
     const batches: typeof toScan[] = [];
-    for (let i = 0; i < toScan.length; i += 25) batches.push(toScan.slice(i, i + 25));
+    for (let i = 0; i < toScan.length; i += 50) batches.push(toScan.slice(i, i + 50));
 
     console.log(`[AI-scan] scanning ${toScan.length} videos in ${batches.length} batches`);
 
@@ -449,7 +449,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             videoId:      v.videoId,
             title:        v.title,
             channelTitle: v.channelTitle,
-            description:  smartTruncateDescription(v.description, 200),
+            description:  smartTruncateDescription(v.description, 100),
           })),
         }),
         signal: controller.signal,
