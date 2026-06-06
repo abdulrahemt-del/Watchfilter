@@ -429,7 +429,9 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   // AI scoring — fires only when aiScanEnabled and scanTarget changes
   useEffect(() => {
     if (!aiScanEnabled || scanTarget.length === 0) return;
-    setAiLoading(true);
+    // Only show the spinner for large initial scans (>10 videos).
+    // Small top-ups (new videos added to the feed) score silently in the background.
+    if (scanTarget.length > 10) setAiLoading(true);
 
     const toScan  = scanTarget;
     const batches: typeof toScan[] = [];
