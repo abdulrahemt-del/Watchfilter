@@ -448,7 +448,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             videoId:      v.videoId,
             title:        v.title,
             channelTitle: v.channelTitle,
-            description:  smartTruncateDescription(v.description, 150),
+            description:  smartTruncateDescription(v.description, 200),
           })),
         }),
         signal: controller.signal,
