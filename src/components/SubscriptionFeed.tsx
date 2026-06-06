@@ -364,7 +364,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
         const vids = data.videos ?? [];
         setVideos(vids);
         setCacheAge(new Date());
-        setAiResults(forceRefresh ? {} : loadAiCache());
+        setAiResults(loadAiCache());
         // Do NOT touch aiScanEnabled here — the mode effect owns it.
         // Clearing it here prevents AI from re-running after refresh.
         setConsensusData(null);
