@@ -654,7 +654,7 @@ export function MarketIntelligencePulse({ onNavigate }: { onNavigate?: (nav: Nav
           <FeedButton onNavigate={onNavigate} className="text-sm font-bold font-mono text-[#274c77] hover:text-[#6096ba] bg-white border border-[#a3cef1]/60 hover:border-[#6096ba]/60 px-3 py-1.5 rounded-lg transition-colors">← Feed</FeedButton>
           <div>
             <h1 className="text-xl font-black text-[#274c77] tracking-tight flex items-center gap-2">
-              📡 Creator Trends
+              📡 Creator Trends Intelligence Terminal
             </h1>
             <p className="text-xs text-[#8b8c89] font-mono">
               Creator consensus synthesized from your subscription channels
