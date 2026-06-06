@@ -819,8 +819,7 @@ function TeamWorkspaceView() {
                     placeholder="you@company.com"
                     required
                     disabled={submitting}
-                    className="fb-textarea"
-                    style={{ height: "auto", padding: "0.5rem 0.75rem" }}
+                    className="fb-select"
                   />
                 </label>
                 <label className="fb-label">
@@ -831,8 +830,7 @@ function TeamWorkspaceView() {
                     onChange={(e) => setCompany(e.target.value)}
                     placeholder="Acme Inc."
                     disabled={submitting}
-                    className="fb-textarea"
-                    style={{ height: "auto", padding: "0.5rem 0.75rem" }}
+                    className="fb-select"
                   />
                 </label>
                 <label className="fb-label">
@@ -1330,7 +1328,7 @@ export function WatchFilterApp() {
         </div>
 
         {/* ── Trends ── */}
-        {activeNav === "trends" && <MarketIntelligencePulse />}
+        {activeNav === "trends" && <MarketIntelligencePulse onNavigate={setActiveNav} />}
 
         {/* ── Cross-Channel Consensus ── */}
         {activeNav === "consensus-page" && <CrossChannelConsensusView />}
