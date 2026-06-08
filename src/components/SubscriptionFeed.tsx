@@ -16,6 +16,8 @@ import {
   type FeedMode,
 } from "@/hooks/useFilteredSubscriptionFeed";
 import { FluffAnalyzerDrawer, categoryChipClass } from "@/components/FluffAnalyzerDrawer";
+import { InsightsDrawer } from "@/components/InsightsDrawer";
+import type { Insight, VideoType } from "@/app/api/youtube/insights/route";
 
 const DEBUG_BADGES = false;
 
@@ -254,6 +256,11 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   const [consensusData, setConsensusData]         = useState<ConsensusResult | null>(null);
   const [consensusLoading, setConsensusLoading]   = useState(false);
   const [selectedConsensusTheme, setSelectedConsensusTheme] = useState<string | null>(null);
+  const [insightsVideo, setInsightsVideo]         = useState<FeedVideo | null>(null);
+  const [insightsCache, setInsightsCache]         = useState<Record<string, Insight[]>>({});
+  const [insightsTypeCache, setInsightsTypeCache] = useState<Record<string, VideoType | null>>({});
+  const [insightsLoading, setInsightsLoading]     = useState<string | null>(null);
+  const [insightsError, setInsightsError]         = useState<string | null>(null);
   // showAllSources removed — filteredVideos now always contains the full approved pool
 
   // ── Structural filter ──────────────────────────────────────────────────────
@@ -514,6 +521,32 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     setDrawerVideo(null);
     setAnalyzingId(video.videoId);
     onAnalyze(`https://www.youtube.com/watch?v=${video.videoId}`);
+  }
+
+  async function fetchInsights(video: FeedVideo) {
+    if (insightsCache[video.videoId]) return;
+    setInsightsLoading(video.videoId);
+    setInsightsError(null);
+    try {
+      const res = await fetch("/api/youtube/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoId:      video.videoId,
+          title:        video.title,
+          channelTitle: video.channelTitle,
+          description:  video.description,
+        }),
+      });
+      const data = await res.json() as { insights?: Insight[]; video_type?: VideoType; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to generate insights");
+      setInsightsCache(prev => ({ ...prev, [video.videoId]: data.insights ?? [] }));
+      setInsightsTypeCache(prev => ({ ...prev, [video.videoId]: data.video_type ?? null }));
+    } catch (e) {
+      setInsightsError(e instanceof Error ? e.message : "Failed to generate insights");
+    } finally {
+      setInsightsLoading(null);
+    }
   }
 
   const showAI  = mode === "business" || mode === "founder" || mode === "finance";
@@ -830,22 +863,30 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             </div>
           )}
           <p className="feed-card__title">{video.title}</p>
-          {ai?.whyItMatters && showAI && (
+          {(ai?.whyItMatters || ai?.explanation) && showAI && (
             <p className="feed-card__why-matters">
               <span className="feed-card__why-label">Why it matters</span>
-              {ai.whyItMatters}
+              {ai.whyItMatters || ai.explanation}
             </p>
           )}
-          {ai?.explanation && showAI && !ai?.whyItMatters && <p className="feed-card__explanation">{ai.explanation}</p>}
           <div className="feed-card__meta">
             <span className="feed-card__age">{formatAge(video.publishedAt)}</span>
             {video.duration && estimateSavings(video.duration) && (
               <span className="feed-card__savings">{estimateSavings(video.duration)}</span>
             )}
           </div>
-          <button onClick={() => setDrawerVideo(video)} className="feed-card__analyze-btn">
-            ⚡ Filter Insights
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button onClick={() => setDrawerVideo(video)} className="feed-card__analyze-btn">
+              ⚡ Filter Insights
+            </button>
+            <button
+              onClick={() => { setInsightsVideo(video); fetchInsights(video); }}
+              className="feed-card__analyze-btn"
+              style={{ background: "rgba(99,102,241,0.12)", borderColor: "rgba(99,102,241,0.3)", color: "#a5b4fc" }}
+            >
+              🧠 Key Insights
+            </button>
+          </div>
           {DEBUG_BADGES && (
             <div className="feed-card__debug-badge">
               <span>⏱ {isoToSeconds(video.duration)}s</span>
@@ -1751,6 +1792,17 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
         onClose={() => setDrawerVideo(null)}
         onFullAnalyze={() => drawerVideo && handleAnalyze(drawerVideo)}
         isAnalyzing={analyzingId === drawerVideo?.videoId}
+      />
+
+      <InsightsDrawer
+        isOpen={insightsVideo !== null}
+        video={insightsVideo}
+        videoType={insightsVideo ? (insightsTypeCache[insightsVideo.videoId] ?? null) : null}
+        cachedInsights={insightsVideo ? (insightsCache[insightsVideo.videoId] ?? null) : null}
+        loading={insightsLoading === insightsVideo?.videoId}
+        error={insightsError}
+        onClose={() => { setInsightsVideo(null); setInsightsError(null); }}
+        onFetch={() => insightsVideo && fetchInsights(insightsVideo)}
       />
     </div>
   );

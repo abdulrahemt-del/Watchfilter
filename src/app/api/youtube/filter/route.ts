@@ -274,7 +274,17 @@ export async function POST(req: Request) {
 
     const raw    = completion.choices[0].message.content ?? '{"results":[]}';
     const parsed = JSON.parse(raw) as { results?: AIScore[] };
-    return NextResponse.json({ results: [...preExcluded, ...(parsed.results ?? [])] });
+
+    // Guarantee whyItMatters is always populated for non-excluded videos.
+    // The LLM occasionally omits it despite the instruction — fall back to explanation.
+    const normalized = (parsed.results ?? []).map((r) => {
+      if (r.topicCategory !== "excluded" && !r.whyItMatters) {
+        r.whyItMatters = r.explanation ?? "";
+      }
+      return r;
+    });
+
+    return NextResponse.json({ results: [...preExcluded, ...normalized] });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Filter failed";
     console.error("[youtube/filter]", message);
