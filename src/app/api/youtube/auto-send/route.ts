@@ -127,13 +127,7 @@ async function sendNote(
   const blocks: object[] = [];
 
   if (channelTitle || videoTitle) {
-    blocks.push({
-      object: "block", type: "callout",
-      callout: {
-        rich_text: [{ text: { content: sanitizeText(`${channelTitle} - ${videoTitle}`) } }],
-        icon: { emoji: "T" },
-      },
-    });
+    blocks.push(para(sanitizeText(`Source: ${[channelTitle, videoTitle].filter(Boolean).join(" - ")}`)));
   }
 
   const meta = sanitizeText([videoType, ins.category, `Importance: ${ins.importance}/10`].filter(Boolean).join(" - "));
