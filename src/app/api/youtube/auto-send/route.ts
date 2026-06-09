@@ -193,7 +193,12 @@ async function sendNote(
 async function sendTask(ins: Insight, todoistKey: string): Promise<OutputStatus> {
   if (!todoistKey) { console.warn("[todoist] TODOIST_API_KEY not set / empty after sanitize"); return { status: "skipped", error: "Todoist not configured" }; }
 
-  const taskTitle = sanitizeText(ins.assets?.task?.title       ?? "");
+  // Skip "Informational Only" insights — no real action to create
+  if (!ins.actionability || ins.actionability === "Informational Only") {
+    return { status: "skipped", error: "Informational Only — no action to create" };
+  }
+
+  const taskTitle = sanitizeText(ins.actionability);
   const taskDesc  = sanitizeText(ins.assets?.task?.description ?? "");
   const insTitle  = sanitizeText(ins.title ?? "");
 
@@ -212,8 +217,7 @@ async function sendTask(ins: Insight, todoistKey: string): Promise<OutputStatus>
   console.log("[todoist] Authorization header first 20 codes:", debugCharCodes(`Bearer ${todoistKey}`, 20));
 
   try {
-    // Todoist deprecated rest/v2 — current endpoint is api/v1
-    const res = await fetch("https://api.todoist.com/api/v1/tasks", {
+    const res = await fetch("https://api.todoist.com/rest/v2/tasks", {
       method: "POST",
       headers: {
         Authorization:  `Bearer ${todoistKey}`,

@@ -61,7 +61,7 @@ function DebugPanel({ label, raw }: { label: string; raw: string }) {
           </div>
           <div>
             <span style={{ fontSize: 8, color: "#334155", fontFamily: "monospace" }}>SANITIZED:</span>
-            <div style={{ fontSize: 8, fontFamily: "monospace", color: "#64748b", wordBreak: "break-all", marginTop: 1 }}>{JSON.stringify(sanitized)}</div>
+            <div style={{ fontSize: 8, fontFamily: "monospace", color: "#1e293b", wordBreak: "break-all", marginTop: 1 }}>{JSON.stringify(sanitized)}</div>
           </div>
           {hits.length > 0 ? (
             <div>
@@ -228,7 +228,7 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
           <p style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", margin: "0 0 6px", lineHeight: 1.35 }}>
             {ins.title}
           </p>
-          <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.55 }}>
+          <p style={{ fontSize: 11, color: "#1e293b", margin: 0, lineHeight: 1.55 }}>
             {ins.why_it_matters}
           </p>
         </div>
@@ -247,7 +247,7 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
           <p style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: "0.08em", margin: "10px 0 4px" }}>
             What Was Said
           </p>
-          <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.65 }}>
+          <p style={{ fontSize: 11, color: "#1e293b", margin: 0, lineHeight: 1.65 }}>
             {ins.what_was_discussed}
           </p>
         </div>
