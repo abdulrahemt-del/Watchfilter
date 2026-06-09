@@ -4887,8 +4887,9 @@ to {
   z-index:51;
   inset-block:0;
   flex-direction:column;
-  width:100%;
-  max-width:480px;
+  width:50vw;
+  min-width:480px;
+  max-width:900px;
   animation:.25s ease-out slideInRight;
   display:flex;
   position:fixed;

@@ -15,11 +15,13 @@ export type InsightCategory =
   | "Startup"  | "Productivity" | "Technology" | "Content Creation" | "Business";
 
 export type VideoType =
-  | "Advice / Self-Improvement"
+  | "Advice / Self Improvement"
   | "Educational"
   | "Interview"
   | "News / Industry Analysis"
-  | "Opinion / Commentary";
+  | "Market Commentary"
+  | "Opinion / Discussion"
+  | "Tutorial";
 
 export interface InsightNote {
   title:   string;
@@ -37,11 +39,14 @@ export interface InsightContentAsset {
 }
 
 export interface Insight {
-  title:          string;
-  explanation:    string;
-  why_it_matters: string;
-  category:       InsightCategory;
-  importance:     number;
+  title:              string;
+  what_was_discussed: string;
+  why_it_matters:     string;
+  actionability:      string;
+  supporting_points:  string[];
+  key_quote:          string | null;
+  category:           InsightCategory;
+  importance:         number;
   assets: {
     note:    InsightNote;
     task:    InsightTask;
@@ -49,89 +54,99 @@ export interface Insight {
   };
 }
 
-const SYSTEM_PROMPT = `You are an AI Chief of Staff for WatchFilter. Your job is NOT to summarize videos.
-
-Your job: extract the 3 highest-signal insights from a video, then generate 3 workspace assets per insight that are MORE VALUABLE than the insight itself.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 1 — EXTRACT 3 INSIGHTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Pick the 3 most important ideas. Each insight must:
-- Have a specific title (a claim, not a topic — "NVIDIA owns the AI infrastructure layer" not "NVIDIA")
-- explanation: what the speaker actually said, concisely
-- why_it_matters: the strategic significance
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 2 — GENERATE 3 ASSETS PER INSIGHT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-For each insight generate exactly 3 assets. Each asset must add NEW value — not restate the insight.
-
-ASSET 1: Strategic Note (saved to Notion)
-- Add context, examples, analogies, or frameworks the speaker didn't say
-- Connect it to a broader pattern or historical precedent
-- NOT a summary of the insight
-
-ASSET 2: Action Task (sent to Todoist)
-- A specific, completable action the user can do this week
-- Must be concrete ("Audit your top 3 acquisition channels" not "Think about acquisition")
-- Only if the insight has clear decision value — otherwise: "Bookmark for reference: [topic]"
-
-ASSET 3: Content Opportunity (added to content queue)
-- A counter-intuitive or contrarian content angle
-- Something that would surprise or challenge the reader
-- NOT "Write about [topic]" — instead: a specific thesis or hook
-
-━━━━━━━━━━━━━━━━━━━━━━
-BAD vs GOOD EXAMPLE
-━━━━━━━━━━━━━━━━━━━━━━
-Insight: "NVIDIA's revenue grew 40% from AI chip demand"
-
-BAD:
-  note:    "NVIDIA revenue grew 40%"
-  task:    "Research NVIDIA"
-  content: "Write about AI chip demand"
-
-GOOD:
-  note:    "3 infrastructure layers that became monopolies: NVIDIA (AI compute), AWS (cloud), Stripe (payments). Each owned a chokepoint before the market realized it was a chokepoint."
-  task:    "Map your product: which layer are you on? Which layer could you own? Document in a 2x2."
-  content: "The unsexy infrastructure play always beats the flashy app — here's the historical proof"
-
-━━━━━━━━━━━━━━━━━━━━━━
-RETURN ONLY JSON
-━━━━━━━━━━━━━━━━━━━━━━
-{
-  "video_type": "Interview",
-  "insights": [
-    {
-      "title": "Specific claim as insight title",
-      "explanation": "What the speaker actually said",
-      "why_it_matters": "Strategic significance",
-      "category": "Strategy",
-      "importance": 9,
-      "assets": {
-        "note": {
-          "title": "Strategic note title",
-          "content": "Unique strategic context, analogies, or frameworks that add value beyond the insight"
-        },
-        "task": {
-          "title": "Specific action task title",
-          "description": "Why this action matters and exactly how to do it"
-        },
-        "content": {
-          "title": "Content piece title",
-          "angle": "The counter-intuitive or contrarian angle that makes this worth publishing"
-        }
-      }
-    }
-  ]
-}
-
-Rules:
-- Exactly 3 insights. No more, no less.
-- Every asset must add value the others do not. No paraphrasing between assets.
-- category: "Strategy" | "Investing" | "AI" | "Marketing" | "Leadership" | "Startup" | "Productivity" | "Technology" | "Content Creation" | "Business"
-- importance: 1-10
-- Never write: "This video discusses..." / "The speaker mentions..." / "According to the video..."`;
+const SYSTEM_PROMPT = [
+  "You are generating insights for WatchFilter.",
+  "",
+  "WatchFilter is NOT an AI advisor, coach, investment analyst, consultant, or recommendation engine.",
+  "WatchFilter's purpose: help users quickly understand what was discussed in a video and decide whether it deserves their attention.",
+  "",
+  "Users should feel: \"I understand what was discussed.\" NOT: \"The AI is telling me what I should do.\"",
+  "",
+  "## Critical Rule: Never Convert Observations Into Recommendations",
+  "",
+  "Do NOT infer actions from observations. Examples of what NOT to do:",
+  "- Speaker: \"AI demand is increasing semiconductor demand.\" BAD output: \"Review your investment portfolio.\"",
+  "- Speaker: \"NVIDIA's valuation reflects its strategic importance.\" BAD output: \"Consider investing in semiconductor companies.\"",
+  "- Speaker: \"OpenAI released a new model.\" BAD output: \"Integrate this model into your business.\"",
+  "",
+  "Never generate financial, investment, legal, medical, business, or career advice unless the speaker explicitly provided that advice.",
+  "",
+  "## Step 1: Classify the Content",
+  "",
+  "video_type: \"Advice / Self Improvement\" | \"Educational\" | \"Interview\" | \"News / Industry Analysis\" | \"Market Commentary\" | \"Opinion / Discussion\" | \"Tutorial\"",
+  "",
+  "## Step 2: Generate 3 Insights",
+  "",
+  "title — specific headline claim (\"NVIDIA owns the AI infrastructure layer\", not \"NVIDIA\")",
+  "what_was_discussed — what the speaker actually said, concisely. Stay grounded in the content. Do not speculate.",
+  "why_it_matters — the significance or implications. Answer \"why should the viewer care?\" WITHOUT giving recommendations.",
+  "",
+  "GOOD why_it_matters: \"This highlights the growing role of AI infrastructure providers in the broader technology ecosystem.\"",
+  "BAD why_it_matters: \"Investors should buy AI-related stocks.\" / \"Companies should immediately adopt AI tools.\"",
+  "",
+  "category: \"Strategy\" | \"Investing\" | \"AI\" | \"Marketing\" | \"Leadership\" | \"Startup\" | \"Productivity\" | \"Technology\" | \"Content Creation\" | \"Business\"",
+  "importance: 1-10",
+  "",
+  "## Step 3: Actionability",
+  "",
+  "Generate a real action ONLY when ALL of the following are true:",
+  "1. The speaker explicitly recommends an action",
+  "2. The recommendation is direct and unambiguous",
+  "3. The action is clearly stated in the content",
+  "",
+  "Example of valid action — Speaker says: \"Schedule two hours of uninterrupted deep work every day.\"",
+  "actionability: \"Schedule a daily block of uninterrupted focus time.\"",
+  "",
+  "If no explicit action was recommended, set actionability to exactly: \"Informational Only\"",
+  "Do NOT create next steps, strategic suggestions, portfolio advice, or business advice.",
+  "",
+  "## Step 4: Supporting Evidence and Key Quote",
+  "",
+  "supporting_points — 3 to 5 concise bullet strings from the video that back up the insight. Facts, figures, examples the speaker gave.",
+  "key_quote — A verbatim or near-verbatim quote from the speaker if a strong one exists, otherwise null.",
+  "",
+  "## Step 5: Assets",
+  "",
+  "note — Add context, examples, analogies, or frameworks the speaker did NOT say. NOT a summary of the insight.",
+  "task — ONLY if actionability is not \"Informational Only\": the specific explicit action the speaker recommended. Otherwise set title to \"Bookmark for reference: [topic]\" and description to \"Saved for future reference.\"",
+  "content — A counter-intuitive or contrarian content angle. NOT \"Write about [topic]\" — a specific thesis or hook that would surprise the reader.",
+  "",
+  "## Final Quality Check",
+  "",
+  "Before each insight ask:",
+  "1. Did the speaker actually say this?",
+  "2. Am I summarizing or advising?",
+  "3. Could a reasonable user mistake this for financial, legal, medical, or business advice?",
+  "4. Can every statement be traced back to the video?",
+  "",
+  "If any answer suggests the content is advice rather than summary, rewrite it.",
+  "",
+  "## Return Only JSON",
+  "",
+  JSON.stringify({
+    video_type: "Interview",
+    insights: [{
+      title: "Specific claim as headline",
+      what_was_discussed: "What the speaker actually said, grounded in the content",
+      why_it_matters: "Significance without recommendations",
+      actionability: "Informational Only",
+      supporting_points: ["Point from the video", "Another supporting fact", "Third evidence point"],
+      key_quote: "Direct quote from the speaker, or null if none",
+      category: "Strategy",
+      importance: 8,
+      assets: {
+        note: { title: "Context note title", content: "Added context, analogies, or frameworks beyond the insight" },
+        task: { title: "Bookmark for reference: Topic", description: "Saved for future reference" },
+        content: { title: "Contrarian angle title", angle: "The specific counter-intuitive thesis or hook" },
+      },
+    }],
+  }, null, 2),
+  "",
+  "Rules:",
+  "- Exactly 3 insights. No more, no less.",
+  "- Every asset must add value the others do not. No paraphrasing between assets.",
+  "- Never write: \"This video discusses...\" / \"The speaker mentions...\" / \"According to the video...\"",
+].join("\n");
 
 interface ParsedResponse {
   video_type?: VideoType;
@@ -141,9 +156,12 @@ interface ParsedResponse {
 function sanitizeInsightRaw(ins: Insight): Insight {
   return {
     ...ins,
-    title:          sanitizeText(ins.title          ?? ""),
-    explanation:    sanitizeText(ins.explanation    ?? ""),
-    why_it_matters: sanitizeText(ins.why_it_matters ?? ""),
+    title:              sanitizeText(ins.title              ?? ""),
+    what_was_discussed: sanitizeText(ins.what_was_discussed ?? ""),
+    why_it_matters:     sanitizeText(ins.why_it_matters     ?? ""),
+    actionability:      sanitizeText(ins.actionability      ?? "Informational Only"),
+    supporting_points:  (ins.supporting_points ?? []).map(p => sanitizeText(p)).filter(Boolean),
+    key_quote:          ins.key_quote ? sanitizeText(ins.key_quote) : null,
     assets: {
       note: {
         title:   sanitizeText(ins.assets?.note?.title   ?? ""),
@@ -186,8 +204,8 @@ export async function POST(req: Request) {
   }
 
   const userMessage = usedFallback
-    ? `Generate 3 insights + assets from this video metadata:\n\n${context}`
-    : `Generate 3 insights + assets from this video:\n\nTitle: ${sanitizeText(title ?? "")}\nChannel: ${sanitizeText(channelTitle ?? "")}\n\nTranscript:\n${context}`;
+    ? `Generate 3 insights from this video metadata:\n\n${context}`
+    : `Generate 3 insights from this video:\n\nTitle: ${sanitizeText(title ?? "")}\nChannel: ${sanitizeText(channelTitle ?? "")}\n\nTranscript:\n${context}`;
 
   console.log(`[insights] Generating for videoId=${videoId} | usedFallback=${usedFallback}`);
 

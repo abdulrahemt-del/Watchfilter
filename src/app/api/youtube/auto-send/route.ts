@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import type { Insight } from "@/app/api/youtube/insights/route";
 import { sanitizeText, sanitizeApiKey, debugCharCodes, findSuspiciousChars } from "@/lib/utils/sanitize";
-
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -258,17 +257,46 @@ async function sendContent(
   const contentTitle = sanitizeText(ins.assets?.content?.title ?? "");
   const contentAngle = sanitizeText(ins.assets?.content?.angle ?? "");
   const insTitle     = sanitizeText(ins.title ?? "");
+  const keyQuote     = ins.key_quote ? sanitizeText(ins.key_quote) : null;
 
-  const blocks: object[] = [
-    heading3("Content Angle"),
-    para(contentAngle),
-    divider(),
-    heading3("Source Insight"),
-    para(insTitle),
-  ];
+  const blocks: object[] = [];
+
   if (channelTitle || videoTitle) {
+    blocks.push(para(sanitizeText(`Source: ${[channelTitle, videoTitle].filter(Boolean).join(" — ")}`)));
     blocks.push(divider());
-    blocks.push(para(sanitizeText(`${channelTitle} - ${videoTitle}`)));
+  }
+
+  blocks.push(heading3("Content Angle"));
+  blocks.push(para(sanitizeText(contentAngle || insTitle)));
+  blocks.push(divider());
+
+  blocks.push(heading3("Source Insight"));
+  blocks.push(para(sanitizeText(ins.what_was_discussed || insTitle)));
+  blocks.push(divider());
+
+  blocks.push(heading3("Why It Matters"));
+  blocks.push(para(sanitizeText(ins.why_it_matters || "")));
+  blocks.push(divider());
+
+  if (ins.supporting_points?.length) {
+    blocks.push(heading3("Supporting Evidence"));
+    ins.supporting_points.slice(0, 5).forEach(point => {
+      blocks.push(bullet(sanitizeText(point)));
+    });
+    blocks.push(divider());
+  }
+
+  blocks.push(heading3("Key Quote"));
+  if (keyQuote) {
+    blocks.push(quote(keyQuote));
+  } else {
+    blocks.push(para("No standout quote identified."));
+  }
+  blocks.push(divider());
+
+  if (ins.actionability && ins.actionability !== "Informational Only") {
+    blocks.push(heading3("Actionability"));
+    blocks.push(para(sanitizeText(ins.actionability)));
   }
 
   const body = JSON.stringify({
@@ -309,7 +337,8 @@ async function sendContent(
 
 // ── Block helpers (all values pre-sanitized before reaching here) ─────────────
 
-function para(content: string)     { return { object: "block", type: "paragraph",  paragraph:  { rich_text: [{ text: { content } }] } }; }
-function heading3(content: string) { return { object: "block", type: "heading_3",  heading_3:  { rich_text: [{ text: { content } }] } }; }
-function quote(content: string)    { return { object: "block", type: "quote",      quote:      { rich_text: [{ text: { content } }] } }; }
-function divider()                 { return { object: "block", type: "divider",    divider: {} }; }
+function para(content: string)     { return { object: "block", type: "paragraph",        paragraph:        { rich_text: [{ text: { content } }] } }; }
+function heading3(content: string) { return { object: "block", type: "heading_3",         heading_3:         { rich_text: [{ text: { content } }] } }; }
+function quote(content: string)    { return { object: "block", type: "quote",             quote:             { rich_text: [{ text: { content } }] } }; }
+function bullet(content: string)   { return { object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: [{ text: { content } }] } }; }
+function divider()                 { return { object: "block", type: "divider",            divider: {} }; }

@@ -248,7 +248,7 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
             What Was Said
           </p>
           <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.65 }}>
-            {ins.explanation}
+            {ins.what_was_discussed}
           </p>
         </div>
       )}
