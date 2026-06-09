@@ -202,7 +202,6 @@ async function sendTask(ins: Insight, todoistKey: string): Promise<OutputStatus>
     content:     taskTitle || insTitle,
     description: `${taskDesc}\n\nFrom: ${insTitle}`,
     priority:    (ins.importance ?? 5) >= 8 ? 4 : (ins.importance ?? 5) >= 6 ? 3 : 2,
-    labels:      ["watchfilter"],
   };
   const body = JSON.stringify(payload);
 
@@ -214,12 +213,12 @@ async function sendTask(ins: Insight, todoistKey: string): Promise<OutputStatus>
   console.log("[todoist] Authorization header first 20 codes:", debugCharCodes(`Bearer ${todoistKey}`, 20));
 
   try {
-    const res = await fetch("https://api.todoist.com/rest/v2/tasks", {
+    // Todoist deprecated rest/v2 — current endpoint is api/v1
+    const res = await fetch("https://api.todoist.com/api/v1/tasks", {
       method: "POST",
       headers: {
         Authorization:  `Bearer ${todoistKey}`,
         "Content-Type": "application/json",
-        "X-Request-Id": crypto.randomUUID(),
       },
       body,
     });
@@ -230,9 +229,10 @@ async function sendTask(ins: Insight, todoistKey: string): Promise<OutputStatus>
       return { status: "failed", error: `Todoist ${res.status}: ${errText.slice(0, 200)}` };
     }
 
-    const data = await res.json() as { id: string; url: string };
+    const data = await res.json() as { id: string };
+    const taskUrl = `https://todoist.com/app/task/${data.id}`;
     console.log(`[todoist] Task created: ${data.id}`);
-    return { status: "sent", url: data.url };
+    return { status: "sent", url: taskUrl };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     console.error(`[todoist] Fetch threw: ${msg}`);
