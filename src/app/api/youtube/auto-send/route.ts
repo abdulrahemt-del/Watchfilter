@@ -10,10 +10,11 @@ type SyncStatus = "sent" | "failed" | "skipped";
 export interface OutputStatus { status: SyncStatus; url?: string; error?: string; }
 
 interface InsightResult {
-  index:         number;
-  noteStatus:    OutputStatus;
-  taskStatus:    OutputStatus;
-  contentStatus: OutputStatus;
+  index:          number;
+  noteStatus:     OutputStatus;
+  taskStatus:     OutputStatus;
+  contentStatus:  OutputStatus;
+  decisionStatus: OutputStatus;
 }
 
 // ── API key sanitization (runs once at module load) ───────────────────────────
@@ -71,22 +72,20 @@ export async function POST(req: Request) {
     insights.map(async (ins, i): Promise<InsightResult> => {
       console.log(`[auto-send] Processing insight ${i}: "${sanitizeText(ins.title ?? "")}"`);
 
-      const [noteStatus, taskStatus, contentStatus] = await Promise.all([
+      const [noteStatus, taskStatus, contentStatus, decisionStatus] = await Promise.all([
         sendNote(ins, safeTitle, safeChannel, safeType, notionKey, notionDbId),
         sendTask(ins, todoistKey),
         sendContent(ins, safeTitle, safeChannel, notionKey, contentDbId),
+        sendDecision(ins, safeTitle, safeChannel, safeType, notionKey, notionDbId),
       ]);
 
       console.log(
-        `[auto-send] Insight ${i} — note:${noteStatus.status}` +
-        (noteStatus.error ? ` (${noteStatus.error.slice(0, 120)})` : "") +
-        ` | task:${taskStatus.status}` +
-        (taskStatus.error ? ` (${taskStatus.error.slice(0, 120)})` : "") +
-        ` | content:${contentStatus.status}` +
-        (contentStatus.error ? ` (${contentStatus.error.slice(0, 120)})` : "")
+        `[auto-send] Insight ${i} score:${ins.actionability_score} — ` +
+        `note:${noteStatus.status} | task:${taskStatus.status} | ` +
+        `content:${contentStatus.status} | decision:${decisionStatus.status}`
       );
 
-      return { index: i, noteStatus, taskStatus, contentStatus };
+      return { index: i, noteStatus, taskStatus, contentStatus, decisionStatus };
     })
   );
 
@@ -129,7 +128,7 @@ async function sendNote(
     blocks.push(para(sanitizeText(`Source: ${[channelTitle, videoTitle].filter(Boolean).join(" - ")}`)));
   }
 
-  const meta = sanitizeText([videoType, ins.category, `Importance: ${ins.importance}/10`].filter(Boolean).join(" - "));
+  const meta = sanitizeText([videoType, ins.category, `Importance: ${ins.importance_score}/10`].filter(Boolean).join(" - "));
   if (meta) blocks.push(para(meta));
   blocks.push(divider());
   blocks.push(heading3("Insight"));
@@ -193,19 +192,22 @@ async function sendNote(
 async function sendTask(ins: Insight, todoistKey: string): Promise<OutputStatus> {
   if (!todoistKey) { console.warn("[todoist] TODOIST_API_KEY not set / empty after sanitize"); return { status: "skipped", error: "Todoist not configured" }; }
 
-  // Skip "Informational Only" insights — no real action to create
-  if (!ins.actionability || ins.actionability === "Informational Only") {
-    return { status: "skipped", error: "Informational Only — no action to create" };
+  // Only send tasks when actionability_score >= 6 and a task asset exists
+  if ((ins.actionability_score ?? 0) < 6 || !ins.assets?.task) {
+    const reason = (ins.actionability_score ?? 0) < 6
+      ? `Score ${ins.actionability_score ?? 0}/10 — below threshold for task creation`
+      : "No task generated for this insight";
+    return { status: "skipped", error: reason };
   }
 
-  const taskTitle = sanitizeText(ins.actionability);
-  const taskDesc  = sanitizeText(ins.assets?.task?.description ?? "");
+  const taskTitle = sanitizeText(ins.assets.task.title);
+  const taskDesc  = sanitizeText(ins.assets.task.description ?? "");
   const insTitle  = sanitizeText(ins.title ?? "");
 
   const payload = {
     content:     taskTitle || insTitle,
     description: `${taskDesc}\n\nFrom: ${insTitle}`,
-    priority:    (ins.importance ?? 5) >= 8 ? 4 : (ins.importance ?? 5) >= 6 ? 3 : 2,
+    priority:    (ins.importance_score ?? 5) >= 8 ? 4 : (ins.importance_score ?? 5) >= 6 ? 3 : 2,
   };
   const body = JSON.stringify(payload);
 
@@ -298,9 +300,9 @@ async function sendContent(
   }
   blocks.push(divider());
 
-  if (ins.actionability && ins.actionability !== "Informational Only") {
+  if (ins.actionability_reason) {
     blocks.push(heading3("Actionability"));
-    blocks.push(para(sanitizeText(ins.actionability)));
+    blocks.push(para(sanitizeText(`Score: ${ins.actionability_score ?? 0}/10 — ${ins.actionability_reason}`)));
   }
 
   const body = JSON.stringify({
@@ -335,6 +337,75 @@ async function sendContent(
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     console.error(`[content] Fetch threw: ${msg}`);
+    return { status: "failed", error: msg };
+  }
+}
+
+// ── Decision Record → Notion ──────────────────────────────────────────────────
+
+async function sendDecision(
+  ins:          Insight,
+  videoTitle:   string,
+  channelTitle: string,
+  videoType:    string,
+  notionKey:    string,
+  dbId:         string,
+): Promise<OutputStatus> {
+  if (!notionKey) return { status: "skipped", error: "Notion not configured" };
+  if (!dbId)      return { status: "skipped", error: "Notion not configured" };
+
+  if ((ins.actionability_score ?? 0) < 4 || !ins.assets?.decision) {
+    return { status: "skipped", error: `Score ${ins.actionability_score ?? 0}/10 — below threshold for decision record` };
+  }
+
+  const decTitle   = sanitizeText(ins.assets.decision.title   ?? "");
+  const decContext = sanitizeText(ins.assets.decision.context ?? "");
+  const insTitle   = sanitizeText(ins.title ?? "");
+  const scoreLabel = `Actionability: ${ins.actionability_score}/10 — ${sanitizeText(ins.actionability_reason ?? "")}`;
+
+  const blocks: object[] = [];
+  if (channelTitle || videoTitle) {
+    blocks.push(para(sanitizeText(`Source: ${[channelTitle, videoTitle].filter(Boolean).join(" — ")}`)));
+    blocks.push(para(sanitizeText([videoType, ins.category, `Importance: ${ins.importance_score}/10`].filter(Boolean).join(" · "))));
+    blocks.push(divider());
+  }
+  blocks.push(heading3("Insight"));
+  blocks.push(para(insTitle));
+  blocks.push(para(sanitizeText(ins.why_it_matters ?? "")));
+  blocks.push(divider());
+  blocks.push(heading3("Decision Required"));
+  blocks.push(para(decContext));
+  blocks.push(divider());
+  blocks.push(heading3("Actionability Assessment"));
+  blocks.push(para(scoreLabel));
+
+  const body = JSON.stringify({
+    parent:     { database_id: dbId },
+    properties: { Name: { title: [{ text: { content: decTitle || `Decision: ${insTitle}` } }] } },
+    children:   blocks.slice(0, 100),
+  });
+
+  try {
+    const res = await fetch("https://api.notion.com/v1/pages", {
+      method: "POST",
+      headers: {
+        Authorization:    `Bearer ${notionKey}`,
+        "Content-Type":   "application/json",
+        "Notion-Version": "2022-06-28",
+      },
+      body,
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[decision] API error ${res.status}: ${errText.slice(0, 400)}`);
+      return { status: "failed", error: `Notion ${res.status}: ${errText.slice(0, 200)}` };
+    }
+    const data = await res.json() as { url: string };
+    console.log(`[decision] Page created: ${data.url}`);
+    return { status: "sent", url: data.url };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[decision] Fetch threw: ${msg}`);
     return { status: "failed", error: msg };
   }
 }

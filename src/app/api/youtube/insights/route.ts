@@ -38,114 +38,117 @@ export interface InsightContentAsset {
   angle: string;
 }
 
+export interface InsightDecision {
+  title:   string;
+  context: string;
+}
+
 export interface Insight {
-  title:              string;
-  what_was_discussed: string;
-  why_it_matters:     string;
-  actionability:      string;
-  supporting_points:  string[];
-  key_quote:          string | null;
-  category:           InsightCategory;
-  importance:         number;
+  title:               string;
+  what_was_discussed:  string;
+  why_it_matters:      string;
+  category:            InsightCategory;
+  importance_score:    number;
+  actionability_score: number;
+  actionability_reason: string;
+  supporting_points:   string[];
+  key_quote:           string | null;
   assets: {
-    note:    InsightNote;
-    task:    InsightTask;
-    content: InsightContentAsset;
+    note:     InsightNote;
+    task:     InsightTask | null;
+    content:  InsightContentAsset;
+    decision: InsightDecision | null;
   };
 }
 
 const SYSTEM_PROMPT = [
-  "You are generating insights for WatchFilter.",
+  "You are an Execution Intelligence Engine for WatchFilter.",
   "",
-  "WatchFilter is NOT an AI advisor, coach, investment analyst, consultant, or recommendation engine.",
-  "WatchFilter's purpose: help users quickly understand what was discussed in a video and decide whether it deserves their attention.",
+  "Your goal: transform long-form content into useful work.",
+  "Information → Understanding → Decision → Action → Execution.",
   "",
-  "Users should feel: \"I understand what was discussed.\" NOT: \"The AI is telling me what I should do.\"",
+  "Users should feel: 'I pasted a 2-hour podcast and my workspace was intelligently updated.'",
+  "NOT: 'I got another summary.'",
   "",
-  "## Critical Rule: Never Convert Observations Into Recommendations",
+  "## STEP 1: Extract 3 High-Signal Insights",
   "",
-  "Do NOT infer actions from observations. Examples of what NOT to do:",
-  "- Speaker: \"AI demand is increasing semiconductor demand.\" BAD output: \"Review your investment portfolio.\"",
-  "- Speaker: \"NVIDIA's valuation reflects its strategic importance.\" BAD output: \"Consider investing in semiconductor companies.\"",
-  "- Speaker: \"OpenAI released a new model.\" BAD output: \"Integrate this model into your business.\"",
+  "Think like an analyst preparing an executive briefing.",
+  "Only include ideas that could influence decisions, strategy, investments, operations, growth, or product direction.",
   "",
-  "Never generate financial, investment, legal, medical, business, or career advice unless the speaker explicitly provided that advice.",
+  "Each insight must have:",
+  "- title: a specific, actionable claim (not a topic)",
+  "- what_was_discussed: what the speaker actually said, grounded in the content",
+  "- why_it_matters: strategic significance without advice or recommendations",
+  "- category: Strategy | Investing | AI | Marketing | Leadership | Startup | Productivity | Technology | Content Creation | Business",
+  "- importance_score: 1-10",
+  "- supporting_points: 3-5 bullet strings from the video",
+  "- key_quote: verbatim quote from the speaker, or null",
   "",
-  "## Step 1: Classify the Content",
+  "## STEP 2: Actionability Analysis (for each insight)",
   "",
-  "video_type: \"Advice / Self Improvement\" | \"Educational\" | \"Interview\" | \"News / Industry Analysis\" | \"Market Commentary\" | \"Opinion / Discussion\" | \"Tutorial\"",
+  "Score 0-10:",
+  "0 = informational only",
+  "1 = observation",
+  "2 = interesting fact",
+  "3 = strategic implication",
+  "4 = decision recommended",
+  "5 = decision strongly recommended",
+  "6 = action implied",
+  "7 = action recommended",
+  "8 = high-value task exists",
+  "9 = high-priority task exists",
+  "10 = immediate action required",
   "",
-  "## Step 2: Generate 3 Insights",
+  "Evaluate:",
+  "1. Is there an explicit action the speaker recommends?",
+  "2. Is there an implied action a founder/investor/operator/creator should take?",
+  "3. Does this insight require a decision?",
+  "4. Is this purely informational?",
   "",
-  "title — specific headline claim (\"NVIDIA owns the AI infrastructure layer\", not \"NVIDIA\")",
-  "what_was_discussed — what the speaker actually said, concisely. Stay grounded in the content. Do not speculate.",
-  "why_it_matters — the significance or implications. Answer \"why should the viewer care?\" WITHOUT giving recommendations.",
+  "Implied actions count. Example: 'NVIDIA invested years before demand appeared' → implied action: 'Review roadmap for long-term infrastructure investments.'",
   "",
-  "GOOD why_it_matters: \"This highlights the growing role of AI infrastructure providers in the broader technology ecosystem.\"",
-  "BAD why_it_matters: \"Investors should buy AI-related stocks.\" / \"Companies should immediately adopt AI tools.\"",
+  "## STEP 3: Generate Assets (each must be DISTINCT — no paraphrasing between assets)",
   "",
-  "category: \"Strategy\" | \"Investing\" | \"AI\" | \"Marketing\" | \"Leadership\" | \"Startup\" | \"Productivity\" | \"Technology\" | \"Content Creation\" | \"Business\"",
-  "importance: 1-10",
+  "note (always): Strategic context the speaker did NOT say. Historical examples, analogies, frameworks. NOT a restatement.",
   "",
-  "## Step 3: Actionability",
+  "task (only when actionability_score >= 6): A specific, completable action. Use the implied or explicit action from the content.",
+  "If score < 6, set task to null.",
   "",
-  "Generate a real action ONLY when ALL of the following are true:",
-  "1. The speaker explicitly recommends an action",
-  "2. The recommendation is direct and unambiguous",
-  "3. The action is clearly stated in the content",
+  "content (always): A counter-intuitive or contrarian content angle. A specific thesis or hook, not 'Write about [topic]'.",
   "",
-  "Example of valid action — Speaker says: \"Schedule two hours of uninterrupted deep work every day.\"",
-  "actionability: \"Schedule a daily block of uninterrupted focus time.\"",
+  "decision (when actionability_score >= 4): Frame the strategic decision this insight creates.",
+  "Example: 'Decide whether to prioritize ecosystem advantages over feature development.'",
+  "If score < 4, set decision to null.",
   "",
-  "If no explicit action was recommended, set actionability to exactly: \"Informational Only\"",
-  "Do NOT create next steps, strategic suggestions, portfolio advice, or business advice.",
+  "## RULES",
   "",
-  "## Step 4: Supporting Evidence and Key Quote",
-  "",
-  "supporting_points — 3 to 5 concise bullet strings from the video that back up the insight. Facts, figures, examples the speaker gave.",
-  "key_quote — A verbatim or near-verbatim quote from the speaker if a strong one exists, otherwise null.",
-  "",
-  "## Step 5: Assets",
-  "",
-  "note — Add context, examples, analogies, or frameworks the speaker did NOT say. NOT a summary of the insight.",
-  "task — ONLY if actionability is not \"Informational Only\": the specific explicit action the speaker recommended. Otherwise set title to \"Bookmark for reference: [topic]\" and description to \"Saved for future reference.\"",
-  "content — A counter-intuitive or contrarian content angle. NOT \"Write about [topic]\" — a specific thesis or hook that would surprise the reader.",
-  "",
-  "## Final Quality Check",
-  "",
-  "Before each insight ask:",
-  "1. Did the speaker actually say this?",
-  "2. Am I summarizing or advising?",
-  "3. Could a reasonable user mistake this for financial, legal, medical, or business advice?",
-  "4. Can every statement be traced back to the video?",
-  "",
-  "If any answer suggests the content is advice rather than summary, rewrite it.",
+  "- Never create three versions of the same sentence across assets",
+  "- Never generate financial, legal, medical advice",
+  "- Never write 'This video discusses...' or 'The speaker mentions...'",
+  "- Every asset must contribute something the others do not",
   "",
   "## Return Only JSON",
   "",
   JSON.stringify({
     video_type: "Interview",
     insights: [{
-      title: "Specific claim as headline",
-      what_was_discussed: "What the speaker actually said, grounded in the content",
-      why_it_matters: "Significance without recommendations",
-      actionability: "Informational Only",
-      supporting_points: ["Point from the video", "Another supporting fact", "Third evidence point"],
-      key_quote: "Direct quote from the speaker, or null if none",
+      title: "Specific actionable claim",
+      what_was_discussed: "What the speaker actually said",
+      why_it_matters: "Strategic significance without advice",
       category: "Strategy",
-      importance: 8,
+      importance_score: 9,
+      actionability_score: 7,
+      actionability_reason: "Clear implied action for operators to audit their competitive positioning",
+      supporting_points: ["Evidence point 1", "Evidence point 2", "Evidence point 3"],
+      key_quote: "Direct quote from speaker or null",
       assets: {
-        note: { title: "Context note title", content: "Added context, analogies, or frameworks beyond the insight" },
-        task: { title: "Bookmark for reference: Topic", description: "Saved for future reference" },
-        content: { title: "Contrarian angle title", angle: "The specific counter-intuitive thesis or hook" },
+        note: { title: "Distinct strategic context", content: "Historical examples, analogies, frameworks not mentioned by speaker" },
+        task: { title: "Specific action title", description: "How to execute this action concretely" },
+        content: { title: "Counter-intuitive angle", angle: "Specific contrarian thesis that would surprise the audience" },
+        decision: { title: "Decision framing", context: "What strategic choice this insight creates and why it matters now" },
       },
     }],
   }, null, 2),
-  "",
-  "Rules:",
-  "- Exactly 3 insights. No more, no less.",
-  "- Every asset must add value the others do not. No paraphrasing between assets.",
-  "- Never write: \"This video discusses...\" / \"The speaker mentions...\" / \"According to the video...\"",
 ].join("\n");
 
 interface ParsedResponse {
@@ -156,25 +159,31 @@ interface ParsedResponse {
 function sanitizeInsightRaw(ins: Insight): Insight {
   return {
     ...ins,
-    title:              sanitizeText(ins.title              ?? ""),
-    what_was_discussed: sanitizeText(ins.what_was_discussed ?? ""),
-    why_it_matters:     sanitizeText(ins.why_it_matters     ?? ""),
-    actionability:      sanitizeText(ins.actionability      ?? "Informational Only"),
-    supporting_points:  (ins.supporting_points ?? []).map(p => sanitizeText(p)).filter(Boolean),
-    key_quote:          ins.key_quote ? sanitizeText(ins.key_quote) : null,
+    title:               sanitizeText(ins.title               ?? ""),
+    what_was_discussed:  sanitizeText(ins.what_was_discussed  ?? ""),
+    why_it_matters:      sanitizeText(ins.why_it_matters      ?? ""),
+    actionability_reason: sanitizeText(ins.actionability_reason ?? ""),
+    importance_score:    ins.importance_score    ?? 5,
+    actionability_score: ins.actionability_score ?? 0,
+    supporting_points:   (ins.supporting_points ?? []).map(p => sanitizeText(p)).filter(Boolean),
+    key_quote:           ins.key_quote ? sanitizeText(ins.key_quote) : null,
     assets: {
       note: {
         title:   sanitizeText(ins.assets?.note?.title   ?? ""),
         content: sanitizeText(ins.assets?.note?.content ?? ""),
       },
-      task: {
-        title:       sanitizeText(ins.assets?.task?.title       ?? ""),
-        description: sanitizeText(ins.assets?.task?.description ?? ""),
-      },
+      task: ins.assets?.task ? {
+        title:       sanitizeText(ins.assets.task.title       ?? ""),
+        description: sanitizeText(ins.assets.task.description ?? ""),
+      } : null,
       content: {
         title: sanitizeText(ins.assets?.content?.title ?? ""),
         angle: sanitizeText(ins.assets?.content?.angle ?? ""),
       },
+      decision: ins.assets?.decision ? {
+        title:   sanitizeText(ins.assets.decision.title   ?? ""),
+        context: sanitizeText(ins.assets.decision.context ?? ""),
+      } : null,
     },
   };
 }
@@ -217,11 +226,11 @@ export async function POST(req: Request) {
     ],
     response_format: { type: "json_object" },
     temperature:  0.4,
-    max_tokens:   3000,
+    max_tokens:   3500,
   });
 
   const raw = completion.choices[0].message.content ?? '{"insights":[]}';
-  console.log("[insights] RAW length:", raw.length, "first char code:", raw.charCodeAt(0));
+  console.log("[insights] RAW length:", raw.length);
 
   const cleaned = sanitizeText(raw);
   const parsed = JSON.parse(cleaned) as ParsedResponse;
