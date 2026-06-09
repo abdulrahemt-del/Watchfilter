@@ -273,8 +273,11 @@ async function sendContent(
 
   const body = JSON.stringify({
     parent:     { database_id: queueId },
-    properties: { Name: { title: [{ text: { content: contentTitle || insTitle || "Content Idea" } }] } },
-    children:   blocks.slice(0, 100),
+    properties: {
+      Name:   { title:  [{ text: { content: contentTitle || insTitle || "Content Idea" } }] },
+      Status: { select: { name: "Idea" } },
+    },
+    children: blocks.slice(0, 100),
   });
 
   try {
