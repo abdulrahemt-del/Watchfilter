@@ -17,6 +17,68 @@ interface InsightState extends Insight {
 
 interface LogEntry { id: number; ts: string; msg: string; ok?: boolean; }
 
+// ── Client-side char code scanner (mirrors server findSuspiciousChars) ─────────
+function clientCharScan(str: string): Array<{ i: number; code: number }> {
+  const hits: Array<{ i: number; code: number }> = [];
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    if (c > 127 || c === 0) hits.push({ i, code: c });
+  }
+  return hits;
+}
+
+function clientSanitize(str: string): string {
+  return str
+    .replace(/﻿/g, "")
+    .replace(/​/g, "")
+    .replace(/‌/g, "")
+    .replace(/‍/g, "")
+    .replace(/[^\x20-\x7E\n\r\t]/g, "")
+    .trim();
+}
+
+// ── Debug panel for a failed asset ────────────────────────────────────────────
+function DebugPanel({ label, raw }: { label: string; raw: string }) {
+  const sanitized = clientSanitize(raw);
+  const hits      = clientCharScan(raw);
+  const [open, setOpen] = useState(false);
+
+  if (!raw) return null;
+
+  return (
+    <div style={{ marginTop: 6, borderTop: "1px solid rgba(248,113,113,0.15)", paddingTop: 6 }}>
+      <button
+        onClick={() => setOpen(p => !p)}
+        style={{ fontSize: 8, fontFamily: "monospace", color: "#7f1d1d", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+      >
+        {open ? "▲" : "▼"} Debug: {label}
+      </button>
+      {open && (
+        <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 4 }}>
+          <div>
+            <span style={{ fontSize: 8, color: "#7f1d1d", fontFamily: "monospace" }}>RAW:</span>
+            <div style={{ fontSize: 8, fontFamily: "monospace", color: "#ef4444", wordBreak: "break-all", marginTop: 1 }}>{JSON.stringify(raw)}</div>
+          </div>
+          <div>
+            <span style={{ fontSize: 8, color: "#334155", fontFamily: "monospace" }}>SANITIZED:</span>
+            <div style={{ fontSize: 8, fontFamily: "monospace", color: "#64748b", wordBreak: "break-all", marginTop: 1 }}>{JSON.stringify(sanitized)}</div>
+          </div>
+          {hits.length > 0 ? (
+            <div>
+              <span style={{ fontSize: 8, color: "#f87171", fontFamily: "monospace" }}>SUSPICIOUS CHARS ({hits.length}):</span>
+              <div style={{ fontSize: 8, fontFamily: "monospace", color: "#ef4444", marginTop: 1 }}>
+                {hits.slice(0, 8).map(h => `index ${h.i}: code ${h.code}`).join(" | ")}
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 8, fontFamily: "monospace", color: "#10b981" }}>No suspicious chars in this field</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const CAT_COLOR: Record<string, string> = {
   Strategy: "#a5b4fc", Investing: "#6ee7b7", AI: "#67e8f9",
   Marketing: "#fda4af", Leadership: "#fde68a", Startup: "#c4b5fd",
@@ -34,9 +96,10 @@ function toUIStatus(s: OutputStatus): UIStatus {
 
 // ── Asset row ──────────────────────────────────────────────────────────────────
 
-function AssetRow({ icon, label, title, status, url, error }: {
+function AssetRow({ icon, label, title, status, url, error, debugFields }: {
   icon: string; label: string; title: string;
   status: SendStatus; url?: string; error?: string;
+  debugFields?: Record<string, string>;
 }) {
   const isSent    = status === "sent";
   const isFailed  = status === "failed";
@@ -96,6 +159,9 @@ function AssetRow({ icon, label, title, status, url, error }: {
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <span style={{ fontSize: 9, color: "#f87171", fontFamily: "monospace" }}>✕ Sync failed</span>
               {error && <span style={{ fontSize: 8, color: "#7f1d1d", fontFamily: "monospace", wordBreak: "break-word" }}>{error}</span>}
+              {debugFields && Object.entries(debugFields).map(([k, v]) => (
+                <DebugPanel key={k} label={k} raw={v} />
+              ))}
             </div>
           )}
           {isSkipped && (
@@ -198,19 +264,32 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
       </div>
       <div style={{ padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 5 }}>
         <AssetRow
-          icon="📝" label="Strategic Note → Notion"
+          icon="N" label="Strategic Note -> Notion"
           title={ins.assets.note.title}
           status={noteD} url={ins.noteStatus.url} error={ins.noteStatus.error}
+          debugFields={noteD === "failed" ? {
+            "note.title":   ins.assets.note.title   ?? "",
+            "note.content": ins.assets.note.content ?? "",
+            "ins.title":    ins.title               ?? "",
+          } : undefined}
         />
         <AssetRow
-          icon="☑" label="Action Task → Todoist"
+          icon="T" label="Action Task -> Todoist"
           title={ins.assets.task.title}
           status={taskD} url={ins.taskStatus.url} error={ins.taskStatus.error}
+          debugFields={taskD === "failed" ? {
+            "task.title":       ins.assets.task.title       ?? "",
+            "task.description": ins.assets.task.description ?? "",
+          } : undefined}
         />
         <AssetRow
-          icon="🚀" label="Content Opportunity → Queue"
+          icon="C" label="Content Opportunity -> Queue"
           title={ins.assets.content.title}
           status={contentD} url={ins.contentStatus.url} error={ins.contentStatus.error}
+          debugFields={contentD === "failed" ? {
+            "content.title": ins.assets.content.title ?? "",
+            "content.angle": ins.assets.content.angle ?? "",
+          } : undefined}
         />
       </div>
 

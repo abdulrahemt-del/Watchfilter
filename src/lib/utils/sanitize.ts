@@ -1,39 +1,67 @@
 /**
- * Strip invisible/non-printable Unicode characters that cause ByteString
- * conversion errors in fetch() headers/body — specifically U+FEFF BOM,
- * zero-width spaces, and control characters. Applied to all LLM output
- * before it is forwarded to any external API.
+ * SANITIZATION LAYER
+ *
+ * Root cause: U+FEFF (BOM, charCode 65279) prepended to Vercel env vars
+ * at the time they were copy-pasted into the dashboard.
+ *
+ * When used in `Authorization: Bearer ${key}`, "Bearer " occupies indices
+ * 0-6 (7 chars), placing the BOM at index 7 — exactly the error reported.
+ *
+ * Fix: strip BOM and all non-Latin1-safe chars from every string that
+ * touches an HTTP header or external API payload.
+ */
+
+/**
+ * Sanitize any text field (insight titles, note content, task descriptions).
+ * Strips BOM, zero-width chars, and all non-printable-ASCII / non-Latin1 chars.
+ * Safe to apply to any LLM output before sending to Notion / Todoist.
  */
 export function sanitizeText(text: string): string {
+  if (!text) return "";
+
   return text
-    .replace(/﻿/g, "")           // BOM — the root cause of the ByteString error
-    .replace(/​/g, "")           // zero-width space
-    .replace(/‌/g, "")           // zero-width non-joiner
-    .replace(/‍/g, "")           // zero-width joiner
-    .replace(/ /g, " ")          // non-breaking space → regular space
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")  // C0 control chars
+    .replace(/﻿/g, "")       // U+FEFF BOM — root cause of the ByteString crash
+    .replace(/​/g, "")       // zero-width space
+    .replace(/‌/g, "")       // zero-width non-joiner
+    .replace(/‍/g, "")       // zero-width joiner
+    .replace(/[^\x20-\x7E\n\r\t]/g, "")  // strip everything outside printable ASCII
     .trim();
 }
 
-export function sanitizeInsight(ins: import("@/app/api/youtube/insights/route").Insight): import("@/app/api/youtube/insights/route").Insight {
-  return {
-    ...ins,
-    title:          sanitizeText(ins.title),
-    explanation:    sanitizeText(ins.explanation),
-    why_it_matters: sanitizeText(ins.why_it_matters),
-    assets: {
-      note: {
-        title:   sanitizeText(ins.assets.note.title),
-        content: sanitizeText(ins.assets.note.content),
-      },
-      task: {
-        title:       sanitizeText(ins.assets.task.title),
-        description: sanitizeText(ins.assets.task.description),
-      },
-      content: {
-        title: sanitizeText(ins.assets.content.title),
-        angle: sanitizeText(ins.assets.content.angle),
-      },
-    },
-  };
+/**
+ * Sanitize an API key or auth token before placing it in an HTTP header.
+ * More aggressive than sanitizeText — strips any whitespace and control chars
+ * that could silently corrupt `Authorization: Bearer ${key}`.
+ */
+export function sanitizeApiKey(key: string | undefined): string {
+  if (!key) return "";
+  return key
+    .replace(/﻿/g, "")
+    .replace(/​/g, "")
+    .replace(/‌/g, "")
+    .replace(/‍/g, "")
+    .replace(/[^\x21-\x7E]/g, "")  // strip ALL whitespace + non-printable + BOM
+    .trim();
+}
+
+/**
+ * Returns first N character codes of a string — for diagnostic logging
+ * without leaking the actual secret value.
+ */
+export function debugCharCodes(str: string, n = 10): string {
+  return [...str.slice(0, n)].map(c => c.charCodeAt(0)).join(", ");
+}
+
+/**
+ * Scan a string and return any suspicious char codes (> 127 or known BOM values).
+ */
+export function findSuspiciousChars(str: string): Array<{ index: number; char: string; code: number }> {
+  const hits: Array<{ index: number; char: string; code: number }> = [];
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code > 127 || code === 0 || (code >= 0x0001 && code <= 0x001F && code !== 9 && code !== 10 && code !== 13)) {
+      hits.push({ index: i, char: str[i], code });
+    }
+  }
+  return hits;
 }

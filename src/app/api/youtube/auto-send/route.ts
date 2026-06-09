@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import type { Insight } from "@/app/api/youtube/insights/route";
-import { sanitizeText } from "@/lib/utils/sanitize";
+import { sanitizeText, sanitizeApiKey, debugCharCodes, findSuspiciousChars } from "@/lib/utils/sanitize";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,11 +17,41 @@ interface InsightResult {
   contentStatus: OutputStatus;
 }
 
+// ── API key sanitization (runs once at module load) ───────────────────────────
+// Root cause: Vercel env vars for NOTION_API_KEY / TODOIST_API_KEY contain
+// U+FEFF (BOM, code 65279) at position 0, placing it at index 7 of
+// "Bearer ${key}" → fetch() ByteString header validation throws.
+
+function loadKeys() {
+  const notionRaw   = process.env.NOTION_API_KEY     ?? "";
+  const todoistRaw  = process.env.TODOIST_API_KEY    ?? "";
+  const queueRaw    = process.env.NOTION_CONTENT_QUEUE_ID ?? "";
+  const dbRaw       = process.env.NOTION_DATABASE_ID ?? "";
+
+  console.log("[keys] NOTION_API_KEY   first 10 codes:", debugCharCodes(notionRaw));
+  console.log("[keys] TODOIST_API_KEY  first 10 codes:", debugCharCodes(todoistRaw));
+  console.log("[keys] NOTION_DB_ID     first 10 codes:", debugCharCodes(dbRaw));
+
+  const suspiciousNotion  = findSuspiciousChars(notionRaw.slice(0, 20));
+  const suspiciousTodoist = findSuspiciousChars(todoistRaw.slice(0, 20));
+  if (suspiciousNotion.length)  console.error("[keys] NOTION_API_KEY  has suspicious chars:", JSON.stringify(suspiciousNotion));
+  if (suspiciousTodoist.length) console.error("[keys] TODOIST_API_KEY has suspicious chars:", JSON.stringify(suspiciousTodoist));
+
+  return {
+    notionKey:   sanitizeApiKey(notionRaw),
+    todoistKey:  sanitizeApiKey(todoistRaw),
+    notionDbId:  sanitizeApiKey(dbRaw),
+    contentDbId: sanitizeApiKey(queueRaw),
+  };
+}
+
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { notionKey, todoistKey, notionDbId, contentDbId } = loadKeys();
 
   const { insights, videoTitle, channelTitle, videoType } = await req.json() as {
     insights:      Insight[];
@@ -40,18 +70,21 @@ export async function POST(req: Request) {
 
   const results: InsightResult[] = await Promise.all(
     insights.map(async (ins, i): Promise<InsightResult> => {
-      console.log(`[auto-send] Processing insight ${i}: "${ins.title}"`);
+      console.log(`[auto-send] Processing insight ${i}: "${sanitizeText(ins.title ?? "")}"`);
 
       const [noteStatus, taskStatus, contentStatus] = await Promise.all([
-        sendNote(ins, safeTitle, safeChannel, safeType),
-        sendTask(ins),
-        sendContent(ins, safeTitle, safeChannel),
+        sendNote(ins, safeTitle, safeChannel, safeType, notionKey, notionDbId),
+        sendTask(ins, todoistKey),
+        sendContent(ins, safeTitle, safeChannel, notionKey, contentDbId),
       ]);
 
       console.log(
-        `[auto-send] Insight ${i} — note:${noteStatus.status}${noteStatus.error ? ` (${noteStatus.error})` : ""}` +
-        ` | task:${taskStatus.status}${taskStatus.error ? ` (${taskStatus.error})` : ""}` +
-        ` | content:${contentStatus.status}${contentStatus.error ? ` (${contentStatus.error})` : ""}`
+        `[auto-send] Insight ${i} — note:${noteStatus.status}` +
+        (noteStatus.error ? ` (${noteStatus.error.slice(0, 120)})` : "") +
+        ` | task:${taskStatus.status}` +
+        (taskStatus.error ? ` (${taskStatus.error.slice(0, 120)})` : "") +
+        ` | content:${contentStatus.status}` +
+        (contentStatus.error ? ` (${contentStatus.error.slice(0, 120)})` : "")
       );
 
       return { index: i, noteStatus, taskStatus, contentStatus };
@@ -68,65 +101,78 @@ async function sendNote(
   videoTitle:   string,
   channelTitle: string,
   videoType:    string,
+  notionKey:    string,
+  dbId:         string,
 ): Promise<OutputStatus> {
-  const apiKey = process.env.NOTION_API_KEY;
-  const dbId   = process.env.NOTION_DATABASE_ID;
+  if (!notionKey) { console.warn("[notion] NOTION_API_KEY not set / empty after sanitize"); return { status: "skipped", error: "Notion not configured" }; }
+  if (!dbId)      { console.warn("[notion] NOTION_DATABASE_ID not set / empty after sanitize"); return { status: "skipped", error: "Notion not configured" }; }
 
-  if (!apiKey) { console.warn("[notion] NOTION_API_KEY not set"); return { status: "skipped", error: "Notion not configured" }; }
-  if (!dbId)   { console.warn("[notion] NOTION_DATABASE_ID not set"); return { status: "skipped", error: "Notion not configured" }; }
+  const noteTitle   = sanitizeText(ins.assets?.note?.title   ?? "");
+  const noteContent = sanitizeText(ins.assets?.note?.content ?? "");
+  const taskTitle   = sanitizeText(ins.assets?.task?.title       ?? "");
+  const taskDesc    = sanitizeText(ins.assets?.task?.description ?? "");
+  const insTitle    = sanitizeText(ins.title          ?? "");
+  const insWhy      = sanitizeText(ins.why_it_matters ?? "");
 
-  const noteTitle   = sanitizeText(ins.assets.note.title);
-  const noteContent = sanitizeText(ins.assets.note.content);
-  const insTitle    = sanitizeText(ins.title);
+  // ── Diagnostic: scan all fields for suspicious chars ─────────────────────
+  const fields: Record<string, string> = { noteTitle, noteContent, taskTitle, taskDesc, insTitle };
+  Object.entries(fields).forEach(([name, val]) => {
+    const hits = findSuspiciousChars(val);
+    if (hits.length) {
+      console.error(`[notion] SUSPICIOUS chars in ${name}:`, JSON.stringify(hits.slice(0, 5)));
+      console.log(`[notion] RAW ${name}:`, JSON.stringify(val));
+    }
+  });
 
-  console.log(`[notion] Creating note: "${noteTitle}"`);
-  console.log(`[notion] RAW title char codes:`, [...noteTitle].slice(0, 5).map(c => c.charCodeAt(0)));
+  const blocks: object[] = [];
+
+  if (channelTitle || videoTitle) {
+    blocks.push({
+      object: "block", type: "callout",
+      callout: {
+        rich_text: [{ text: { content: sanitizeText(`${channelTitle} - ${videoTitle}`) } }],
+        icon: { emoji: "T" },
+      },
+    });
+  }
+
+  const meta = sanitizeText([videoType, ins.category, `Importance: ${ins.importance}/10`].filter(Boolean).join(" - "));
+  if (meta) blocks.push(para(meta));
+  blocks.push(divider());
+  blocks.push(heading3("Insight"));
+  blocks.push(para(insTitle));
+  blocks.push(para(insWhy));
+  blocks.push(divider());
+  blocks.push(heading3("Strategic Note"));
+  blocks.push(para(noteContent));
+
+  if (taskTitle) {
+    blocks.push(divider());
+    blocks.push(heading3("Suggested Action"));
+    blocks.push(quote(taskTitle));
+    if (taskDesc) blocks.push(para(taskDesc));
+  }
+
+  const payload = {
+    parent:     { database_id: dbId },
+    properties: { Name: { title: [{ text: { content: noteTitle || insTitle || "WatchFilter Note" } }] } },
+    children:   blocks.slice(0, 100),
+  };
+  const body = JSON.stringify(payload);
+
+  // ── Final payload scan ────────────────────────────────────────────────────
+  const payloadHits = findSuspiciousChars(body);
+  if (payloadHits.length) {
+    console.error("[notion] FINAL PAYLOAD has suspicious chars at indices:", payloadHits.slice(0, 10).map(h => h.index));
+  }
+  console.log("[notion] FINAL PAYLOAD first 120 chars:", body.slice(0, 120));
+  console.log("[notion] Authorization header first 20 codes:", debugCharCodes(`Bearer ${notionKey}`, 20));
 
   try {
-    const blocks: object[] = [];
-
-    if (channelTitle || videoTitle) {
-      blocks.push({
-        object: "block", type: "callout",
-        callout: {
-          rich_text: [{ text: { content: `📺 ${[channelTitle, videoTitle].filter(Boolean).join(" · ")}` } }],
-          icon: { emoji: "📺" },
-        },
-      });
-    }
-
-    const meta = [videoType, ins.category, `Importance: ${ins.importance}/10`].filter(Boolean).join("  ·  ");
-    if (meta) blocks.push(para(meta));
-    blocks.push(divider());
-
-    blocks.push(heading3("Insight"));
-    blocks.push(para(insTitle));
-    blocks.push(para(sanitizeText(ins.why_it_matters)));
-    blocks.push(divider());
-
-    blocks.push(heading3("Strategic Note"));
-    blocks.push(para(noteContent));
-
-    if (ins.assets.task?.title) {
-      blocks.push(divider());
-      blocks.push(heading3("Suggested Action"));
-      blocks.push(quote(sanitizeText(ins.assets.task.title)));
-      if (ins.assets.task.description) blocks.push(para(sanitizeText(ins.assets.task.description)));
-    }
-
-    const body = JSON.stringify({
-      parent:     { database_id: dbId },
-      properties: { Name: { title: [{ text: { content: noteTitle || insTitle || "WatchFilter Note" } }] } },
-      children:   blocks.slice(0, 100),
-    });
-
-    console.log(`[notion] POST /v1/pages — ${blocks.length} blocks — body length: ${body.length}`);
-    console.log(`[notion] Body first char code: ${body.charCodeAt(0)}`);
-
     const res = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
       headers: {
-        Authorization:    `Bearer ${apiKey}`,
+        Authorization:    `Bearer ${notionKey}`,
         "Content-Type":   "application/json",
         "Notion-Version": "2022-06-28",
       },
@@ -135,8 +181,8 @@ async function sendNote(
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error(`[notion] API error ${res.status}: ${errText}`);
-      throw new Error(`Notion ${res.status}: ${errText}`);
+      console.error(`[notion] API error ${res.status}: ${errText.slice(0, 400)}`);
+      return { status: "failed", error: `Notion ${res.status}: ${errText.slice(0, 200)}` };
     }
 
     const data = await res.json() as { url: string; id: string };
@@ -144,43 +190,50 @@ async function sendNote(
     return { status: "sent", url: data.url };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[notion] Failed: ${msg}`);
+    console.error(`[notion] Fetch threw: ${msg}`);
     return { status: "failed", error: msg };
   }
 }
 
-// ── Action Task → Todoist ────────────────────────────────────────────────────
+// ── Action Task → Todoist ─────────────────────────────────────────────────────
 
-async function sendTask(ins: Insight): Promise<OutputStatus> {
-  const apiKey = process.env.TODOIST_API_KEY;
-  if (!apiKey) { console.warn("[todoist] TODOIST_API_KEY not set"); return { status: "skipped", error: "Todoist not configured" }; }
+async function sendTask(ins: Insight, todoistKey: string): Promise<OutputStatus> {
+  if (!todoistKey) { console.warn("[todoist] TODOIST_API_KEY not set / empty after sanitize"); return { status: "skipped", error: "Todoist not configured" }; }
 
-  const taskTitle = sanitizeText(ins.assets.task.title);
-  const taskDesc  = sanitizeText(ins.assets.task.description);
-  const insTitle  = sanitizeText(ins.title);
+  const taskTitle = sanitizeText(ins.assets?.task?.title       ?? "");
+  const taskDesc  = sanitizeText(ins.assets?.task?.description ?? "");
+  const insTitle  = sanitizeText(ins.title ?? "");
 
-  console.log(`[todoist] Creating task: "${taskTitle}"`);
+  const payload = {
+    content:     taskTitle || insTitle,
+    description: `${taskDesc}\n\nFrom: ${insTitle}`,
+    priority:    (ins.importance ?? 5) >= 8 ? 4 : (ins.importance ?? 5) >= 6 ? 3 : 2,
+    labels:      ["watchfilter"],
+  };
+  const body = JSON.stringify(payload);
+
+  const payloadHits = findSuspiciousChars(body);
+  if (payloadHits.length) {
+    console.error("[todoist] FINAL PAYLOAD has suspicious chars:", JSON.stringify(payloadHits.slice(0, 5)));
+  }
+  console.log("[todoist] FINAL PAYLOAD first 120 chars:", body.slice(0, 120));
+  console.log("[todoist] Authorization header first 20 codes:", debugCharCodes(`Bearer ${todoistKey}`, 20));
 
   try {
     const res = await fetch("https://api.todoist.com/rest/v2/tasks", {
       method: "POST",
       headers: {
-        Authorization:  `Bearer ${apiKey}`,
+        Authorization:  `Bearer ${todoistKey}`,
         "Content-Type": "application/json",
         "X-Request-Id": crypto.randomUUID(),
       },
-      body: JSON.stringify({
-        content:     taskTitle,
-        description: `${taskDesc}\n\n💡 From: ${insTitle}`,
-        priority:    ins.importance >= 8 ? 4 : ins.importance >= 6 ? 3 : 2,
-        labels:      ["watchfilter"],
-      }),
+      body,
     });
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error(`[todoist] API error ${res.status}: ${errText}`);
-      throw new Error(`Todoist ${res.status}: ${errText}`);
+      console.error(`[todoist] API error ${res.status}: ${errText.slice(0, 400)}`);
+      return { status: "failed", error: `Todoist ${res.status}: ${errText.slice(0, 200)}` };
     }
 
     const data = await res.json() as { id: string; url: string };
@@ -188,64 +241,63 @@ async function sendTask(ins: Insight): Promise<OutputStatus> {
     return { status: "sent", url: data.url };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[todoist] Failed: ${msg}`);
+    console.error(`[todoist] Fetch threw: ${msg}`);
     return { status: "failed", error: msg };
   }
 }
 
-// ── Content Opportunity → Notion Content Queue ───────────────────────────────
+// ── Content Opportunity → Notion Content Queue ────────────────────────────────
 
 async function sendContent(
   ins:          Insight,
   videoTitle:   string,
   channelTitle: string,
+  notionKey:    string,
+  queueId:      string,
 ): Promise<OutputStatus> {
-  const apiKey = process.env.NOTION_API_KEY;
-  const queueId = process.env.NOTION_CONTENT_QUEUE_ID;
-
-  if (!apiKey)   { console.warn("[content] NOTION_API_KEY not set"); return { status: "skipped", error: "Notion not configured" }; }
-  if (!queueId)  {
-    console.warn("[content] NOTION_CONTENT_QUEUE_ID not set — content queue skipped");
+  if (!notionKey) return { status: "skipped", error: "Notion not configured" };
+  if (!queueId)   {
+    console.warn("[content] NOTION_CONTENT_QUEUE_ID not set");
     return { status: "skipped", error: "Content queue not configured (set NOTION_CONTENT_QUEUE_ID)" };
   }
 
-  const contentTitle = sanitizeText(ins.assets.content.title);
-  const contentAngle = sanitizeText(ins.assets.content.angle);
-  const insTitle     = sanitizeText(ins.title);
+  const contentTitle = sanitizeText(ins.assets?.content?.title ?? "");
+  const contentAngle = sanitizeText(ins.assets?.content?.angle ?? "");
+  const insTitle     = sanitizeText(ins.title ?? "");
 
-  console.log(`[content] Adding to queue: "${contentTitle}"`);
+  const blocks: object[] = [
+    heading3("Content Angle"),
+    para(contentAngle),
+    divider(),
+    heading3("Source Insight"),
+    para(insTitle),
+  ];
+  if (channelTitle || videoTitle) {
+    blocks.push(divider());
+    blocks.push(para(sanitizeText(`${channelTitle} - ${videoTitle}`)));
+  }
+
+  const body = JSON.stringify({
+    parent:     { database_id: queueId },
+    properties: { Name: { title: [{ text: { content: contentTitle || insTitle || "Content Idea" } }] } },
+    children:   blocks.slice(0, 100),
+  });
 
   try {
-    const blocks: object[] = [
-      heading3("Content Angle"),
-      para(contentAngle),
-      divider(),
-      heading3("Source Insight"),
-      para(insTitle),
-    ];
-    if (channelTitle || videoTitle) {
-      blocks.push(divider());
-      blocks.push(para(`📺 ${[channelTitle, videoTitle].filter(Boolean).join(" · ")}`));
-    }
-
     const res = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
       headers: {
-        Authorization:    `Bearer ${apiKey}`,
+        Authorization:    `Bearer ${notionKey}`,
         "Content-Type":   "application/json",
         "Notion-Version": "2022-06-28",
       },
-      body: JSON.stringify({
-        parent:     { database_id: queueId },
-        properties: { Name: { title: [{ text: { content: contentTitle || insTitle || "Content Idea" } }] } },
-        children:   blocks.slice(0, 100),
-      }),
+      body,
     });
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error(`[content] API error ${res.status}: ${errText}`);
-      throw new Error(`Content queue ${res.status}: ${errText}`);
+      console.error(`[content] API error ${res.status}: ${errText.slice(0, 400)}`);
+      return { status: "failed", error: `Content queue ${res.status}: ${errText.slice(0, 200)}` };
     }
 
     const data = await res.json() as { url: string; id: string };
@@ -253,14 +305,14 @@ async function sendContent(
     return { status: "sent", url: data.url };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[content] Failed: ${msg}`);
+    console.error(`[content] Fetch threw: ${msg}`);
     return { status: "failed", error: msg };
   }
 }
 
-// ── Block helpers ─────────────────────────────────────────────────────────────
+// ── Block helpers (all values pre-sanitized before reaching here) ─────────────
 
-function para(content: string)     { return { object: "block", type: "paragraph",  paragraph:  { rich_text: [{ text: { content: sanitizeText(content) } }] } }; }
-function heading3(content: string) { return { object: "block", type: "heading_3",  heading_3:  { rich_text: [{ text: { content: sanitizeText(content) } }] } }; }
-function quote(content: string)    { return { object: "block", type: "quote",      quote:      { rich_text: [{ text: { content: sanitizeText(content) } }] } }; }
+function para(content: string)     { return { object: "block", type: "paragraph",  paragraph:  { rich_text: [{ text: { content } }] } }; }
+function heading3(content: string) { return { object: "block", type: "heading_3",  heading_3:  { rich_text: [{ text: { content } }] } }; }
+function quote(content: string)    { return { object: "block", type: "quote",      quote:      { rich_text: [{ text: { content } }] } }; }
 function divider()                 { return { object: "block", type: "divider",    divider: {} }; }
