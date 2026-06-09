@@ -219,7 +219,7 @@ async function sendTask(ins: Insight, todoistKey: string): Promise<OutputStatus>
   console.log("[todoist] Authorization header first 20 codes:", debugCharCodes(`Bearer ${todoistKey}`, 20));
 
   try {
-    const res = await fetch("https://api.todoist.com/rest/v2/tasks", {
+    const res = await fetch("https://api.todoist.com/api/v1/tasks", {
       method: "POST",
       headers: {
         Authorization:  `Bearer ${todoistKey}`,
