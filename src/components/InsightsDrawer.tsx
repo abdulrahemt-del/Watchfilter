@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { FeedVideo } from "@/app/api/youtube/feed/route";
 import type { Insight, VideoType } from "@/app/api/youtube/insights/route";
+import type { OutputStatus } from "@/app/api/youtube/auto-send/route";
 
 type SendStatus = "idle" | "sending" | "sent" | "failed" | "skipped";
-interface OutputStatus { status: SendStatus; url?: string; error?: string; }
+
+interface UIStatus { status: SendStatus; url?: string; error?: string; }
 
 interface InsightState extends Insight {
-  notionStatus: OutputStatus;
-  taskStatus:   OutputStatus;
+  noteStatus:    UIStatus;
+  taskStatus:    UIStatus;
+  contentStatus: UIStatus;
 }
 
 interface LogEntry { id: number; ts: string; msg: string; ok?: boolean; }
@@ -21,73 +24,91 @@ const CAT_COLOR: Record<string, string> = {
   "Content Creation": "#f9a8d4", Business: "#d9f99d",
 };
 
-const CONF_COLOR: Record<string, { text: string; bg: string }> = {
-  High:   { text: "#10b981", bg: "rgba(16,185,129,0.12)"  },
-  Medium: { text: "#f59e0b", bg: "rgba(245,158,11,0.12)"  },
-  Low:    { text: "#64748b", bg: "rgba(100,116,139,0.12)" },
-};
-
-function clockNow(): string {
+function clockNow() {
   return new Date().toLocaleTimeString("en-US", { hour12: false });
 }
 
-function isActionable(ins: Insight): ins is Insight & { actionability: { task: string; description: string } } {
-  return typeof ins.actionability === "object" && ins.actionability !== null;
+function toUIStatus(s: OutputStatus): UIStatus {
+  return { status: s.status as SendStatus, url: s.url, error: s.error };
 }
 
-// ── Destination-specific verbs ─────────────────────────────────────────────────
-function destVerbs(dest: string): { saving: string; saved: string; failed: string } {
-  if (dest === "Todoist") return { saving: "Sending to Todoist…",   saved: "Sent to Todoist",   failed: "Todoist sync failed" };
-  return                         { saving: `Saving to ${dest}…`,    saved: `Saved to ${dest}`,   failed: `${dest} sync failed` };
-}
+// ── Asset row ──────────────────────────────────────────────────────────────────
 
-// ── Small output pill ──────────────────────────────────────────────────────────
-function OutputPill({ icon, label, dest, status, url, error }: {
-  icon: string; label: string; dest: string;
+function AssetRow({ icon, label, title, status, url, error }: {
+  icon: string; label: string; title: string;
   status: SendStatus; url?: string; error?: string;
 }) {
-  const verbs = destVerbs(dest);
+  const isSent    = status === "sent";
+  const isFailed  = status === "failed";
+  const isSkipped = status === "skipped";
+  const isSending = status === "sending";
+  const isIdle    = status === "idle";
+
+  const borderColor = isSent   ? "rgba(16,185,129,0.3)"
+                    : isFailed ? "rgba(248,113,113,0.25)"
+                    : "rgba(255,255,255,0.06)";
+  const bgColor     = isSent   ? "rgba(16,185,129,0.05)"
+                    : isFailed ? "rgba(248,113,113,0.03)"
+                    : "rgba(255,255,255,0.015)";
+
   return (
     <div style={{
-      flex: "1 1 0", minWidth: 0,
-      background: status === "sent" ? "rgba(16,185,129,0.07)" : status === "failed" ? "rgba(248,113,113,0.04)" : "rgba(255,255,255,0.025)",
-      border: `1px solid ${status === "sent" ? "rgba(16,185,129,0.28)" : status === "failed" ? "rgba(248,113,113,0.2)" : "rgba(255,255,255,0.07)"}`,
-      borderRadius: 10, padding: "10px 12px",
-      display: "flex", flexDirection: "column", gap: 5,
-      transition: "border-color 0.25s, background 0.25s",
+      border: `1px solid ${borderColor}`,
+      background: bgColor,
+      borderRadius: 9,
+      padding: "9px 12px",
+      display: "flex", alignItems: "flex-start", gap: 10,
+      transition: "border-color 0.3s, background 0.3s",
     }}>
-      <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-        {icon} {label}
-      </span>
-      <div style={{ marginTop: "auto" }}>
-        {status === "idle" && (
-          <span style={{ fontSize: 9, color: "#334155", fontFamily: "monospace" }}>Pending sync</span>
+      <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>{icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 9, fontFamily: "monospace", fontWeight: 800,
+          color: "#334155", textTransform: "uppercase", letterSpacing: "0.08em",
+          marginBottom: 2,
+        }}>
+          {label}
+        </div>
+        {title && (
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 4, lineHeight: 1.35 }}>
+            {title}
+          </div>
         )}
-        {status === "sending" && (
-          <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, color: "#818cf8", fontFamily: "monospace" }}>
-            <span className="spinner" style={{ width: 8, height: 8, borderWidth: 1.5 }} />{verbs.saving}
-          </span>
-        )}
-        {status === "sent" && (
-          <span style={{ fontSize: 9, color: "#10b981", fontFamily: "monospace", fontWeight: 700 }}>
-            ✓ {verbs.saved}{url ? <a href={url} target="_blank" rel="noreferrer" style={{ marginLeft: 4, color: "#475569", textDecoration: "none" }}>↗</a> : null}
-          </span>
-        )}
-        {status === "failed" && (
-          <span style={{ fontSize: 9, color: "#f87171", fontFamily: "monospace", display: "flex", flexDirection: "column", gap: 2 }}>
-            <span>✕ {verbs.failed}</span>
-            {error && <span style={{ color: "#7f1d1d", fontSize: 8, wordBreak: "break-word" }}>{error}</span>}
-          </span>
-        )}
-        {status === "skipped" && (
-          <span style={{ fontSize: 9, color: "#334155", fontFamily: "monospace" }}>Informational Only</span>
-        )}
+        <div>
+          {isIdle && (
+            <span style={{ fontSize: 9, color: "#334155", fontFamily: "monospace" }}>Pending sync</span>
+          )}
+          {isSending && (
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, color: "#818cf8", fontFamily: "monospace" }}>
+              <span className="spinner" style={{ width: 7, height: 7, borderWidth: 1.5 }} />
+              Saving…
+            </span>
+          )}
+          {isSent && (
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, color: "#10b981", fontFamily: "monospace", fontWeight: 700 }}>
+              ✓ Delivered
+              {url && (
+                <a href={url} target="_blank" rel="noreferrer" style={{ color: "#334155", textDecoration: "none", marginLeft: 2 }}>↗</a>
+              )}
+            </span>
+          )}
+          {isFailed && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <span style={{ fontSize: 9, color: "#f87171", fontFamily: "monospace" }}>✕ Sync failed</span>
+              {error && <span style={{ fontSize: 8, color: "#7f1d1d", fontFamily: "monospace", wordBreak: "break-word" }}>{error}</span>}
+            </div>
+          )}
+          {isSkipped && (
+            <span style={{ fontSize: 9, color: "#1e293b", fontFamily: "monospace" }}>Not configured</span>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 // ── Insight card ───────────────────────────────────────────────────────────────
+
 function InsightCard({ ins, index, autoSend, sending, onSend }: {
   ins:      InsightState;
   index:    number;
@@ -97,117 +118,103 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
 }) {
   const [expanded, setExpanded] = useState(false);
   const catColor = CAT_COLOR[ins.category] ?? "#94a3b8";
-  const conf     = CONF_COLOR[ins.confidence] ?? CONF_COLOR.Low;
-  const actionable = isActionable(ins);
-  const allSent  = ins.notionStatus.status === "sent" &&
-                   (ins.taskStatus.status === "sent" || ins.taskStatus.status === "skipped");
-  const anyIdle  = ins.notionStatus.status === "idle" ||
-                   (actionable && ins.taskStatus.status === "idle");
+
+  const noteD    = ins.noteStatus.status;
+  const taskD    = ins.taskStatus.status;
+  const contentD = ins.contentStatus.status;
+
+  const allDelivered = (noteD    === "sent" || noteD    === "skipped") &&
+                       (taskD    === "sent" || taskD    === "skipped") &&
+                       (contentD === "sent" || contentD === "skipped");
+  const anyIdle      = noteD === "idle" || taskD === "idle" || contentD === "idle";
 
   return (
     <div style={{
-      background: allSent ? "rgba(16,185,129,0.035)" : "rgba(255,255,255,0.02)",
-      border: `1px solid ${allSent ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.07)"}`,
+      background: allDelivered ? "rgba(16,185,129,0.03)" : "rgba(255,255,255,0.018)",
+      border: `1px solid ${allDelivered ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.07)"}`,
       borderRadius: 12, overflow: "hidden",
-      transition: "border-color 0.25s",
+      transition: "border-color 0.3s",
     }}>
-      {/* ── Header (always visible) ── */}
+      {/* Header */}
       <div style={{ padding: "12px 14px 10px", display: "flex", gap: 10, alignItems: "flex-start" }}>
         <div style={{
           flexShrink: 0, width: 22, height: 22, borderRadius: 6,
-          background: "rgba(255,255,255,0.05)",
+          background: allDelivered ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.05)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 10, fontFamily: "monospace", fontWeight: 800, color: "#475569",
+          fontSize: 10, fontFamily: "monospace", fontWeight: 800,
+          color: allDelivered ? "#10b981" : "#475569",
         }}>
-          {index + 1}
+          {allDelivered ? "✓" : index + 1}
         </div>
-
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Badges */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 700, padding: "1px 7px", borderRadius: 3, background: conf.bg, color: conf.text }}>
-              {ins.confidence}
-            </span>
-            <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 700, padding: "1px 6px", borderRadius: 3, background: `${catColor}18`, color: catColor }}>
+            <span style={{
+              fontSize: 9, fontFamily: "monospace", fontWeight: 700,
+              padding: "1px 6px", borderRadius: 3,
+              background: `${catColor}18`, color: catColor,
+            }}>
               {ins.category}
             </span>
-            {actionable && (
-              <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 700, padding: "1px 6px", borderRadius: 3, background: "rgba(99,102,241,0.1)", color: "#a5b4fc" }}>
-                Actionable
-              </span>
-            )}
+            <span style={{ fontSize: 9, color: "#475569", fontFamily: "monospace" }}>
+              Signal {ins.importance}/10
+            </span>
           </div>
-
-          {/* Title */}
-          <p style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", margin: "0 0 8px", lineHeight: 1.35 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", margin: "0 0 6px", lineHeight: 1.35 }}>
             {ins.title}
           </p>
-
-          {/* Why it matters — always visible */}
           <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.55 }}>
-            <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: "0.08em", marginRight: 6 }}>
-              Why it matters
-            </span>
             {ins.why_it_matters}
           </p>
         </div>
-
-        {/* Expand toggle */}
         <button
           onClick={() => setExpanded(p => !p)}
-          style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", fontSize: 9, color: "#334155", paddingTop: 4 }}
+          style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", fontSize: 9, color: "#1e293b", paddingTop: 4 }}
+          title={expanded ? "Collapse" : "Expand"}
         >
           {expanded ? "▲" : "▼"}
         </button>
       </div>
 
-      {/* ── Expanded: What Was Said ── */}
+      {/* Expanded: explanation */}
       {expanded && (
         <div style={{ padding: "0 14px 12px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-          <p style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: "0.08em", margin: "10px 0 5px" }}>
+          <p style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: "0.08em", margin: "10px 0 4px" }}>
             What Was Said
           </p>
-          <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 10px", lineHeight: 1.65 }}>
-            {ins.what_was_said}
+          <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.65 }}>
+            {ins.explanation}
           </p>
-
-          {actionable && (
-            <>
-              <p style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 5px" }}>
-                Suggested Action
-              </p>
-              <div style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.18)", borderRadius: 7, padding: "8px 11px" }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: "#a5b4fc", margin: "0 0 3px" }}>
-                  {ins.actionability.task}
-                </p>
-                <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.5 }}>
-                  {ins.actionability.description}
-                </p>
-              </div>
-            </>
-          )}
         </div>
       )}
 
-      {/* ── Created for you ── */}
-      <div style={{ borderTop: "1px solid rgba(255,255,255,0.04)", padding: "6px 14px 3px" }}>
+      {/* Assets section */}
+      <div style={{ borderTop: "1px solid rgba(255,255,255,0.04)", padding: "6px 14px 3px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#1e3a2f", textTransform: "uppercase", letterSpacing: "0.12em" }}>
-          Created for you
+          Assets Created
         </span>
+        {allDelivered && (
+          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#10b981", fontWeight: 700 }}>3 delivered</span>
+        )}
       </div>
-      <div style={{ padding: "4px 12px 12px", display: "flex", gap: 7 }}>
-        <OutputPill icon="📝" label="Insight Note" dest="Notion"  status={ins.notionStatus.status} url={ins.notionStatus.url} error={ins.notionStatus.error} />
-        {actionable
-          ? <OutputPill icon="☑"  label="Action Task" dest="Todoist" status={ins.taskStatus.status}   url={ins.taskStatus.url}   error={ins.taskStatus.error} />
-          : <div style={{ flex: "1 1 0", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.01)", border: "1px dashed rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 12px" }}>
-              <span style={{ fontSize: 9, color: "#1e293b", fontFamily: "monospace", textAlign: "center" }}>
-                Informational Only
-              </span>
-            </div>
-        }
+      <div style={{ padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 5 }}>
+        <AssetRow
+          icon="📝" label="Strategic Note → Notion"
+          title={ins.assets.note.title}
+          status={noteD} url={ins.noteStatus.url} error={ins.noteStatus.error}
+        />
+        <AssetRow
+          icon="☑" label="Action Task → Todoist"
+          title={ins.assets.task.title}
+          status={taskD} url={ins.taskStatus.url} error={ins.taskStatus.error}
+        />
+        <AssetRow
+          icon="🚀" label="Content Opportunity → Queue"
+          title={ins.assets.content.title}
+          status={contentD} url={ins.contentStatus.url} error={ins.contentStatus.error}
+        />
       </div>
 
-      {/* ── Per-card send button (auto-send off) ── */}
+      {/* Per-card send button (auto-send off) */}
       {!autoSend && anyIdle && !sending && (
         <div style={{ padding: "0 12px 12px" }}>
           <button
@@ -219,7 +226,7 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
               borderRadius: 6, padding: "4px 12px", cursor: "pointer",
             }}
           >
-            Save insight →
+            Send assets →
           </button>
         </div>
       )}
@@ -250,39 +257,46 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
   const [log,      setLog]      = useState<LogEntry[]>([]);
   const [showLog,  setShowLog]  = useState(false);
   const [elapsed,  setElapsed]  = useState<number | null>(null);
-  const logId  = useRef(0);
-  const startT = useRef<number | null>(null);
+  const logId   = useRef(0);
+  const startT  = useRef<number | null>(null);
 
   function addLog(msg: string, ok?: boolean) {
-    setLog(prev => [...prev, { id: logId.current++, ts: clockNow(), msg, ok }]);
+    const entry: LogEntry = { id: logId.current++, ts: clockNow(), msg, ok };
+    setLog(prev => [...prev, entry]);
   }
 
+  // Initialise insights when AI returns them
   useEffect(() => {
     if (!cachedInsights) return;
     setInsights(cachedInsights.map(ins => ({
       ...ins,
-      notionStatus: { status: "idle" },
-      taskStatus:   { status: isActionable(ins) ? "idle" : "skipped" },
+      noteStatus:    { status: "idle" },
+      taskStatus:    { status: "idle" },
+      contentStatus: { status: "idle" },
     })));
-    addLog(`${cachedInsights.length} insights extracted`, true);
-    if (autoSend) addLog("Auto-Send ON — saving insights...");
-  }, [cachedInsights]);
+    const n = cachedInsights.length;
+    addLog(`${n} insight${n !== 1 ? "s" : ""} extracted`, true);
+    if (autoSend) addLog("Auto-Send ON — routing assets…");
+  }, [cachedInsights]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Trigger fetch on open
   useEffect(() => {
     if (isOpen && video && !cachedInsights && !loading && !fetched) {
       setFetched(true);
       startT.current = Date.now();
-      addLog("Extracting insights...");
+      addLog("Extracting insights…");
       onFetch();
     }
-  }, [isOpen, video?.videoId]);
+  }, [isOpen, video?.videoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-send fires once when insights land and autoSend is ON
   useEffect(() => {
-    if (autoSend && insights.length > 0 && insights.every(i => i.notionStatus.status === "idle") && !sending) {
-      void runAutoSend();
+    if (autoSend && insights.length > 0 && insights.every(i => i.noteStatus.status === "idle") && !sending) {
+      void runSend();
     }
-  }, [autoSend, insights.length]);
+  }, [autoSend, insights.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reset on video change
   useEffect(() => {
     setFetched(false);
     setInsights([]);
@@ -297,24 +311,20 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
     try { localStorage.setItem("wf_auto_send", String(next)); } catch { /**/ }
   }
 
-  async function runAutoSend(targets?: number[]) {
+  async function runSend(targets?: number[]) {
     if (sending || insights.length === 0) return;
     setSending(true);
     const idxs = targets ?? insights.map((_, i) => i);
 
+    // Mark as sending
     setInsights(prev => prev.map((ins, i) =>
-      idxs.includes(i)
-        ? {
-            ...ins,
-            notionStatus: { status: "sending" },
-            taskStatus:   isActionable(ins) ? { status: "sending" } : ins.taskStatus,
-          }
-        : ins
+      idxs.includes(i) ? { ...ins, noteStatus: { status: "sending" }, taskStatus: { status: "sending" }, contentStatus: { status: "sending" } } : ins
     ));
-    addLog("Saving insights...");
+    addLog(`Routing ${idxs.length * 3} assets…`);
 
     try {
       addLog(`POST /api/youtube/auto-send — ${idxs.length} insights`);
+
       const res = await fetch("/api/youtube/auto-send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -327,45 +337,47 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
       });
 
       addLog(`Response: HTTP ${res.status}`, res.ok);
+
       if (!res.ok) {
         const body = await res.text().catch(() => "(no body)");
         throw new Error(`HTTP ${res.status}: ${body}`);
       }
 
       const data = await res.json() as {
-        results?: { index: number; notionStatus: OutputStatus; taskStatus: OutputStatus }[];
+        results?: { index: number; noteStatus: OutputStatus; taskStatus: OutputStatus; contentStatus: OutputStatus }[];
       };
 
       if (data.results) {
-        const updates: Record<number, { notionStatus: OutputStatus; taskStatus: OutputStatus }> = {};
+        const updates: Record<number, Pick<InsightState, "noteStatus" | "taskStatus" | "contentStatus">> = {};
+
         data.results.forEach(r => {
-          const realIdx = idxs[r.index] ?? r.index;
-          updates[realIdx] = { notionStatus: r.notionStatus, taskStatus: r.taskStatus };
-          const insightTitle = insights[realIdx]?.title ?? `Insight ${realIdx + 1}`;
-          if (r.notionStatus.status === "sent")
-            addLog(`Notion ✓ "${insightTitle}"${r.notionStatus.url ? ` → ${r.notionStatus.url}` : ""}`, true);
-          if (r.taskStatus.status === "sent")
-            addLog(`Todoist ✓ "${insightTitle}"`, true);
-          if (r.notionStatus.status === "failed")
-            addLog(`Notion ✕ "${insightTitle}": ${r.notionStatus.error ?? "unknown error"}`, false);
-          if (r.taskStatus.status === "failed")
-            addLog(`Todoist ✕ "${insightTitle}": ${r.taskStatus.error ?? "unknown error"}`, false);
-          if (r.notionStatus.status === "skipped")
-            addLog(`Notion skipped: ${r.notionStatus.error ?? "not configured"}`);
+          const realIdx  = idxs[r.index] ?? r.index;
+          const insTitle = insights[realIdx]?.title ?? `Insight ${realIdx + 1}`;
+
+          updates[realIdx] = {
+            noteStatus:    toUIStatus(r.noteStatus),
+            taskStatus:    toUIStatus(r.taskStatus),
+            contentStatus: toUIStatus(r.contentStatus),
+          };
+
+          if (r.noteStatus.status    === "sent")    addLog(`Notion ✓  "${insTitle}"${r.noteStatus.url    ? " →" : ""}`, true);
+          if (r.taskStatus.status    === "sent")    addLog(`Todoist ✓ "${insTitle}"`, true);
+          if (r.contentStatus.status === "sent")    addLog(`Queue ✓   "${insTitle}"`, true);
+          if (r.noteStatus.status    === "failed")  addLog(`Notion ✕  "${insTitle}": ${r.noteStatus.error    ?? "unknown"}`, false);
+          if (r.taskStatus.status    === "failed")  addLog(`Todoist ✕ "${insTitle}": ${r.taskStatus.error    ?? "unknown"}`, false);
+          if (r.contentStatus.status === "failed")  addLog(`Queue ✕   "${insTitle}": ${r.contentStatus.error ?? "unknown"}`, false);
+          if (r.noteStatus.status    === "skipped") addLog(`Notion skipped: ${r.noteStatus.error    ?? "not configured"}`);
+          if (r.contentStatus.status === "skipped") addLog(`Queue skipped: ${r.contentStatus.error  ?? "not configured"}`);
         });
+
         setInsights(prev => prev.map((ins, i) => updates[i] ? { ...ins, ...updates[i] } : ins));
         if (startT.current) setElapsed((Date.now() - startT.current) / 1000);
       }
     } catch (e) {
-      // Pipeline-level failure (network error, auth, etc.) — Notion/Todoist were never called.
-      // Reset to idle so UI shows "Pending sync" rather than false "X sync failed".
+      // Pipeline-level failure — Notion/Todoist were never called. Reset to idle.
       const msg = e instanceof Error ? e.message : "Unknown error";
       setInsights(prev => prev.map((ins, i) =>
-        idxs.includes(i) ? {
-          ...ins,
-          notionStatus: ins.notionStatus.status === "sending" ? { status: "idle" } : ins.notionStatus,
-          taskStatus:   ins.taskStatus.status   === "sending" ? { status: isActionable(ins) ? "idle" : "skipped" } : ins.taskStatus,
-        } : ins
+        idxs.includes(i) ? { ...ins, noteStatus: { status: "idle" }, taskStatus: { status: "idle" }, contentStatus: { status: "idle" } } : ins
       ));
       addLog(`Pipeline error (no sync attempted): ${msg}`, false);
     } finally {
@@ -375,25 +387,36 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
 
   if (!isOpen || !video) return null;
 
-  const allSent     = insights.length > 0 && insights.every(i =>
-    i.notionStatus.status === "sent" &&
-    (i.taskStatus.status === "sent" || i.taskStatus.status === "skipped")
+  // Execution summary counts
+  const totalInsights = insights.length;
+  const sentNotes     = insights.filter(i => i.noteStatus.status    === "sent").length;
+  const sentTasks     = insights.filter(i => i.taskStatus.status    === "sent").length;
+  const sentContent   = insights.filter(i => i.contentStatus.status === "sent").length;
+  const totalSent     = sentNotes + sentTasks + sentContent;
+  const maxAssets     = totalInsights * 3;
+
+  const anySending = insights.some(i =>
+    i.noteStatus.status === "sending" || i.taskStatus.status === "sending" || i.contentStatus.status === "sending"
   );
-  const sentNotion  = insights.filter(i => i.notionStatus.status === "sent").length;
-  const sentTasks   = insights.filter(i => i.taskStatus.status   === "sent").length;
-  const totalAssets = sentNotion + sentTasks;
-  const anySending  = insights.some(i => i.notionStatus.status === "sending" || i.taskStatus.status === "sending");
-  const anyIdle     = insights.some(i => i.notionStatus.status === "idle");
+  const allDelivered = totalInsights > 0 && insights.every(i => {
+    const n = i.noteStatus.status;
+    const t = i.taskStatus.status;
+    const c = i.contentStatus.status;
+    return (n === "sent" || n === "skipped") && (t === "sent" || t === "skipped") && (c === "sent" || c === "skipped");
+  });
+  const anyIdle = insights.some(i =>
+    i.noteStatus.status === "idle" || i.taskStatus.status === "idle" || i.contentStatus.status === "idle"
+  );
 
   return (
     <>
       <div className="fluff-drawer__overlay" onClick={onClose} />
       <div className="fluff-drawer">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="fluff-drawer__header">
           <div>
-            <span className="fluff-drawer__label" style={{ textTransform: "uppercase", letterSpacing: "0.1em", fontSize: 9, color: "#475569" }}>
+            <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>
               {videoType ?? "Key Insights"}
             </span>
             <h2 className="fluff-drawer__channel">{video.channelTitle}</h2>
@@ -403,14 +426,14 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
 
         <div className="fluff-drawer__body" style={{ padding: 0 }}>
 
-          {/* ── Video title ── */}
+          {/* Video title */}
           <div style={{ padding: "4px 16px 12px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
             <p style={{ fontSize: 11, color: "#475569", margin: 0, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {video.title}
             </p>
           </div>
 
-          {/* ── Auto-Send toggle ── */}
+          {/* Auto-Send toggle */}
           <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
             <div
               onClick={toggleAutoSend}
@@ -438,45 +461,79 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
                   AUTO-SEND {autoSend ? "ON" : "OFF"}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155", fontFamily: "monospace", marginTop: 1 }}>
-                  {autoSend ? "Notes → Notion · Tasks → Todoist (when speaker recommends)" : "Click to auto-route insights"}
+                  {autoSend
+                    ? "Notes → Notion · Tasks → Todoist · Content → Queue"
+                    : "Click to auto-route assets to your workspace"}
                 </div>
               </div>
               {autoSend && anySending && <div className="spinner" style={{ width: 12, height: 12, borderWidth: 1.5 }} />}
             </div>
           </div>
 
-          {/* ── Execution Complete banner ── */}
-          {allSent && (
+          {/* Execution Complete banner */}
+          {allDelivered && (
             <div style={{
-              margin: "12px 14px", padding: "14px 16px",
-              background: "linear-gradient(135deg, rgba(16,185,129,0.09), rgba(16,185,129,0.03))",
+              margin: "12px 14px",
+              padding: "16px 18px",
+              background: "linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.04))",
               border: "1px solid rgba(16,185,129,0.3)", borderRadius: 12,
             }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 800, color: "#10b981" }}>
-                  ⚡ SAVED TO WORKSPACE
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <span style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 800, color: "#10b981" }}>
+                  ⚡ EXECUTION COMPLETE
                 </span>
                 {elapsed !== null && (
                   <span style={{ fontSize: 9, color: "#334155", fontFamily: "monospace" }}>{elapsed.toFixed(1)}s</span>
                 )}
               </div>
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 10, color: "#6ee7b7", fontFamily: "monospace" }}>✓ {sentNotion} Notes → Notion</span>
-                {sentTasks > 0 && <span style={{ fontSize: 10, color: "#a5b4fc", fontFamily: "monospace" }}>✓ {sentTasks} Tasks → Todoist</span>}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "6px 14px", marginBottom: 10 }}>
+                <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>Insights Extracted</span>
+                <span style={{ fontSize: 10, color: "#f1f5f9", fontFamily: "monospace", fontWeight: 700 }}>{totalInsights}</span>
+                {sentNotes > 0 && <>
+                  <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>Notes → Notion</span>
+                  <span style={{ fontSize: 10, color: "#6ee7b7", fontFamily: "monospace", fontWeight: 700 }}>{sentNotes}</span>
+                </>}
+                {sentTasks > 0 && <>
+                  <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>Tasks → Todoist</span>
+                  <span style={{ fontSize: 10, color: "#a5b4fc", fontFamily: "monospace", fontWeight: 700 }}>{sentTasks}</span>
+                </>}
+                {sentContent > 0 && <>
+                  <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>Content → Queue</span>
+                  <span style={{ fontSize: 10, color: "#f9a8d4", fontFamily: "monospace", fontWeight: 700 }}>{sentContent}</span>
+                </>}
               </div>
-              <div style={{ fontSize: 9, color: "#334155", fontFamily: "monospace", marginTop: 5 }}>
-                {totalAssets} assets saved · {insights.filter(i => isActionable(i)).length} actionable insights
+              <div style={{ fontSize: 9, color: "#334155", fontFamily: "monospace", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 8 }}>
+                {totalSent} of {maxAssets} assets delivered · workspace updated
               </div>
             </div>
           )}
 
-          {/* ── Loading ── */}
+          {/* In-progress executing banner */}
+          {anySending && !allDelivered && (
+            <div style={{
+              margin: "12px 14px", padding: "12px 16px",
+              background: "rgba(129,140,248,0.05)", border: "1px solid rgba(129,140,248,0.18)", borderRadius: 10,
+              display: "flex", alignItems: "center", gap: 10,
+            }}>
+              <span className="spinner" style={{ width: 12, height: 12, borderWidth: 1.5 }} />
+              <div>
+                <div style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#818cf8" }}>
+                  ⚡ EXECUTING…
+                </div>
+                <div style={{ fontSize: 9, color: "#334155", fontFamily: "monospace", marginTop: 2 }}>
+                  Routing assets to your workspace
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Loading */}
           {loading && (
             <div style={{ padding: "20px 16px", display: "flex", alignItems: "center", gap: 12 }}>
               <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
               <div>
                 <div style={{ fontSize: 12, color: "#818cf8", fontFamily: "monospace", fontWeight: 700 }}>
-                  Extracting insights...
+                  Extracting insights…
                 </div>
                 <div style={{ fontSize: 10, color: "#334155", fontFamily: "monospace", marginTop: 2 }}>
                   Reading transcript · Classifying video
@@ -485,37 +542,38 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
             </div>
           )}
 
-          {/* ── Error ── */}
+          {/* Error */}
           {error && (
             <div style={{ margin: "12px 14px", padding: "10px 14px", background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 8 }}>
               <span style={{ fontSize: 11, color: "#f87171", fontFamily: "monospace" }}>{error}</span>
             </div>
           )}
 
-          {/* ── Insights ── */}
+          {/* Insights list */}
           {!loading && insights.length > 0 && (
             <div>
-              {!allSent && (
-                <div style={{ padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-                    {insights.length} Insights
-                    {totalAssets > 0 && <span style={{ color: "#10b981", marginLeft: 8 }}>· {totalAssets} saved</span>}
-                  </span>
-                  {!autoSend && anyIdle && !sending && (
-                    <button
-                      onClick={() => void runAutoSend()}
-                      style={{
-                        fontSize: 10, fontFamily: "monospace", fontWeight: 800,
-                        color: "#818cf8", background: "rgba(99,102,241,0.1)",
-                        border: "1px solid rgba(99,102,241,0.25)",
-                        borderRadius: 6, padding: "3px 10px", cursor: "pointer",
-                      }}
-                    >
-                      ⚡ Save all
-                    </button>
+              <div style={{ padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                  {totalInsights} Insight{totalInsights !== 1 ? "s" : ""}
+                  {totalSent > 0 && !allDelivered && (
+                    <span style={{ color: "#10b981", marginLeft: 8 }}>· {totalSent} assets delivered</span>
                   )}
-                </div>
-              )}
+                </span>
+                {!autoSend && anyIdle && !sending && (
+                  <button
+                    onClick={() => void runSend()}
+                    style={{
+                      fontSize: 10, fontFamily: "monospace", fontWeight: 800,
+                      color: "#818cf8", background: "rgba(99,102,241,0.1)",
+                      border: "1px solid rgba(99,102,241,0.25)",
+                      borderRadius: 6, padding: "3px 10px", cursor: "pointer",
+                    }}
+                  >
+                    ⚡ Send all assets
+                  </button>
+                )}
+              </div>
+
               <div style={{ padding: "0 12px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
                 {insights.map((ins, i) => (
                   <InsightCard
@@ -524,14 +582,14 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
                     index={i}
                     autoSend={autoSend}
                     sending={sending}
-                    onSend={() => void runAutoSend([i])}
+                    onSend={() => void runSend([i])}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* ── Activity Log ── */}
+          {/* Activity Log */}
           {log.length > 0 && (
             <div style={{ borderTop: "1px solid rgba(255,255,255,0.04)", padding: "0 16px 16px" }}>
               <button
@@ -554,7 +612,10 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
                   {log.map(e => (
                     <div key={e.id} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
                       <span style={{ fontSize: 9, color: "#1e293b", fontFamily: "monospace", flexShrink: 0, minWidth: 64 }}>{e.ts}</span>
-                      <span style={{ fontSize: 10, fontFamily: "monospace", color: e.ok === true ? "#10b981" : e.ok === false ? "#f87171" : "#475569" }}>
+                      <span style={{
+                        fontSize: 10, fontFamily: "monospace",
+                        color: e.ok === true ? "#10b981" : e.ok === false ? "#f87171" : "#475569",
+                      }}>
                         {e.ok === true ? "✓" : e.ok === false ? "✕" : "·"} {e.msg}
                       </span>
                     </div>

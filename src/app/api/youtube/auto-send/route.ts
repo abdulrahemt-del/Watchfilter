@@ -2,59 +2,72 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import type { Insight } from "@/app/api/youtube/insights/route";
+import { sanitizeText } from "@/lib/utils/sanitize";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-interface OutputStatus { status: "sent" | "failed" | "skipped"; url?: string; error?: string; }
+type SyncStatus = "sent" | "failed" | "skipped";
+export interface OutputStatus { status: SyncStatus; url?: string; error?: string; }
 
 interface InsightResult {
-  index:        number;
-  notionStatus: OutputStatus;
-  taskStatus:   OutputStatus;
+  index:         number;
+  noteStatus:    OutputStatus;
+  taskStatus:    OutputStatus;
+  contentStatus: OutputStatus;
 }
 
-function isActionable(ins: Insight): ins is Insight & { actionability: { task: string; description: string } } {
-  return typeof ins.actionability === "object" && ins.actionability !== null;
-}
+// ── Main handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { insights, videoTitle, channelTitle, videoType } = await req.json() as {
-    insights:     Insight[];
-    videoTitle?:  string;
+    insights:      Insight[];
+    videoTitle?:   string;
     channelTitle?: string;
-    videoType?:   string;
+    videoType?:    string;
   };
 
-  console.log(`[auto-send] POST — ${insights?.length ?? 0} insights | video: "${videoTitle}" | type: ${videoType}`);
+  const safeTitle   = sanitizeText(videoTitle   ?? "");
+  const safeChannel = sanitizeText(channelTitle ?? "");
+  const safeType    = sanitizeText(videoType    ?? "");
+
+  console.log(`[auto-send] POST — ${insights?.length ?? 0} insights | "${safeTitle}" | type: ${safeType}`);
 
   if (!insights?.length) return NextResponse.json({ results: [] });
 
   const results: InsightResult[] = await Promise.all(
     insights.map(async (ins, i): Promise<InsightResult> => {
-      console.log(`[auto-send] Processing insight ${i}: "${ins.title}" | actionable: ${isActionable(ins)}`);
-      const [notionStatus, taskStatus] = await Promise.all([
-        sendInsightNote(ins, videoTitle, channelTitle, videoType),
-        isActionable(ins) ? sendInsightTask(ins) : Promise.resolve({ status: "skipped" as const, error: "Informational only" }),
+      console.log(`[auto-send] Processing insight ${i}: "${ins.title}"`);
+
+      const [noteStatus, taskStatus, contentStatus] = await Promise.all([
+        sendNote(ins, safeTitle, safeChannel, safeType),
+        sendTask(ins),
+        sendContent(ins, safeTitle, safeChannel),
       ]);
-      console.log(`[auto-send] Insight ${i} result — notion: ${notionStatus.status}${notionStatus.error ? ` (${notionStatus.error})` : ""} | task: ${taskStatus.status}${taskStatus.error ? ` (${taskStatus.error})` : ""}`);
-      return { index: i, notionStatus, taskStatus };
+
+      console.log(
+        `[auto-send] Insight ${i} — note:${noteStatus.status}${noteStatus.error ? ` (${noteStatus.error})` : ""}` +
+        ` | task:${taskStatus.status}${taskStatus.error ? ` (${taskStatus.error})` : ""}` +
+        ` | content:${contentStatus.status}${contentStatus.error ? ` (${contentStatus.error})` : ""}`
+      );
+
+      return { index: i, noteStatus, taskStatus, contentStatus };
     })
   );
 
   return NextResponse.json({ results });
 }
 
-// ── Notion insight note ────────────────────────────────────────────────────────
+// ── Strategic Note → Notion ──────────────────────────────────────────────────
 
-async function sendInsightNote(
-  ins: Insight,
-  videoTitle?: string,
-  channelTitle?: string,
-  videoType?: string,
+async function sendNote(
+  ins:          Insight,
+  videoTitle:   string,
+  channelTitle: string,
+  videoType:    string,
 ): Promise<OutputStatus> {
   const apiKey = process.env.NOTION_API_KEY;
   const dbId   = process.env.NOTION_DATABASE_ID;
@@ -62,7 +75,12 @@ async function sendInsightNote(
   if (!apiKey) { console.warn("[notion] NOTION_API_KEY not set"); return { status: "skipped", error: "Notion not configured" }; }
   if (!dbId)   { console.warn("[notion] NOTION_DATABASE_ID not set"); return { status: "skipped", error: "Notion not configured" }; }
 
-  console.log(`[notion] Creating page for: "${ins.title}" | db: ${dbId.slice(0, 8)}...`);
+  const noteTitle   = sanitizeText(ins.assets.note.title);
+  const noteContent = sanitizeText(ins.assets.note.content);
+  const insTitle    = sanitizeText(ins.title);
+
+  console.log(`[notion] Creating note: "${noteTitle}"`);
+  console.log(`[notion] RAW title char codes:`, [...noteTitle].slice(0, 5).map(c => c.charCodeAt(0)));
 
   try {
     const blocks: object[] = [];
@@ -77,35 +95,33 @@ async function sendInsightNote(
       });
     }
 
-    const meta = [
-      videoType,
-      ins.confidence ? `Confidence: ${ins.confidence}` : null,
-      ins.category,
-    ].filter(Boolean).join("  ·  ");
+    const meta = [videoType, ins.category, `Importance: ${ins.importance}/10`].filter(Boolean).join("  ·  ");
     if (meta) blocks.push(para(meta));
-    blocks.push({ object: "block", type: "divider", divider: {} });
+    blocks.push(divider());
 
-    blocks.push(heading3("What Was Said"));
-    blocks.push(para(ins.what_was_said));
-    blocks.push({ object: "block", type: "divider", divider: {} });
+    blocks.push(heading3("Insight"));
+    blocks.push(para(insTitle));
+    blocks.push(para(sanitizeText(ins.why_it_matters)));
+    blocks.push(divider());
 
-    blocks.push(heading3("Why It Matters"));
-    blocks.push(para(ins.why_it_matters));
+    blocks.push(heading3("Strategic Note"));
+    blocks.push(para(noteContent));
 
-    if (isActionable(ins)) {
-      blocks.push({ object: "block", type: "divider", divider: {} });
+    if (ins.assets.task?.title) {
+      blocks.push(divider());
       blocks.push(heading3("Suggested Action"));
-      blocks.push({ object: "block", type: "quote", quote: { rich_text: [{ text: { content: ins.actionability.task } }] } });
-      blocks.push(para(ins.actionability.description));
+      blocks.push(quote(sanitizeText(ins.assets.task.title)));
+      if (ins.assets.task.description) blocks.push(para(sanitizeText(ins.assets.task.description)));
     }
 
-    const body = {
+    const body = JSON.stringify({
       parent:     { database_id: dbId },
-      properties: { Name: { title: [{ text: { content: ins.title ?? "Untitled" } }] } },
+      properties: { Name: { title: [{ text: { content: noteTitle || insTitle || "WatchFilter Note" } }] } },
       children:   blocks.slice(0, 100),
-    };
+    });
 
-    console.log(`[notion] POST https://api.notion.com/v1/pages — ${blocks.length} blocks`);
+    console.log(`[notion] POST /v1/pages — ${blocks.length} blocks — body length: ${body.length}`);
+    console.log(`[notion] Body first char code: ${body.charCodeAt(0)}`);
 
     const res = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
@@ -114,7 +130,7 @@ async function sendInsightNote(
         "Content-Type":   "application/json",
         "Notion-Version": "2022-06-28",
       },
-      body: JSON.stringify(body),
+      body,
     });
 
     if (!res.ok) {
@@ -124,7 +140,7 @@ async function sendInsightNote(
     }
 
     const data = await res.json() as { url: string; id: string };
-    console.log(`[notion] Page created: ${data.url}`);
+    console.log(`[notion] Note created: ${data.url}`);
     return { status: "sent", url: data.url };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
@@ -133,27 +149,29 @@ async function sendInsightNote(
   }
 }
 
-// ── Todoist task (only when speaker explicitly recommended action) ─────────────
+// ── Action Task → Todoist ────────────────────────────────────────────────────
 
-async function sendInsightTask(
-  ins: Insight & { actionability: { task: string; description: string } },
-): Promise<OutputStatus> {
+async function sendTask(ins: Insight): Promise<OutputStatus> {
   const apiKey = process.env.TODOIST_API_KEY;
   if (!apiKey) { console.warn("[todoist] TODOIST_API_KEY not set"); return { status: "skipped", error: "Todoist not configured" }; }
 
-  console.log(`[todoist] Creating task: "${ins.actionability.task}"`);
+  const taskTitle = sanitizeText(ins.assets.task.title);
+  const taskDesc  = sanitizeText(ins.assets.task.description);
+  const insTitle  = sanitizeText(ins.title);
+
+  console.log(`[todoist] Creating task: "${taskTitle}"`);
 
   try {
     const res = await fetch("https://api.todoist.com/rest/v2/tasks", {
       method: "POST",
       headers: {
-        Authorization:    `Bearer ${apiKey}`,
-        "Content-Type":   "application/json",
-        "X-Request-Id":   crypto.randomUUID(),
+        Authorization:  `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Request-Id": crypto.randomUUID(),
       },
       body: JSON.stringify({
-        content:     ins.actionability.task,
-        description: `${ins.actionability.description}\n\n💡 From: ${ins.title}`,
+        content:     taskTitle,
+        description: `${taskDesc}\n\n💡 From: ${insTitle}`,
         priority:    ins.importance >= 8 ? 4 : ins.importance >= 6 ? 3 : 2,
         labels:      ["watchfilter"],
       }),
@@ -175,7 +193,74 @@ async function sendInsightTask(
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Content Opportunity → Notion Content Queue ───────────────────────────────
 
-function para(content: string)     { return { object: "block", type: "paragraph", paragraph: { rich_text: [{ text: { content } }] } }; }
-function heading3(content: string) { return { object: "block", type: "heading_3", heading_3: { rich_text: [{ text: { content } }] } }; }
+async function sendContent(
+  ins:          Insight,
+  videoTitle:   string,
+  channelTitle: string,
+): Promise<OutputStatus> {
+  const apiKey = process.env.NOTION_API_KEY;
+  const queueId = process.env.NOTION_CONTENT_QUEUE_ID;
+
+  if (!apiKey)   { console.warn("[content] NOTION_API_KEY not set"); return { status: "skipped", error: "Notion not configured" }; }
+  if (!queueId)  {
+    console.warn("[content] NOTION_CONTENT_QUEUE_ID not set — content queue skipped");
+    return { status: "skipped", error: "Content queue not configured (set NOTION_CONTENT_QUEUE_ID)" };
+  }
+
+  const contentTitle = sanitizeText(ins.assets.content.title);
+  const contentAngle = sanitizeText(ins.assets.content.angle);
+  const insTitle     = sanitizeText(ins.title);
+
+  console.log(`[content] Adding to queue: "${contentTitle}"`);
+
+  try {
+    const blocks: object[] = [
+      heading3("Content Angle"),
+      para(contentAngle),
+      divider(),
+      heading3("Source Insight"),
+      para(insTitle),
+    ];
+    if (channelTitle || videoTitle) {
+      blocks.push(divider());
+      blocks.push(para(`📺 ${[channelTitle, videoTitle].filter(Boolean).join(" · ")}`));
+    }
+
+    const res = await fetch("https://api.notion.com/v1/pages", {
+      method: "POST",
+      headers: {
+        Authorization:    `Bearer ${apiKey}`,
+        "Content-Type":   "application/json",
+        "Notion-Version": "2022-06-28",
+      },
+      body: JSON.stringify({
+        parent:     { database_id: queueId },
+        properties: { Name: { title: [{ text: { content: contentTitle || insTitle || "Content Idea" } }] } },
+        children:   blocks.slice(0, 100),
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[content] API error ${res.status}: ${errText}`);
+      throw new Error(`Content queue ${res.status}: ${errText}`);
+    }
+
+    const data = await res.json() as { url: string; id: string };
+    console.log(`[content] Page created: ${data.url}`);
+    return { status: "sent", url: data.url };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[content] Failed: ${msg}`);
+    return { status: "failed", error: msg };
+  }
+}
+
+// ── Block helpers ─────────────────────────────────────────────────────────────
+
+function para(content: string)     { return { object: "block", type: "paragraph",  paragraph:  { rich_text: [{ text: { content: sanitizeText(content) } }] } }; }
+function heading3(content: string) { return { object: "block", type: "heading_3",  heading_3:  { rich_text: [{ text: { content: sanitizeText(content) } }] } }; }
+function quote(content: string)    { return { object: "block", type: "quote",      quote:      { rich_text: [{ text: { content: sanitizeText(content) } }] } }; }
+function divider()                 { return { object: "block", type: "divider",    divider: {} }; }
