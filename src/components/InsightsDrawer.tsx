@@ -61,7 +61,7 @@ function OutputPill({ icon, label, dest, status, url, error }: {
       </span>
       <div style={{ marginTop: "auto" }}>
         {status === "idle" && (
-          <span style={{ fontSize: 9, color: "#1e293b", fontFamily: "monospace" }}>Queued…</span>
+          <span style={{ fontSize: 9, color: "#334155", fontFamily: "monospace" }}>Pending sync</span>
         )}
         {status === "sending" && (
           <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, color: "#818cf8", fontFamily: "monospace" }}>
@@ -74,7 +74,10 @@ function OutputPill({ icon, label, dest, status, url, error }: {
           </span>
         )}
         {status === "failed" && (
-          <span style={{ fontSize: 9, color: "#f87171", fontFamily: "monospace" }} title={error}>✕ {verbs.failed}</span>
+          <span style={{ fontSize: 9, color: "#f87171", fontFamily: "monospace", display: "flex", flexDirection: "column", gap: 2 }}>
+            <span>✕ {verbs.failed}</span>
+            {error && <span style={{ color: "#7f1d1d", fontSize: 8, wordBreak: "break-word" }}>{error}</span>}
+          </span>
         )}
         {status === "skipped" && (
           <span style={{ fontSize: 9, color: "#334155", fontFamily: "monospace" }}>Informational Only</span>
@@ -311,6 +314,7 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
     addLog("Saving insights...");
 
     try {
+      addLog(`POST /api/youtube/auto-send — ${idxs.length} insights`);
       const res = await fetch("/api/youtube/auto-send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -321,7 +325,12 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
           videoType,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      addLog(`Response: HTTP ${res.status}`, res.ok);
+      if (!res.ok) {
+        const body = await res.text().catch(() => "(no body)");
+        throw new Error(`HTTP ${res.status}: ${body}`);
+      }
 
       const data = await res.json() as {
         results?: { index: number; notionStatus: OutputStatus; taskStatus: OutputStatus }[];
@@ -332,24 +341,33 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
         data.results.forEach(r => {
           const realIdx = idxs[r.index] ?? r.index;
           updates[realIdx] = { notionStatus: r.notionStatus, taskStatus: r.taskStatus };
-          if (r.notionStatus.status === "sent")   addLog("Insight saved to Notion", true);
-          if (r.taskStatus.status   === "sent")   addLog("Task sent to Todoist", true);
-          if (r.notionStatus.status === "failed") addLog(`Notion: ${r.notionStatus.error ?? "failed"}`, false);
-          if (r.taskStatus.status   === "failed") addLog(`Todoist: ${r.taskStatus.error ?? "failed"}`, false);
+          const insightTitle = insights[realIdx]?.title ?? `Insight ${realIdx + 1}`;
+          if (r.notionStatus.status === "sent")
+            addLog(`Notion ✓ "${insightTitle}"${r.notionStatus.url ? ` → ${r.notionStatus.url}` : ""}`, true);
+          if (r.taskStatus.status === "sent")
+            addLog(`Todoist ✓ "${insightTitle}"`, true);
+          if (r.notionStatus.status === "failed")
+            addLog(`Notion ✕ "${insightTitle}": ${r.notionStatus.error ?? "unknown error"}`, false);
+          if (r.taskStatus.status === "failed")
+            addLog(`Todoist ✕ "${insightTitle}": ${r.taskStatus.error ?? "unknown error"}`, false);
+          if (r.notionStatus.status === "skipped")
+            addLog(`Notion skipped: ${r.notionStatus.error ?? "not configured"}`);
         });
         setInsights(prev => prev.map((ins, i) => updates[i] ? { ...ins, ...updates[i] } : ins));
         if (startT.current) setElapsed((Date.now() - startT.current) / 1000);
       }
     } catch (e) {
+      // Pipeline-level failure (network error, auth, etc.) — Notion/Todoist were never called.
+      // Reset to idle so UI shows "Pending sync" rather than false "X sync failed".
       const msg = e instanceof Error ? e.message : "Unknown error";
       setInsights(prev => prev.map((ins, i) =>
         idxs.includes(i) ? {
           ...ins,
-          notionStatus: ins.notionStatus.status === "sending" ? { status: "failed", error: msg } : ins.notionStatus,
-          taskStatus:   ins.taskStatus.status   === "sending" ? { status: "failed", error: msg } : ins.taskStatus,
+          notionStatus: ins.notionStatus.status === "sending" ? { status: "idle" } : ins.notionStatus,
+          taskStatus:   ins.taskStatus.status   === "sending" ? { status: isActionable(ins) ? "idle" : "skipped" } : ins.taskStatus,
         } : ins
       ));
-      addLog(`Save failed: ${msg}`, false);
+      addLog(`Pipeline error (no sync attempted): ${msg}`, false);
     } finally {
       setSending(false);
     }

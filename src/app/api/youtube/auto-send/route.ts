@@ -29,14 +29,18 @@ export async function POST(req: Request) {
     videoType?:   string;
   };
 
+  console.log(`[auto-send] POST — ${insights?.length ?? 0} insights | video: "${videoTitle}" | type: ${videoType}`);
+
   if (!insights?.length) return NextResponse.json({ results: [] });
 
   const results: InsightResult[] = await Promise.all(
     insights.map(async (ins, i): Promise<InsightResult> => {
+      console.log(`[auto-send] Processing insight ${i}: "${ins.title}" | actionable: ${isActionable(ins)}`);
       const [notionStatus, taskStatus] = await Promise.all([
         sendInsightNote(ins, videoTitle, channelTitle, videoType),
         isActionable(ins) ? sendInsightTask(ins) : Promise.resolve({ status: "skipped" as const, error: "Informational only" }),
       ]);
+      console.log(`[auto-send] Insight ${i} result — notion: ${notionStatus.status}${notionStatus.error ? ` (${notionStatus.error})` : ""} | task: ${taskStatus.status}${taskStatus.error ? ` (${taskStatus.error})` : ""}`);
       return { index: i, notionStatus, taskStatus };
     })
   );
@@ -54,12 +58,15 @@ async function sendInsightNote(
 ): Promise<OutputStatus> {
   const apiKey = process.env.NOTION_API_KEY;
   const dbId   = process.env.NOTION_DATABASE_ID;
-  if (!apiKey || !dbId) return { status: "skipped", error: "Notion not configured" };
+
+  if (!apiKey) { console.warn("[notion] NOTION_API_KEY not set"); return { status: "skipped", error: "Notion not configured" }; }
+  if (!dbId)   { console.warn("[notion] NOTION_DATABASE_ID not set"); return { status: "skipped", error: "Notion not configured" }; }
+
+  console.log(`[notion] Creating page for: "${ins.title}" | db: ${dbId.slice(0, 8)}...`);
 
   try {
     const blocks: object[] = [];
 
-    // Source callout
     if (channelTitle || videoTitle) {
       blocks.push({
         object: "block", type: "callout",
@@ -70,7 +77,6 @@ async function sendInsightNote(
       });
     }
 
-    // Video type + confidence + category metadata
     const meta = [
       videoType,
       ins.confidence ? `Confidence: ${ins.confidence}` : null,
@@ -79,22 +85,27 @@ async function sendInsightNote(
     if (meta) blocks.push(para(meta));
     blocks.push({ object: "block", type: "divider", divider: {} });
 
-    // What was said
     blocks.push(heading3("What Was Said"));
     blocks.push(para(ins.what_was_said));
     blocks.push({ object: "block", type: "divider", divider: {} });
 
-    // Why it matters
     blocks.push(heading3("Why It Matters"));
     blocks.push(para(ins.why_it_matters));
 
-    // Suggested action (only if actionable)
     if (isActionable(ins)) {
       blocks.push({ object: "block", type: "divider", divider: {} });
       blocks.push(heading3("Suggested Action"));
       blocks.push({ object: "block", type: "quote", quote: { rich_text: [{ text: { content: ins.actionability.task } }] } });
       blocks.push(para(ins.actionability.description));
     }
+
+    const body = {
+      parent:     { database_id: dbId },
+      properties: { Name: { title: [{ text: { content: ins.title ?? "Untitled" } }] } },
+      children:   blocks.slice(0, 100),
+    };
+
+    console.log(`[notion] POST https://api.notion.com/v1/pages — ${blocks.length} blocks`);
 
     const res = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
@@ -103,18 +114,22 @@ async function sendInsightNote(
         "Content-Type":   "application/json",
         "Notion-Version": "2022-06-28",
       },
-      body: JSON.stringify({
-        parent:     { database_id: dbId },
-        properties: { Name: { title: [{ text: { content: ins.title } }] } },
-        children:   blocks.slice(0, 100),
-      }),
+      body: JSON.stringify(body),
     });
 
-    if (!res.ok) throw new Error(`Notion ${res.status}: ${await res.text()}`);
-    const data = await res.json() as { url: string };
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[notion] API error ${res.status}: ${errText}`);
+      throw new Error(`Notion ${res.status}: ${errText}`);
+    }
+
+    const data = await res.json() as { url: string; id: string };
+    console.log(`[notion] Page created: ${data.url}`);
     return { status: "sent", url: data.url };
   } catch (err) {
-    return { status: "failed", error: err instanceof Error ? err.message : "Failed" };
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[notion] Failed: ${msg}`);
+    return { status: "failed", error: msg };
   }
 }
 
@@ -124,7 +139,9 @@ async function sendInsightTask(
   ins: Insight & { actionability: { task: string; description: string } },
 ): Promise<OutputStatus> {
   const apiKey = process.env.TODOIST_API_KEY;
-  if (!apiKey) return { status: "skipped", error: "Todoist not configured" };
+  if (!apiKey) { console.warn("[todoist] TODOIST_API_KEY not set"); return { status: "skipped", error: "Todoist not configured" }; }
+
+  console.log(`[todoist] Creating task: "${ins.actionability.task}"`);
 
   try {
     const res = await fetch("https://api.todoist.com/rest/v2/tasks", {
@@ -142,11 +159,19 @@ async function sendInsightTask(
       }),
     });
 
-    if (!res.ok) throw new Error(`Todoist ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[todoist] API error ${res.status}: ${errText}`);
+      throw new Error(`Todoist ${res.status}: ${errText}`);
+    }
+
     const data = await res.json() as { id: string; url: string };
+    console.log(`[todoist] Task created: ${data.id}`);
     return { status: "sent", url: data.url };
   } catch (err) {
-    return { status: "failed", error: err instanceof Error ? err.message : "Failed" };
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[todoist] Failed: ${msg}`);
+    return { status: "failed", error: msg };
   }
 }
 
