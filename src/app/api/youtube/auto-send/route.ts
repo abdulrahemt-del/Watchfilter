@@ -143,6 +143,10 @@ async function sendNote(
     blocks.push(heading3("Suggested Action"));
     blocks.push(quote(taskTitle));
     if (taskDesc) blocks.push(para(taskDesc));
+    const taskStepsForNote = (ins.assets?.task?.steps ?? []).map(s => sanitizeText(s)).filter(Boolean);
+    if (taskStepsForNote.length) {
+      taskStepsForNote.forEach(s => blocks.push(bullet(s)));
+    }
   }
 
   const payload = {
@@ -192,21 +196,28 @@ async function sendNote(
 async function sendTask(ins: Insight, todoistKey: string): Promise<OutputStatus> {
   if (!todoistKey) { console.warn("[todoist] TODOIST_API_KEY not set / empty after sanitize"); return { status: "skipped", error: "Todoist not configured" }; }
 
-  // Only send tasks when actionability_score >= 6 and a task asset exists
-  if ((ins.actionability_score ?? 0) < 6 || !ins.assets?.task) {
-    const reason = (ins.actionability_score ?? 0) < 6
-      ? `Score ${ins.actionability_score ?? 0}/10 — below threshold for task creation`
+  // Route on action_type (pipeline-based) rather than score threshold
+  if (ins.action_type !== "inferred_action" || !ins.assets?.task) {
+    const reason = ins.action_type === "strategic_move"
+      ? "Strategic move — decision record created instead of task"
+      : ins.action_type === "no_action"
+      ? "No action implied by this insight"
       : "No task generated for this insight";
     return { status: "skipped", error: reason };
   }
 
-  const taskTitle   = sanitizeText(ins.assets.task.title);
-  const taskDesc    = sanitizeText(ins.assets.task.description ?? "");
-  const taskReason  = sanitizeText(ins.assets.task.reason      ?? "");
+  const taskTitle      = sanitizeText(ins.assets.task.title);
+  const taskDesc       = sanitizeText(ins.assets.task.description ?? "");
+  const taskReason     = sanitizeText(ins.assets.task.reason      ?? "");
   const taskConfidence = ins.assets.task.confidence ?? 70;
-  const insTitle    = sanitizeText(ins.title ?? "");
+  const taskSteps      = ins.assets.task.steps ?? [];
+  const insTitle       = sanitizeText(ins.title ?? "");
 
-  const descParts = [taskDesc];
+  const descParts: string[] = [];
+  if (taskDesc) descParts.push(taskDesc);
+  if (taskSteps.length) {
+    descParts.push("Steps:\n" + taskSteps.map((s, i) => `${i + 1}. ${sanitizeText(s)}`).join("\n"));
+  }
   if (taskReason) descParts.push(`Why: ${taskReason}`);
   descParts.push(`Confidence: ${taskConfidence}% | Source: ${insTitle}`);
 
@@ -379,8 +390,11 @@ async function sendDecision(
   if (!notionKey) return { status: "skipped", error: "Notion not configured" };
   if (!dbId)      return { status: "skipped", error: "Notion not configured" };
 
-  if ((ins.actionability_score ?? 0) < 4 || !ins.assets?.decision) {
-    return { status: "skipped", error: `Score ${ins.actionability_score ?? 0}/10 — below threshold for decision record` };
+  if (ins.action_type !== "strategic_move" || !ins.assets?.decision) {
+    const reason = ins.action_type === "inferred_action"
+      ? "Inferred action — task created instead of decision record"
+      : "No strategic move implied by this insight";
+    return { status: "skipped", error: reason };
   }
 
   const decTitle      = sanitizeText(ins.assets.decision.title      ?? "");

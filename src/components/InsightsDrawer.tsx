@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FeedVideo } from "@/app/api/youtube/feed/route";
-import type { Insight, InsightTask, VideoType } from "@/app/api/youtube/insights/route";
+import type { Insight, InsightTask, VideoType, ActionType, ImpactArea } from "@/app/api/youtube/insights/route";
 import type { OutputStatus } from "@/app/api/youtube/auto-send/route";
 
 type SendStatus = "idle" | "sending" | "sent" | "failed" | "skipped";
@@ -68,9 +68,9 @@ const SCORE_LABEL: Record<number, string> = {
   6: "Action implied", 7: "Action recommended", 8: "High-value task", 9: "High-priority task", 10: "Immediate action",
 };
 
-// Suppress unused type warning — VideoType is re-exported for use by parent components
+// VideoType / ImpactArea used via imported types only — suppress lint
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-type _VideoType = VideoType;
+type _Unused = VideoType | ImpactArea;
 
 function clockNow() { return new Date().toLocaleTimeString("en-US", { hour12: false }); }
 function toUIStatus(s: OutputStatus): UIStatus { return { status: s.status as SendStatus, url: s.url, error: s.error }; }
@@ -235,10 +235,8 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
   onGenerateTask: (task: InsightTask) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const catColor  = CAT_COLOR[ins.category] ?? "#94a3b8";
-  const score     = ins.actionability_score ?? 0;
-  const scoreLabel = SCORE_LABEL[score] ?? "Unknown";
-  const taskSent   = ins.taskStatus.status === "sent";
+  const catColor    = CAT_COLOR[ins.category] ?? "#94a3b8";
+  const taskSent    = ins.taskStatus.status === "sent";
   const taskSkipped = ins.taskStatus.status === "skipped";
 
   const noteD     = ins.noteStatus.status;
@@ -246,11 +244,27 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
   const contentD  = ins.contentStatus.status;
   const decisionD = ins.decisionStatus.status;
 
-  const delivered   = [noteD, taskD, contentD, decisionD].filter(s => s === "sent" || s === "skipped").length;
-  const allDone     = delivered === 4;
-  const anyIdle     = [noteD, taskD, contentD, decisionD].some(s => s === "idle");
-  const scoreColor  = score >= 7 ? "#f59e0b" : score >= 4 ? "#818cf8" : "#94a3b8";
-  const actConf     = ins.actionability_confidence ?? 70;
+  const delivered  = [noteD, taskD, contentD, decisionD].filter(s => s === "sent" || s === "skipped").length;
+  const allDone    = delivered === 4;
+  const anyIdle    = [noteD, taskD, contentD, decisionD].some(s => s === "idle");
+  const actConf    = ins.action_confidence ?? 0;
+
+  const actionType  = ins.action_type ?? "no_action";
+  const impactArea  = ins.impact_area ?? "none";
+
+  const ACTION_TYPE_META: Record<ActionType, { label: string; color: string; bg: string }> = {
+    inferred_action: { label: "INFERRED ACTION",  color: "#f59e0b", bg: "rgba(245,158,11,0.08)" },
+    strategic_move:  { label: "STRATEGIC MOVE",   color: "#818cf8", bg: "rgba(129,140,248,0.08)" },
+    no_action:       { label: "INFORMATIONAL",    color: "#94a3b8", bg: "rgba(0,0,0,0.03)" },
+  };
+  const IMPACT_COLOR: Record<string, string> = {
+    revenue: "#10b981", growth: "#6ee7b7", product: "#93c5fd",
+    efficiency: "#fde68a", strategy: "#a5b4fc", none: "#94a3b8",
+  };
+  const EFFORT_COLOR: Record<string, string> = { low: "#10b981", medium: "#f59e0b", high: "#f87171" };
+  const HORIZON_COLOR: Record<string, string> = { immediate: "#f87171", "short-term": "#f59e0b", "long-term": "#818cf8" };
+
+  const atMeta = ACTION_TYPE_META[actionType];
 
   return (
     <div style={{
@@ -272,11 +286,19 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
           {allDone ? "✓" : index + 1}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: `${catColor}20`, color: catColor }}>
               {ins.category}
             </span>
-            <span style={{ fontSize: 11, color: "#64748b", fontFamily: "monospace" }}>Signal {ins.importance_score}/10</span>
+            {impactArea !== "none" && (
+              <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: `${IMPACT_COLOR[impactArea]}20`, color: IMPACT_COLOR[impactArea] }}>
+                {impactArea}
+              </span>
+            )}
+            <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: atMeta.bg, color: atMeta.color }}>
+              {atMeta.label}
+            </span>
+            <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>rel {ins.relevance_score}/10</span>
           </div>
           <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 7px", lineHeight: 1.35 }}>{ins.title}</p>
           <p style={{ fontSize: 13, color: "#374151", margin: 0, lineHeight: 1.6 }}>{ins.why_it_matters}</p>
@@ -310,19 +332,22 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
       )}
 
       {/* Action Assessment */}
-      <div style={{ margin: "0 16px 12px", padding: "10px 14px", background: score >= 6 ? "rgba(245,158,11,0.06)" : score >= 4 ? "rgba(129,140,248,0.06)" : "rgba(0,0,0,0.03)", borderRadius: 8, border: `1px solid ${scoreColor}20` }}>
+      <div style={{ margin: "0 16px 12px", padding: "10px 14px", background: atMeta.bg, borderRadius: 8, border: `1px solid ${atMeta.color}25` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5, flexWrap: "wrap", gap: 4 }}>
-          <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>Action Assessment</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700, color: scoreColor }}>{score}/10 — {scoreLabel}</span>
-            <ConfidencePill value={actConf} />
-          </div>
+          <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>Action Potential</span>
+          {actConf > 0 && <ConfidencePill value={actConf * 10} />}
         </div>
-        <p style={{ fontSize: 12, color: "#374151", margin: "0 0 6px", lineHeight: 1.55 }}>{ins.actionability_reason}</p>
+        <p style={{ fontSize: 12, color: "#374151", margin: "0 0 6px", lineHeight: 1.55 }}>{ins.action_description || ins.actionability_reason}</p>
         <div style={{ display: "flex", gap: 10, fontSize: 11, fontFamily: "monospace", flexWrap: "wrap" }}>
-          <span style={{ color: noteD === "sent" ? "#10b981" : "#94a3b8" }}>{noteD === "sent" ? "✓" : "·"} Note</span>
-          <span style={{ color: taskD === "sent" ? "#10b981" : "#94a3b8" }}>{taskD === "sent" ? "✓" : "—"} Task {score >= 6 ? "(≥6)" : "(<6)"}</span>
-          <span style={{ color: decisionD === "sent" ? "#10b981" : "#94a3b8" }}>{decisionD === "sent" ? "✓" : "·"} Decision {score >= 4 ? "(≥4)" : "(<4)"}</span>
+          <span style={{ color: noteD === "sent" ? "#10b981" : "#94a3b8" }}>{noteD === "sent" ? "✓" : "·"} Note (always)</span>
+          <span style={{ color: taskD === "sent" ? "#10b981" : "#94a3b8" }}>
+            {taskD === "sent" ? "✓" : actionType === "inferred_action" ? "·" : "—"}
+            {" "}Task {actionType === "inferred_action" ? "(inferred action)" : "(not applicable)"}
+          </span>
+          <span style={{ color: decisionD === "sent" ? "#10b981" : "#94a3b8" }}>
+            {decisionD === "sent" ? "✓" : actionType === "strategic_move" ? "·" : "—"}
+            {" "}Decision {actionType === "strategic_move" ? "(strategic move)" : "(not applicable)"}
+          </span>
         </div>
       </div>
 
@@ -354,11 +379,34 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
             status={taskD} url={ins.taskStatus.url} error={ins.taskStatus.error}
             debugFields={taskD === "failed" ? { "task.title": ins.assets.task.title ?? "", "task.description": ins.assets.task.description ?? "" } : undefined}
           >
-            {ins.assets.task.confidence > 0 && <ConfidencePill value={ins.assets.task.confidence} />}
+            <div style={{ display: "flex", gap: 5, marginBottom: 4, flexWrap: "wrap" }}>
+              {ins.assets.task.effort && (
+                <span style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: `${EFFORT_COLOR[ins.assets.task.effort]}20`, color: EFFORT_COLOR[ins.assets.task.effort] }}>
+                  {ins.assets.task.effort.toUpperCase()} EFFORT
+                </span>
+              )}
+              {ins.assets.task.time_horizon && (
+                <span style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: `${HORIZON_COLOR[ins.assets.task.time_horizon]}20`, color: HORIZON_COLOR[ins.assets.task.time_horizon] }}>
+                  {ins.assets.task.time_horizon.toUpperCase()}
+                </span>
+              )}
+              {ins.assets.task.confidence > 0 && <ConfidencePill value={ins.assets.task.confidence} size={10} />}
+            </div>
+            {expanded && ins.assets.task.steps?.length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                <div style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>Steps</div>
+                {ins.assets.task.steps.map((step, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, marginBottom: 3, alignItems: "flex-start" }}>
+                    <span style={{ fontSize: 11, fontFamily: "monospace", color: "#94a3b8", flexShrink: 0, minWidth: 14 }}>{i + 1}.</span>
+                    <span style={{ fontSize: 12, color: "#374151", lineHeight: 1.45 }}>{step}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </AssetRow>
         ) : (
           <div style={{ padding: "6px 10px", background: "rgba(0,0,0,0.02)", borderRadius: 7, border: "1px solid rgba(0,0,0,0.06)", fontSize: 12, color: "#94a3b8", fontFamily: "monospace" }}>
-            ☑ No task — score {score}/10 below threshold (6)
+            ☑ No task — {actionType === "strategic_move" ? "strategic move (decision record created instead)" : actionType === "no_action" ? "no action implied" : "below confidence threshold"}
           </div>
         )}
 

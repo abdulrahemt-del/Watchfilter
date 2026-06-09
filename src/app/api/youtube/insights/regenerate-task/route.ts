@@ -82,10 +82,13 @@ export async function POST(req: Request) {
   }
 
   const task: InsightTask = {
-    title:       sanitizeText(rawTask.title       ?? ""),
-    description: sanitizeText(rawTask.description ?? ""),
-    confidence:  rawTask.confidence ?? 70,
-    reason:      sanitizeText(rawTask.reason      ?? ""),
+    title:        sanitizeText(rawTask.title       ?? ""),
+    description:  sanitizeText(rawTask.description ?? ""),
+    steps:        (rawTask.steps ?? []).map((s: string) => sanitizeText(s)).filter(Boolean),
+    effort:       rawTask.effort       ?? "medium",
+    time_horizon: rawTask.time_horizon ?? "short-term",
+    confidence:   rawTask.confidence ?? 70,
+    reason:       sanitizeText(rawTask.reason      ?? ""),
   };
 
   return NextResponse.json({ task });
