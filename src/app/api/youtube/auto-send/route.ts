@@ -200,13 +200,19 @@ async function sendTask(ins: Insight, todoistKey: string): Promise<OutputStatus>
     return { status: "skipped", error: reason };
   }
 
-  const taskTitle = sanitizeText(ins.assets.task.title);
-  const taskDesc  = sanitizeText(ins.assets.task.description ?? "");
-  const insTitle  = sanitizeText(ins.title ?? "");
+  const taskTitle   = sanitizeText(ins.assets.task.title);
+  const taskDesc    = sanitizeText(ins.assets.task.description ?? "");
+  const taskReason  = sanitizeText(ins.assets.task.reason      ?? "");
+  const taskConfidence = ins.assets.task.confidence ?? 70;
+  const insTitle    = sanitizeText(ins.title ?? "");
+
+  const descParts = [taskDesc];
+  if (taskReason) descParts.push(`Why: ${taskReason}`);
+  descParts.push(`Confidence: ${taskConfidence}% | Source: ${insTitle}`);
 
   const payload = {
     content:     taskTitle || insTitle,
-    description: `${taskDesc}\n\nFrom: ${insTitle}`,
+    description: descParts.filter(Boolean).join("\n\n"),
     priority:    (ins.importance_score ?? 5) >= 8 ? 4 : (ins.importance_score ?? 5) >= 6 ? 3 : 2,
   };
   const body = JSON.stringify(payload);
@@ -260,10 +266,13 @@ async function sendContent(
     return { status: "skipped", error: "Content queue not configured (set NOTION_CONTENT_QUEUE_ID)" };
   }
 
-  const contentTitle = sanitizeText(ins.assets?.content?.title ?? "");
-  const contentAngle = sanitizeText(ins.assets?.content?.angle ?? "");
-  const insTitle     = sanitizeText(ins.title ?? "");
-  const keyQuote     = ins.key_quote ? sanitizeText(ins.key_quote) : null;
+  const contentTitle    = sanitizeText(ins.assets?.content?.title    ?? "");
+  const contentHook     = sanitizeText(ins.assets?.content?.hook     ?? "");
+  const contentAngle    = sanitizeText(ins.assets?.content?.angle    ?? "");
+  const contentAudience = sanitizeText(ins.assets?.content?.audience ?? "");
+  const contentOutline  = ins.assets?.content?.outline ?? [];
+  const insTitle        = sanitizeText(ins.title ?? "");
+  const keyQuote        = ins.key_quote ? sanitizeText(ins.key_quote) : null;
 
   const blocks: object[] = [];
 
@@ -272,9 +281,31 @@ async function sendContent(
     blocks.push(divider());
   }
 
-  blocks.push(heading3("Content Angle"));
-  blocks.push(para(sanitizeText(contentAngle || insTitle)));
-  blocks.push(divider());
+  if (contentHook) {
+    blocks.push(heading3("Hook"));
+    blocks.push(quote(contentHook));
+    blocks.push(divider());
+  }
+
+  if (contentAngle) {
+    blocks.push(heading3("Angle"));
+    blocks.push(para(contentAngle));
+    blocks.push(divider());
+  }
+
+  if (contentAudience) {
+    blocks.push(heading3("Audience"));
+    blocks.push(para(contentAudience));
+    blocks.push(divider());
+  }
+
+  if (contentOutline.length) {
+    blocks.push(heading3("Outline"));
+    contentOutline.slice(0, 6).forEach((item, i) => {
+      blocks.push(bullet(sanitizeText(`${i + 1}. ${item}`)));
+    });
+    blocks.push(divider());
+  }
 
   blocks.push(heading3("Source Insight"));
   blocks.push(para(sanitizeText(ins.what_was_discussed || insTitle)));
@@ -297,12 +328,6 @@ async function sendContent(
     blocks.push(quote(keyQuote));
   } else {
     blocks.push(para("No standout quote identified."));
-  }
-  blocks.push(divider());
-
-  if (ins.actionability_reason) {
-    blocks.push(heading3("Actionability"));
-    blocks.push(para(sanitizeText(`Score: ${ins.actionability_score ?? 0}/10 — ${ins.actionability_reason}`)));
   }
 
   const body = JSON.stringify({
@@ -358,10 +383,11 @@ async function sendDecision(
     return { status: "skipped", error: `Score ${ins.actionability_score ?? 0}/10 — below threshold for decision record` };
   }
 
-  const decTitle   = sanitizeText(ins.assets.decision.title   ?? "");
-  const decContext = sanitizeText(ins.assets.decision.context ?? "");
-  const insTitle   = sanitizeText(ins.title ?? "");
-  const scoreLabel = `Actionability: ${ins.actionability_score}/10 — ${sanitizeText(ins.actionability_reason ?? "")}`;
+  const decTitle      = sanitizeText(ins.assets.decision.title      ?? "");
+  const decContext    = sanitizeText(ins.assets.decision.context    ?? "");
+  const decRisks      = sanitizeText(ins.assets.decision.risks      ?? "");
+  const decConfidence = ins.assets.decision.confidence ?? 70;
+  const insTitle      = sanitizeText(ins.title ?? "");
 
   const blocks: object[] = [];
   if (channelTitle || videoTitle) {
@@ -369,15 +395,23 @@ async function sendDecision(
     blocks.push(para(sanitizeText([videoType, ins.category, `Importance: ${ins.importance_score}/10`].filter(Boolean).join(" · "))));
     blocks.push(divider());
   }
-  blocks.push(heading3("Insight"));
-  blocks.push(para(insTitle));
-  blocks.push(para(sanitizeText(ins.why_it_matters ?? "")));
+  blocks.push(heading3("Decision"));
+  blocks.push(quote(decTitle || insTitle));
   blocks.push(divider());
-  blocks.push(heading3("Decision Required"));
+  blocks.push(heading3("Reason"));
   blocks.push(para(decContext));
   blocks.push(divider());
-  blocks.push(heading3("Actionability Assessment"));
-  blocks.push(para(scoreLabel));
+  if (decRisks) {
+    blocks.push(heading3("Potential Risks"));
+    blocks.push(para(decRisks));
+    blocks.push(divider());
+  }
+  blocks.push(heading3("Confidence"));
+  blocks.push(para(`${decConfidence}% — Actionability score: ${ins.actionability_score}/10`));
+  blocks.push(divider());
+  blocks.push(heading3("Source Insight"));
+  blocks.push(para(insTitle));
+  blocks.push(para(sanitizeText(ins.why_it_matters ?? "")));
 
   const body = JSON.stringify({
     parent:     { database_id: dbId },

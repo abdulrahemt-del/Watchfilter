@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FeedVideo } from "@/app/api/youtube/feed/route";
-import type { Insight, VideoType } from "@/app/api/youtube/insights/route";
+import type { Insight, InsightTask, VideoType } from "@/app/api/youtube/insights/route";
 import type { OutputStatus } from "@/app/api/youtube/auto-send/route";
 
 type SendStatus = "idle" | "sending" | "sent" | "failed" | "skipped";
@@ -43,16 +43,10 @@ function DebugPanel({ label, raw }: { label: string; raw: string }) {
       </button>
       {open && (
         <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 4 }}>
-          <div><span style={{ fontSize: 8, color: "#7f1d1d", fontFamily: "monospace" }}>RAW:</span>
-            <div style={{ fontSize: 8, fontFamily: "monospace", color: "#ef4444", wordBreak: "break-all", marginTop: 1 }}>{JSON.stringify(raw)}</div>
-          </div>
-          <div><span style={{ fontSize: 8, color: "#0f172a", fontFamily: "monospace" }}>SANITIZED:</span>
-            <div style={{ fontSize: 8, fontFamily: "monospace", color: "#1e293b", wordBreak: "break-all", marginTop: 1 }}>{JSON.stringify(sanitized)}</div>
-          </div>
+          <div style={{ fontSize: 8, fontFamily: "monospace", color: "#ef4444", wordBreak: "break-all" }}>{JSON.stringify(raw)}</div>
+          <div style={{ fontSize: 8, fontFamily: "monospace", color: "#1e293b", wordBreak: "break-all" }}>sanitized: {JSON.stringify(sanitized)}</div>
           {hits.length > 0
-            ? <div><span style={{ fontSize: 8, color: "#f87171", fontFamily: "monospace" }}>SUSPICIOUS CHARS ({hits.length}):</span>
-                <div style={{ fontSize: 8, fontFamily: "monospace", color: "#ef4444", marginTop: 1 }}>{hits.slice(0, 8).map(h => `index ${h.i}: code ${h.code}`).join(" | ")}</div>
-              </div>
+            ? <div style={{ fontSize: 8, fontFamily: "monospace", color: "#ef4444" }}>Suspicious: {hits.slice(0, 5).map(h => `i=${h.i} code=${h.code}`).join(", ")}</div>
             : <div style={{ fontSize: 8, fontFamily: "monospace", color: "#10b981" }}>No suspicious chars</div>
           }
         </div>
@@ -74,15 +68,29 @@ const SCORE_LABEL: Record<number, string> = {
   6: "Action implied", 7: "Action recommended", 8: "High-value task", 9: "High-priority task", 10: "Immediate action",
 };
 
+// Suppress unused type warning — VideoType is re-exported for use by parent components
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _VideoType = VideoType;
+
 function clockNow() { return new Date().toLocaleTimeString("en-US", { hour12: false }); }
 function toUIStatus(s: OutputStatus): UIStatus { return { status: s.status as SendStatus, url: s.url, error: s.error }; }
 
+function ConfidencePill({ value, size = 11 }: { value: number; size?: number }) {
+  const color = value >= 85 ? "#10b981" : value >= 70 ? "#f59e0b" : "#94a3b8";
+  return (
+    <span style={{ fontSize: size, fontFamily: "monospace", fontWeight: 700, color, background: `${color}18`, padding: "1px 6px", borderRadius: 4 }}>
+      {value}% conf
+    </span>
+  );
+}
+
 // ── Asset row ──────────────────────────────────────────────────────────────────
 
-function AssetRow({ icon, label, title, status, url, error, debugFields }: {
-  icon: string; label: string; title: string;
+function AssetRow({ icon, label, title, subtitle, status, url, error, debugFields, children }: {
+  icon: string; label: string; title: string; subtitle?: string;
   status: SendStatus; url?: string; error?: string;
   debugFields?: Record<string, string>;
+  children?: React.ReactNode;
 }) {
   const isSent    = status === "sent";
   const isFailed  = status === "failed";
@@ -101,11 +109,17 @@ function AssetRow({ icon, label, title, status, url, error, debugFields }: {
           {label}
         </div>
         {title && (
-          <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", marginBottom: 5, lineHeight: 1.4 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", marginBottom: 4, lineHeight: 1.4 }}>
             {title}
           </div>
         )}
-        <div>
+        {subtitle && (
+          <div style={{ fontSize: 12, color: "#374151", marginBottom: 5, lineHeight: 1.55, fontStyle: "italic" }}>
+            {subtitle}
+          </div>
+        )}
+        {children}
+        <div style={{ marginTop: 5 }}>
           {isIdle    && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>Pending sync</span>}
           {isSending && <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#818cf8", fontFamily: "monospace" }}><span className="spinner" style={{ width: 7, height: 7, borderWidth: 1.5 }} />Saving…</span>}
           {isSent && (
@@ -135,6 +149,81 @@ function AssetRow({ icon, label, title, status, url, error, debugFields }: {
   );
 }
 
+// ── "Did we miss?" panel ───────────────────────────────────────────────────────
+
+function MissedActionPanel({ ins, onAlternativeTask }: {
+  ins: InsightState;
+  onAlternativeTask: (task: InsightTask) => void;
+}) {
+  const [state, setState] = useState<"idle" | "loading" | "done" | "positive">("idle");
+  const [altTask, setAltTask] = useState<InsightTask | null>(null);
+
+  async function generateAlternative() {
+    setState("loading");
+    try {
+      const res = await fetch("/api/youtube/insights/regenerate-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ insight: ins, currentTaskTitle: ins.assets.task?.title ?? "" }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { task?: InsightTask };
+      if (data.task) {
+        setAltTask(data.task);
+        setState("done");
+        onAlternativeTask(data.task);
+      } else {
+        setState("idle");
+      }
+    } catch {
+      setState("idle");
+    }
+  }
+
+  if (state === "positive") {
+    return <div style={{ fontSize: 11, fontFamily: "monospace", color: "#10b981" }}>✓ Good to go</div>;
+  }
+
+  return (
+    <div style={{ padding: "8px 12px", background: "rgba(0,0,0,0.02)", borderRadius: 7, border: "1px solid rgba(0,0,0,0.06)" }}>
+      {state === "idle" && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace" }}>Did we miss a useful action?</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={generateAlternative} style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700, color: "#818cf8", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 5, padding: "3px 10px", cursor: "pointer" }}>
+              Generate another task
+            </button>
+            <button onClick={() => setState("positive")} style={{ fontSize: 11, fontFamily: "monospace", color: "#6b7280", background: "none", border: "1px solid rgba(0,0,0,0.12)", borderRadius: 5, padding: "3px 10px", cursor: "pointer" }}>
+              Looks good
+            </button>
+          </div>
+        </div>
+      )}
+      {state === "loading" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#818cf8", fontFamily: "monospace" }}>
+          <span className="spinner" style={{ width: 8, height: 8, borderWidth: 1.5 }} />
+          Generating alternative task…
+        </div>
+      )}
+      {state === "done" && altTask && (
+        <div>
+          <div style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#818cf8", marginBottom: 5 }}>Alternative task:</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", marginBottom: 4, lineHeight: 1.4 }}>{altTask.title}</div>
+          {altTask.description && (
+            <div style={{ fontSize: 12, color: "#374151", marginBottom: 6, lineHeight: 1.5 }}>{altTask.description}</div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <ConfidencePill value={altTask.confidence ?? 70} />
+            <button onClick={generateAlternative} style={{ fontSize: 11, fontFamily: "monospace", color: "#6b7280", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
+              Try another
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Insight card ───────────────────────────────────────────────────────────────
 
 function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: {
@@ -143,11 +232,11 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
   autoSend: boolean;
   sending:  boolean;
   onSend:   () => void;
-  onGenerateTask: () => void;
+  onGenerateTask: (task: InsightTask) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const catColor   = CAT_COLOR[ins.category] ?? "#94a3b8";
-  const score      = ins.actionability_score ?? 0;
+  const catColor  = CAT_COLOR[ins.category] ?? "#94a3b8";
+  const score     = ins.actionability_score ?? 0;
   const scoreLabel = SCORE_LABEL[score] ?? "Unknown";
   const taskSent   = ins.taskStatus.status === "sent";
   const taskSkipped = ins.taskStatus.status === "skipped";
@@ -157,13 +246,11 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
   const contentD  = ins.contentStatus.status;
   const decisionD = ins.decisionStatus.status;
 
-  const delivered = [noteD, taskD, contentD, decisionD].filter(s => s === "sent" || s === "skipped").length;
-  const total     = 4;
-  const allDone   = delivered === total;
-
-  const anyIdle = noteD === "idle" || taskD === "idle" || contentD === "idle" || decisionD === "idle";
-
-  const scoreColor = score >= 7 ? "#f59e0b" : score >= 4 ? "#818cf8" : "#94a3b8";
+  const delivered   = [noteD, taskD, contentD, decisionD].filter(s => s === "sent" || s === "skipped").length;
+  const allDone     = delivered === 4;
+  const anyIdle     = [noteD, taskD, contentD, decisionD].some(s => s === "idle");
+  const scoreColor  = score >= 7 ? "#f59e0b" : score >= 4 ? "#818cf8" : "#94a3b8";
+  const actConf     = ins.actionability_confidence ?? 70;
 
   return (
     <div style={{
@@ -189,31 +276,21 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
             <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: `${catColor}20`, color: catColor }}>
               {ins.category}
             </span>
-            <span style={{ fontSize: 11, color: "#64748b", fontFamily: "monospace" }}>
-              Signal {ins.importance_score}/10
-            </span>
+            <span style={{ fontSize: 11, color: "#64748b", fontFamily: "monospace" }}>Signal {ins.importance_score}/10</span>
           </div>
-          <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 7px", lineHeight: 1.35 }}>
-            {ins.title}
-          </p>
-          <p style={{ fontSize: 13, color: "#374151", margin: 0, lineHeight: 1.6 }}>
-            {ins.why_it_matters}
-          </p>
+          <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 7px", lineHeight: 1.35 }}>{ins.title}</p>
+          <p style={{ fontSize: 13, color: "#374151", margin: 0, lineHeight: 1.6 }}>{ins.why_it_matters}</p>
         </div>
         <button onClick={() => setExpanded(p => !p)} style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#94a3b8", paddingTop: 4 }}>
           {expanded ? "▲" : "▼"}
         </button>
       </div>
 
-      {/* Expanded: what was discussed */}
+      {/* Expanded detail */}
       {expanded && (
         <div style={{ padding: "0 16px 14px", borderTop: "1px solid rgba(0,0,0,0.05)" }}>
-          <p style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", margin: "12px 0 5px" }}>
-            What Was Said
-          </p>
-          <p style={{ fontSize: 13, color: "#374151", margin: 0, lineHeight: 1.7 }}>
-            {ins.what_was_discussed}
-          </p>
+          <p style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", margin: "12px 0 5px" }}>What Was Said</p>
+          <p style={{ fontSize: 13, color: "#374151", margin: 0, lineHeight: 1.7 }}>{ins.what_was_discussed}</p>
           {ins.key_quote && (
             <blockquote style={{ margin: "10px 0 0", padding: "8px 12px", borderLeft: "3px solid #e5e7eb", color: "#6b7280", fontSize: 13, fontStyle: "italic", lineHeight: 1.6 }}>
               "{ins.key_quote}"
@@ -221,9 +298,7 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
           )}
           {ins.supporting_points?.length > 0 && (
             <>
-              <p style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", margin: "12px 0 5px" }}>
-                Supporting Evidence
-              </p>
+              <p style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", margin: "12px 0 5px" }}>Supporting Evidence</p>
               <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
                 {ins.supporting_points.map((pt, i) => (
                   <li key={i} style={{ fontSize: 13, color: "#374151", lineHeight: 1.55 }}>{pt}</li>
@@ -236,83 +311,97 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
 
       {/* Action Assessment */}
       <div style={{ margin: "0 16px 12px", padding: "10px 14px", background: score >= 6 ? "rgba(245,158,11,0.06)" : score >= 4 ? "rgba(129,140,248,0.06)" : "rgba(0,0,0,0.03)", borderRadius: 8, border: `1px solid ${scoreColor}20` }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            Action Assessment
-          </span>
-          <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700, color: scoreColor }}>
-            {score}/10 — {scoreLabel}
-          </span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5, flexWrap: "wrap", gap: 4 }}>
+          <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>Action Assessment</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700, color: scoreColor }}>{score}/10 — {scoreLabel}</span>
+            <ConfidencePill value={actConf} />
+          </div>
         </div>
-        <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px", lineHeight: 1.5 }}>
-          {ins.actionability_reason}
-        </p>
-        <div style={{ display: "flex", gap: 12, fontSize: 11, fontFamily: "monospace" }}>
-          <span style={{ color: noteD === "sent" ? "#10b981" : "#94a3b8" }}>
-            {noteD === "sent" ? "✓" : "·"} Strategic note
-          </span>
-          <span style={{ color: taskD === "sent" ? "#10b981" : taskD === "skipped" ? "#94a3b8" : "#94a3b8" }}>
-            {taskD === "sent" ? "✓" : "—"} Task {score >= 6 ? "(score ≥ 6)" : "(score < 6, skipped)"}
-          </span>
-          <span style={{ color: decisionD === "sent" ? "#10b981" : "#94a3b8" }}>
-            {decisionD === "sent" ? "✓" : "·"} Decision record {score >= 4 ? "" : "(score < 4, skipped)"}
-          </span>
+        <p style={{ fontSize: 12, color: "#374151", margin: "0 0 6px", lineHeight: 1.55 }}>{ins.actionability_reason}</p>
+        <div style={{ display: "flex", gap: 10, fontSize: 11, fontFamily: "monospace", flexWrap: "wrap" }}>
+          <span style={{ color: noteD === "sent" ? "#10b981" : "#94a3b8" }}>{noteD === "sent" ? "✓" : "·"} Note</span>
+          <span style={{ color: taskD === "sent" ? "#10b981" : "#94a3b8" }}>{taskD === "sent" ? "✓" : "—"} Task {score >= 6 ? "(≥6)" : "(<6)"}</span>
+          <span style={{ color: decisionD === "sent" ? "#10b981" : "#94a3b8" }}>{decisionD === "sent" ? "✓" : "·"} Decision {score >= 4 ? "(≥4)" : "(<4)"}</span>
         </div>
       </div>
 
-      {/* Assets section */}
+      {/* Assets */}
       <div style={{ borderTop: "1px solid rgba(0,0,0,0.05)", padding: "8px 16px 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-          Assets Created
-        </span>
+        <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em" }}>Assets Created</span>
         {allDone && (
           <span style={{ fontSize: 11, fontFamily: "monospace", color: "#10b981", fontWeight: 700 }}>
             {[noteD, taskD, contentD, decisionD].filter(s => s === "sent").length} delivered
           </span>
         )}
       </div>
-      <div style={{ padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ padding: "4px 14px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+
         <AssetRow
           icon="📝" label="Strategic Note → Notion"
           title={ins.assets.note.title}
           status={noteD} url={ins.noteStatus.url} error={ins.noteStatus.error}
           debugFields={noteD === "failed" ? { "note.title": ins.assets.note.title ?? "", "note.content": ins.assets.note.content ?? "" } : undefined}
-        />
-        {(ins.assets.task || taskD !== "skipped") && (
+        >
+          {ins.assets.note.confidence > 0 && <ConfidencePill value={ins.assets.note.confidence} />}
+        </AssetRow>
+
+        {ins.assets.task ? (
           <AssetRow
             icon="☑" label="Action Task → Todoist"
-            title={ins.assets.task?.title ?? ""}
+            title={ins.assets.task.title}
+            subtitle={ins.assets.task.reason || undefined}
             status={taskD} url={ins.taskStatus.url} error={ins.taskStatus.error}
-            debugFields={taskD === "failed" ? { "task.title": ins.assets.task?.title ?? "", "task.description": ins.assets.task?.description ?? "" } : undefined}
-          />
-        )}
-        {taskSkipped && !taskSent && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 10px", background: "rgba(0,0,0,0.02)", borderRadius: 7, border: "1px solid rgba(0,0,0,0.06)" }}>
-            <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "monospace" }}>☑ No task — {score}/10 below threshold</span>
-            <button
-              onClick={onGenerateTask}
-              style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700, color: "#818cf8", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 5, padding: "3px 10px", cursor: "pointer", marginLeft: "auto" }}
-            >
-              Generate Task
-            </button>
+            debugFields={taskD === "failed" ? { "task.title": ins.assets.task.title ?? "", "task.description": ins.assets.task.description ?? "" } : undefined}
+          >
+            {ins.assets.task.confidence > 0 && <ConfidencePill value={ins.assets.task.confidence} />}
+          </AssetRow>
+        ) : (
+          <div style={{ padding: "6px 10px", background: "rgba(0,0,0,0.02)", borderRadius: 7, border: "1px solid rgba(0,0,0,0.06)", fontSize: 12, color: "#94a3b8", fontFamily: "monospace" }}>
+            ☑ No task — score {score}/10 below threshold (6)
           </div>
         )}
+
         <AssetRow
           icon="🚀" label="Content Opportunity → Queue"
           title={ins.assets.content.title}
+          subtitle={ins.assets.content.hook || undefined}
           status={contentD} url={ins.contentStatus.url} error={ins.contentStatus.error}
           debugFields={contentD === "failed" ? { "content.title": ins.assets.content.title ?? "", "content.angle": ins.assets.content.angle ?? "" } : undefined}
-        />
+        >
+          {expanded && ins.assets.content.outline?.length > 0 && (
+            <div style={{ marginTop: 6, marginBottom: 2 }}>
+              <div style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Outline</div>
+              {ins.assets.content.outline.map((item, i) => (
+                <div key={i} style={{ fontSize: 12, color: "#374151", marginBottom: 2, lineHeight: 1.4 }}>{i + 1}. {item}</div>
+              ))}
+              {ins.assets.content.audience && (
+                <div style={{ marginTop: 5, fontSize: 11, fontFamily: "monospace", color: "#6b7280" }}>Audience: {ins.assets.content.audience}</div>
+              )}
+            </div>
+          )}
+        </AssetRow>
+
         {ins.assets.decision && (
           <AssetRow
             icon="🧭" label="Decision Record → Notion"
             title={ins.assets.decision.title}
+            subtitle={ins.assets.decision.risks ? `Risk: ${ins.assets.decision.risks}` : undefined}
             status={decisionD} url={ins.decisionStatus.url} error={ins.decisionStatus.error}
-          />
+          >
+            {ins.assets.decision.confidence > 0 && <ConfidencePill value={ins.assets.decision.confidence} />}
+          </AssetRow>
         )}
       </div>
 
-      {/* Per-card send button (auto-send off) */}
+      {/* Missed action detection */}
+      {(taskSent || taskSkipped) && (
+        <div style={{ padding: "0 14px 12px" }}>
+          <MissedActionPanel ins={ins} onAlternativeTask={onGenerateTask} />
+        </div>
+      )}
+
+      {/* Per-card send (auto-send off) */}
       {!autoSend && anyIdle && !sending && (
         <div style={{ padding: "0 14px 14px" }}>
           <button
@@ -350,12 +439,11 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
   const [log,      setLog]      = useState<LogEntry[]>([]);
   const [showLog,  setShowLog]  = useState(false);
   const [elapsed,  setElapsed]  = useState<number | null>(null);
-  const logId   = useRef(0);
-  const startT  = useRef<number | null>(null);
+  const logId  = useRef(0);
+  const startT = useRef<number | null>(null);
 
   function addLog(msg: string, ok?: boolean) {
-    const entry: LogEntry = { id: logId.current++, ts: clockNow(), msg, ok };
-    setLog(prev => [...prev, entry]);
+    setLog(prev => [...prev, { id: logId.current++, ts: clockNow(), msg, ok }]);
   }
 
   useEffect(() => {
@@ -367,8 +455,7 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
       contentStatus:  { status: "idle" },
       decisionStatus: { status: "idle" },
     })));
-    const n = cachedInsights.length;
-    addLog(`${n} insight${n !== 1 ? "s" : ""} extracted`, true);
+    addLog(`${cachedInsights.length} insight${cachedInsights.length !== 1 ? "s" : ""} extracted`, true);
     if (autoSend) addLog("Auto-Send ON — routing assets…");
   }, [cachedInsights]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -413,7 +500,6 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ insights: idxs.map(i => insights[i]), videoTitle: video?.title, channelTitle: video?.channelTitle, videoType }),
       });
-
       addLog(`Response: HTTP ${res.status}`, res.ok);
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text().catch(() => "(no body)")}`);
 
@@ -423,27 +509,23 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
 
       if (data.results) {
         const updates: Record<number, Pick<InsightState, "noteStatus" | "taskStatus" | "contentStatus" | "decisionStatus">> = {};
-
         data.results.forEach(r => {
           const realIdx  = idxs[r.index] ?? r.index;
           const insTitle = insights[realIdx]?.title ?? `Insight ${realIdx + 1}`;
-
           updates[realIdx] = {
             noteStatus:     toUIStatus(r.noteStatus),
             taskStatus:     toUIStatus(r.taskStatus),
             contentStatus:  toUIStatus(r.contentStatus),
             decisionStatus: toUIStatus(r.decisionStatus),
           };
-
-          if (r.noteStatus.status    === "sent") addLog(`📝 Notion ✓  "${insTitle}"`, true);
-          if (r.taskStatus.status    === "sent") addLog(`☑ Todoist ✓ "${insTitle}"`, true);
-          if (r.contentStatus.status === "sent") addLog(`🚀 Queue ✓   "${insTitle}"`, true);
+          if (r.noteStatus.status     === "sent") addLog(`📝 Note ✓     "${insTitle}"`, true);
+          if (r.taskStatus.status     === "sent") addLog(`☑ Task ✓      "${insTitle}"`, true);
+          if (r.contentStatus.status  === "sent") addLog(`🚀 Content ✓  "${insTitle}"`, true);
           if (r.decisionStatus.status === "sent") addLog(`🧭 Decision ✓ "${insTitle}"`, true);
-          if (r.noteStatus.status    === "failed") addLog(`Notion ✕  "${insTitle}": ${r.noteStatus.error ?? "unknown"}`, false);
-          if (r.taskStatus.status    === "failed") addLog(`Todoist ✕ "${insTitle}": ${r.taskStatus.error ?? "unknown"}`, false);
-          if (r.contentStatus.status === "failed") addLog(`Queue ✕   "${insTitle}": ${r.contentStatus.error ?? "unknown"}`, false);
+          if (r.noteStatus.status     === "failed") addLog(`Note ✕ "${insTitle}": ${r.noteStatus.error ?? "?"}`, false);
+          if (r.taskStatus.status     === "failed") addLog(`Task ✕ "${insTitle}": ${r.taskStatus.error ?? "?"}`, false);
+          if (r.contentStatus.status  === "failed") addLog(`Content ✕ "${insTitle}": ${r.contentStatus.error ?? "?"}`, false);
         });
-
         setInsights(prev => prev.map((ins, i) => updates[i] ? { ...ins, ...updates[i] } : ins));
         if (startT.current) setElapsed((Date.now() - startT.current) / 1000);
       }
@@ -458,32 +540,28 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
     }
   }
 
-  // Override a skipped task for a specific insight
-  async function overrideTask(insightIdx: number) {
-    const ins = insights[insightIdx];
-    if (!ins || !video) return;
-    addLog(`Generating task for insight ${insightIdx + 1}…`);
-    // For now just log — future: call a dedicated override API
-    console.log("[override-task] User requested task for low-score insight:", ins.title);
+  function handleAlternativeTask(insightIdx: number, task: InsightTask) {
+    setInsights(prev => prev.map((ins, i) =>
+      i === insightIdx ? { ...ins, assets: { ...ins.assets, task } } : ins
+    ));
   }
 
   if (!isOpen || !video) return null;
 
-  const totalInsights  = insights.length;
-  const sentNotes      = insights.filter(i => i.noteStatus.status    === "sent").length;
-  const sentTasks      = insights.filter(i => i.taskStatus.status    === "sent").length;
-  const sentContent    = insights.filter(i => i.contentStatus.status === "sent").length;
-  const sentDecisions  = insights.filter(i => i.decisionStatus.status === "sent").length;
-  const totalSent      = sentNotes + sentTasks + sentContent + sentDecisions;
+  const totalInsights = insights.length;
+  const sentNotes     = insights.filter(i => i.noteStatus.status    === "sent").length;
+  const sentTasks     = insights.filter(i => i.taskStatus.status    === "sent").length;
+  const sentContent   = insights.filter(i => i.contentStatus.status === "sent").length;
+  const sentDecisions = insights.filter(i => i.decisionStatus.status === "sent").length;
+  const totalSent     = sentNotes + sentTasks + sentContent + sentDecisions;
 
   const anySending = insights.some(i =>
     i.noteStatus.status === "sending" || i.taskStatus.status === "sending" ||
     i.contentStatus.status === "sending" || i.decisionStatus.status === "sending"
   );
-  const allDelivered = totalInsights > 0 && insights.every(i => {
-    const statuses = [i.noteStatus.status, i.taskStatus.status, i.contentStatus.status, i.decisionStatus.status];
-    return statuses.every(s => s === "sent" || s === "skipped");
-  });
+  const allDelivered = totalInsights > 0 && insights.every(i =>
+    [i.noteStatus.status, i.taskStatus.status, i.contentStatus.status, i.decisionStatus.status].every(s => s === "sent" || s === "skipped")
+  );
   const anyIdle = insights.some(i =>
     i.noteStatus.status === "idle" || i.taskStatus.status === "idle" ||
     i.contentStatus.status === "idle" || i.decisionStatus.status === "idle"
@@ -494,7 +572,6 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
       <div className="fluff-drawer__overlay" onClick={onClose} />
       <div className="fluff-drawer">
 
-        {/* Header */}
         <div className="fluff-drawer__header">
           <div>
             <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em" }}>
@@ -507,7 +584,6 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
 
         <div className="fluff-drawer__body" style={{ padding: 0 }}>
 
-          {/* Video title */}
           <div style={{ padding: "4px 16px 12px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
             <p style={{ fontSize: 13, color: "#374151", margin: 0, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {video.title}
@@ -521,9 +597,7 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
                 <div style={{ position: "absolute", top: 2, left: autoSend ? 16 : 2, width: 15, height: 15, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)", transition: "left 0.2s" }} />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 800, color: autoSend ? "#10b981" : "#64748b" }}>
-                  AUTO-SEND {autoSend ? "ON" : "OFF"}
-                </div>
+                <div style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 800, color: autoSend ? "#10b981" : "#64748b" }}>AUTO-SEND {autoSend ? "ON" : "OFF"}</div>
                 <div style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace", marginTop: 1 }}>
                   {autoSend ? "Notes · Tasks (score ≥ 6) · Content · Decisions (score ≥ 4)" : "Click to auto-route assets to your workspace"}
                 </div>
@@ -532,7 +606,7 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
             </div>
           </div>
 
-          {/* Execution Complete banner */}
+          {/* Execution Complete */}
           {allDelivered && (
             <div style={{ margin: "12px 14px", padding: "18px 20px", background: "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.03))", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 12 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -542,9 +616,9 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "5px 20px", marginBottom: 12 }}>
                 <span style={{ fontSize: 13, color: "#374151", fontFamily: "monospace" }}>Insights Extracted</span>
                 <span style={{ fontSize: 13, color: "#0f172a", fontFamily: "monospace", fontWeight: 700 }}>{totalInsights}</span>
-                {sentNotes > 0 && <><span style={{ fontSize: 13, color: "#374151", fontFamily: "monospace" }}>Strategic Notes → Notion</span><span style={{ fontSize: 13, color: "#6ee7b7", fontFamily: "monospace", fontWeight: 700 }}>{sentNotes}</span></>}
-                {sentTasks > 0 && <><span style={{ fontSize: 13, color: "#374151", fontFamily: "monospace" }}>Tasks → Todoist</span><span style={{ fontSize: 13, color: "#a5b4fc", fontFamily: "monospace", fontWeight: 700 }}>{sentTasks}</span></>}
-                {sentContent > 0 && <><span style={{ fontSize: 13, color: "#374151", fontFamily: "monospace" }}>Content → Queue</span><span style={{ fontSize: 13, color: "#f9a8d4", fontFamily: "monospace", fontWeight: 700 }}>{sentContent}</span></>}
+                {sentNotes > 0     && <><span style={{ fontSize: 13, color: "#374151", fontFamily: "monospace" }}>Strategic Notes → Notion</span><span style={{ fontSize: 13, color: "#6ee7b7", fontFamily: "monospace", fontWeight: 700 }}>{sentNotes}</span></>}
+                {sentTasks > 0     && <><span style={{ fontSize: 13, color: "#374151", fontFamily: "monospace" }}>Tasks → Todoist</span><span style={{ fontSize: 13, color: "#a5b4fc", fontFamily: "monospace", fontWeight: 700 }}>{sentTasks}</span></>}
+                {sentContent > 0   && <><span style={{ fontSize: 13, color: "#374151", fontFamily: "monospace" }}>Content → Queue</span><span style={{ fontSize: 13, color: "#f9a8d4", fontFamily: "monospace", fontWeight: 700 }}>{sentContent}</span></>}
                 {sentDecisions > 0 && <><span style={{ fontSize: 13, color: "#374151", fontFamily: "monospace" }}>Decision Records → Notion</span><span style={{ fontSize: 13, color: "#fde68a", fontFamily: "monospace", fontWeight: 700 }}>{sentDecisions}</span></>}
               </div>
               <div style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace", borderTop: "1px solid rgba(16,185,129,0.15)", paddingTop: 10 }}>
@@ -553,7 +627,7 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
             </div>
           )}
 
-          {/* In-progress banner */}
+          {/* In-progress */}
           {anySending && !allDelivered && (
             <div style={{ margin: "12px 14px", padding: "12px 16px", background: "rgba(129,140,248,0.05)", border: "1px solid rgba(129,140,248,0.15)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
               <span className="spinner" style={{ width: 12, height: 12, borderWidth: 1.5 }} />
@@ -564,7 +638,6 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
             </div>
           )}
 
-          {/* Loading */}
           {loading && (
             <div style={{ padding: "20px 16px", display: "flex", alignItems: "center", gap: 12 }}>
               <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
@@ -575,14 +648,12 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
             </div>
           )}
 
-          {/* Error */}
           {error && (
             <div style={{ margin: "12px 14px", padding: "10px 14px", background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 8 }}>
               <span style={{ fontSize: 13, color: "#f87171", fontFamily: "monospace" }}>{error}</span>
             </div>
           )}
 
-          {/* Insights list */}
           {!loading && insights.length > 0 && (
             <div>
               <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -600,14 +671,13 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
                 {insights.map((ins, i) => (
                   <InsightCard key={i} ins={ins} index={i} autoSend={autoSend} sending={sending}
                     onSend={() => void runSend([i])}
-                    onGenerateTask={() => overrideTask(i)}
+                    onGenerateTask={(task) => handleAlternativeTask(i, task)}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Activity Log */}
           {log.length > 0 && (
             <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", padding: "0 16px 16px" }}>
               <button onClick={() => setShowLog(p => !p)} style={{ width: "100%", textAlign: "left", padding: "8px 0", fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
@@ -628,7 +698,6 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
               )}
             </div>
           )}
-
         </div>
       </div>
     </>
