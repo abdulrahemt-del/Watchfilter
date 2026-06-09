@@ -15,20 +15,23 @@ function db() {
 interface WaitlistRow   { email: string; created_at: string }
 interface TeamRow       { email: string; company: string | null; team_size: string; created_at: string }
 interface BetaEventRow  { event: string; n: number }
+interface SignupRow     { user_id: string; created_at: string }
 
 export default async function AdminWaitlistPage() {
   const session = await getServerSession(authOptions);
   if (session?.user?.email !== ADMIN_EMAIL) redirect("/");
 
   const c = db();
-  const [waitlistRes, teamRes, betaRes] = await Promise.all([
+  const [waitlistRes, teamRes, betaRes, signupsRes] = await Promise.all([
     c.execute(`SELECT email, created_at FROM waitlist ORDER BY created_at DESC`),
     c.execute(`SELECT email, company, team_size, created_at FROM team_workspace_waitlist ORDER BY created_at DESC`),
     c.execute(`SELECT event, COUNT(*) as n FROM beta_events GROUP BY event`),
+    c.execute(`SELECT user_id, created_at FROM beta_events WHERE event = 'signup' ORDER BY created_at DESC`),
   ]);
 
   const waitlist  = waitlistRes.rows  as unknown as WaitlistRow[];
   const team      = teamRes.rows      as unknown as TeamRow[];
+  const signups   = signupsRes.rows   as unknown as SignupRow[];
   const betaMap   = Object.fromEntries((betaRes.rows as unknown as BetaEventRow[]).map(r => [r.event, Number(r.n)]));
 
   function fmt(iso: string) {
@@ -65,6 +68,35 @@ export default async function AdminWaitlistPage() {
               <div style={{ fontSize: 11, color: "#475569", fontFamily: "monospace", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 6 }}>{s.label}</div>
             </div>
           ))}
+        </div>
+
+        {/* Signed-up users */}
+        <div style={{ marginBottom: "2rem" }}>
+          <h2 style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", margin: "0 0 12px" }}>
+            Signed Up (Google) — {signups.length} {signups.length === 1 ? "account" : "accounts"}
+          </h2>
+          <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden" }}>
+            {signups.length === 0 ? (
+              <div style={{ padding: "2rem", textAlign: "center", color: "#334155", fontSize: 13, fontFamily: "monospace" }}>No signups yet</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+                    <th style={{ padding: "10px 16px", textAlign: "left", fontSize: 10, fontFamily: "monospace", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>Email / ID</th>
+                    <th style={{ padding: "10px 16px", textAlign: "right", fontSize: 10, fontFamily: "monospace", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>Signed Up</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {signups.map((row, i) => (
+                    <tr key={i} style={{ borderBottom: i < signups.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                      <td style={{ padding: "11px 16px", fontSize: 13, color: "#f1f5f9", fontFamily: "monospace" }}>{row.user_id}</td>
+                      <td style={{ padding: "11px 16px", fontSize: 11, color: "#475569", fontFamily: "monospace", textAlign: "right" }}>{fmt(row.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
 
         {/* Waitlist table */}
