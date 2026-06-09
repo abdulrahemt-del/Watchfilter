@@ -5102,7 +5102,7 @@ to {
 .fluff-drawer__section-title {
   text-transform:uppercase;
   letter-spacing:.07em;
-  color:var(--muted);
+  color:var(--text);
   margin:0;
   font-size:.65rem;
   font-weight:700

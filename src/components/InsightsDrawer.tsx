@@ -60,7 +60,7 @@ function DebugPanel({ label, raw }: { label: string; raw: string }) {
             <div style={{ fontSize: 8, fontFamily: "monospace", color: "#ef4444", wordBreak: "break-all", marginTop: 1 }}>{JSON.stringify(raw)}</div>
           </div>
           <div>
-            <span style={{ fontSize: 8, color: "#334155", fontFamily: "monospace" }}>SANITIZED:</span>
+            <span style={{ fontSize: 8, color: "#0f172a", fontFamily: "monospace" }}>SANITIZED:</span>
             <div style={{ fontSize: 8, fontFamily: "monospace", color: "#1e293b", wordBreak: "break-all", marginTop: 1 }}>{JSON.stringify(sanitized)}</div>
           </div>
           {hits.length > 0 ? (
@@ -126,38 +126,38 @@ function AssetRow({ icon, label, title, status, url, error, debugFields }: {
       <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 9, fontFamily: "monospace", fontWeight: 800,
-          color: "#334155", textTransform: "uppercase", letterSpacing: "0.08em",
+          fontSize: 11, fontFamily: "monospace", fontWeight: 800,
+          color: "#0f172a", textTransform: "uppercase", letterSpacing: "0.08em",
           marginBottom: 2,
         }}>
           {label}
         </div>
         {title && (
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 4, lineHeight: 1.35 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", marginBottom: 4, lineHeight: 1.35 }}>
             {title}
           </div>
         )}
         <div>
           {isIdle && (
-            <span style={{ fontSize: 9, color: "#334155", fontFamily: "monospace" }}>Pending sync</span>
+            <span style={{ fontSize: 11, color: "#0f172a", fontFamily: "monospace" }}>Pending sync</span>
           )}
           {isSending && (
-            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, color: "#818cf8", fontFamily: "monospace" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#818cf8", fontFamily: "monospace" }}>
               <span className="spinner" style={{ width: 7, height: 7, borderWidth: 1.5 }} />
               Saving…
             </span>
           )}
           {isSent && (
-            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, color: "#10b981", fontFamily: "monospace", fontWeight: 700 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#10b981", fontFamily: "monospace", fontWeight: 700 }}>
               ✓ Delivered
               {url && (
-                <a href={url} target="_blank" rel="noreferrer" style={{ color: "#334155", textDecoration: "none", marginLeft: 2 }}>↗</a>
+                <a href={url} target="_blank" rel="noreferrer" style={{ color: "#0f172a", textDecoration: "none", marginLeft: 2 }}>↗</a>
               )}
             </span>
           )}
           {isFailed && (
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <span style={{ fontSize: 9, color: "#f87171", fontFamily: "monospace" }}>✕ Sync failed</span>
+              <span style={{ fontSize: 11, color: "#f87171", fontFamily: "monospace" }}>✕ Sync failed</span>
               {error && <span style={{ fontSize: 8, color: "#7f1d1d", fontFamily: "monospace", wordBreak: "break-word" }}>{error}</span>}
               {debugFields && Object.entries(debugFields).map(([k, v]) => (
                 <DebugPanel key={k} label={k} raw={v} />
@@ -165,7 +165,9 @@ function AssetRow({ icon, label, title, status, url, error, debugFields }: {
             </div>
           )}
           {isSkipped && (
-            <span style={{ fontSize: 9, color: "#1e293b", fontFamily: "monospace" }}>Not configured</span>
+            <span style={{ fontSize: 13, color: "#64748b", fontFamily: "monospace" }}>
+              {error?.startsWith("Informational") ? "No action — informational only" : "Not configured"}
+            </span>
           )}
         </div>
       </div>
@@ -207,7 +209,7 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
           flexShrink: 0, width: 22, height: 22, borderRadius: 6,
           background: allDelivered ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.05)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 10, fontFamily: "monospace", fontWeight: 800,
+          fontSize: 12, fontFamily: "monospace", fontWeight: 800,
           color: allDelivered ? "#10b981" : "#475569",
         }}>
           {allDelivered ? "✓" : index + 1}
@@ -215,26 +217,26 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5, flexWrap: "wrap" }}>
             <span style={{
-              fontSize: 9, fontFamily: "monospace", fontWeight: 700,
+              fontSize: 11, fontFamily: "monospace", fontWeight: 700,
               padding: "1px 6px", borderRadius: 3,
               background: `${catColor}18`, color: catColor,
             }}>
               {ins.category}
             </span>
-            <span style={{ fontSize: 9, color: "#475569", fontFamily: "monospace" }}>
+            <span style={{ fontSize: 11, color: "#0f172a", fontFamily: "monospace" }}>
               Signal {ins.importance}/10
             </span>
           </div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", margin: "0 0 6px", lineHeight: 1.35 }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 6px", lineHeight: 1.35 }}>
             {ins.title}
           </p>
-          <p style={{ fontSize: 11, color: "#1e293b", margin: 0, lineHeight: 1.55 }}>
+          <p style={{ fontSize: 13, color: "#1e293b", margin: 0, lineHeight: 1.55 }}>
             {ins.why_it_matters}
           </p>
         </div>
         <button
           onClick={() => setExpanded(p => !p)}
-          style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", fontSize: 9, color: "#1e293b", paddingTop: 4 }}
+          style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#1e293b", paddingTop: 4 }}
           title={expanded ? "Collapse" : "Expand"}
         >
           {expanded ? "▲" : "▼"}
@@ -244,10 +246,10 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
       {/* Expanded: explanation */}
       {expanded && (
         <div style={{ padding: "0 14px 12px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-          <p style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: "0.08em", margin: "10px 0 4px" }}>
+          <p style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#0f172a", textTransform: "uppercase", letterSpacing: "0.08em", margin: "10px 0 4px" }}>
             What Was Said
           </p>
-          <p style={{ fontSize: 11, color: "#1e293b", margin: 0, lineHeight: 1.65 }}>
+          <p style={{ fontSize: 13, color: "#1e293b", margin: 0, lineHeight: 1.65 }}>
             {ins.what_was_discussed}
           </p>
         </div>
@@ -255,11 +257,11 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
 
       {/* Assets section */}
       <div style={{ borderTop: "1px solid rgba(255,255,255,0.04)", padding: "6px 14px 3px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#1e3a2f", textTransform: "uppercase", letterSpacing: "0.12em" }}>
+        <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#1e3a2f", textTransform: "uppercase", letterSpacing: "0.12em" }}>
           Assets Created
         </span>
         {allDelivered && (
-          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#10b981", fontWeight: 700 }}>3 delivered</span>
+          <span style={{ fontSize: 11, fontFamily: "monospace", color: "#10b981", fontWeight: 700 }}>3 delivered</span>
         )}
       </div>
       <div style={{ padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 5 }}>
@@ -299,7 +301,7 @@ function InsightCard({ ins, index, autoSend, sending, onSend }: {
           <button
             onClick={(e) => { e.stopPropagation(); onSend(); }}
             style={{
-              fontSize: 10, fontFamily: "monospace", fontWeight: 700,
+              fontSize: 12, fontFamily: "monospace", fontWeight: 700,
               color: "#818cf8", background: "rgba(99,102,241,0.1)",
               border: "1px solid rgba(99,102,241,0.25)",
               borderRadius: 6, padding: "4px 12px", cursor: "pointer",
@@ -495,7 +497,7 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
         {/* Header */}
         <div className="fluff-drawer__header">
           <div>
-            <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+            <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#0f172a", textTransform: "uppercase", letterSpacing: "0.1em" }}>
               {videoType ?? "Key Insights"}
             </span>
             <h2 className="fluff-drawer__channel">{video.channelTitle}</h2>
@@ -507,7 +509,7 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
 
           {/* Video title */}
           <div style={{ padding: "4px 16px 12px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-            <p style={{ fontSize: 11, color: "#475569", margin: 0, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <p style={{ fontSize: 13, color: "#0f172a", margin: 0, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {video.title}
             </p>
           </div>
@@ -536,10 +538,10 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
                 }} />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: autoSend ? "#10b981" : "#475569" }}>
+                <div style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 800, color: autoSend ? "#10b981" : "#475569" }}>
                   AUTO-SEND {autoSend ? "ON" : "OFF"}
                 </div>
-                <div style={{ fontSize: 10, color: "#334155", fontFamily: "monospace", marginTop: 1 }}>
+                <div style={{ fontSize: 12, color: "#0f172a", fontFamily: "monospace", marginTop: 1 }}>
                   {autoSend
                     ? "Notes → Notion · Tasks → Todoist · Content → Queue"
                     : "Click to auto-route assets to your workspace"}
@@ -558,30 +560,30 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
               border: "1px solid rgba(16,185,129,0.3)", borderRadius: 12,
             }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                <span style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 800, color: "#10b981" }}>
+                <span style={{ fontSize: 15, fontFamily: "monospace", fontWeight: 800, color: "#10b981" }}>
                   ⚡ EXECUTION COMPLETE
                 </span>
                 {elapsed !== null && (
-                  <span style={{ fontSize: 9, color: "#334155", fontFamily: "monospace" }}>{elapsed.toFixed(1)}s</span>
+                  <span style={{ fontSize: 11, color: "#0f172a", fontFamily: "monospace" }}>{elapsed.toFixed(1)}s</span>
                 )}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "6px 14px", marginBottom: 10 }}>
-                <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>Insights Extracted</span>
-                <span style={{ fontSize: 10, color: "#f1f5f9", fontFamily: "monospace", fontWeight: 700 }}>{totalInsights}</span>
+                <span style={{ fontSize: 12, color: "#1e293b", fontFamily: "monospace" }}>Insights Extracted</span>
+                <span style={{ fontSize: 12, color: "#0f172a", fontFamily: "monospace", fontWeight: 700 }}>{totalInsights}</span>
                 {sentNotes > 0 && <>
-                  <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>Notes → Notion</span>
-                  <span style={{ fontSize: 10, color: "#6ee7b7", fontFamily: "monospace", fontWeight: 700 }}>{sentNotes}</span>
+                  <span style={{ fontSize: 12, color: "#1e293b", fontFamily: "monospace" }}>Notes → Notion</span>
+                  <span style={{ fontSize: 12, color: "#6ee7b7", fontFamily: "monospace", fontWeight: 700 }}>{sentNotes}</span>
                 </>}
                 {sentTasks > 0 && <>
-                  <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>Tasks → Todoist</span>
-                  <span style={{ fontSize: 10, color: "#a5b4fc", fontFamily: "monospace", fontWeight: 700 }}>{sentTasks}</span>
+                  <span style={{ fontSize: 12, color: "#1e293b", fontFamily: "monospace" }}>Tasks → Todoist</span>
+                  <span style={{ fontSize: 12, color: "#a5b4fc", fontFamily: "monospace", fontWeight: 700 }}>{sentTasks}</span>
                 </>}
                 {sentContent > 0 && <>
-                  <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>Content → Queue</span>
-                  <span style={{ fontSize: 10, color: "#f9a8d4", fontFamily: "monospace", fontWeight: 700 }}>{sentContent}</span>
+                  <span style={{ fontSize: 12, color: "#1e293b", fontFamily: "monospace" }}>Content → Queue</span>
+                  <span style={{ fontSize: 12, color: "#f9a8d4", fontFamily: "monospace", fontWeight: 700 }}>{sentContent}</span>
                 </>}
               </div>
-              <div style={{ fontSize: 9, color: "#334155", fontFamily: "monospace", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 8 }}>
+              <div style={{ fontSize: 11, color: "#0f172a", fontFamily: "monospace", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 8 }}>
                 {totalSent} of {maxAssets} assets delivered · workspace updated
               </div>
             </div>
@@ -596,10 +598,10 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
             }}>
               <span className="spinner" style={{ width: 12, height: 12, borderWidth: 1.5 }} />
               <div>
-                <div style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#818cf8" }}>
+                <div style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 800, color: "#818cf8" }}>
                   ⚡ EXECUTING…
                 </div>
-                <div style={{ fontSize: 9, color: "#334155", fontFamily: "monospace", marginTop: 2 }}>
+                <div style={{ fontSize: 11, color: "#0f172a", fontFamily: "monospace", marginTop: 2 }}>
                   Routing assets to your workspace
                 </div>
               </div>
@@ -611,10 +613,10 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
             <div style={{ padding: "20px 16px", display: "flex", alignItems: "center", gap: 12 }}>
               <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
               <div>
-                <div style={{ fontSize: 12, color: "#818cf8", fontFamily: "monospace", fontWeight: 700 }}>
+                <div style={{ fontSize: 14, color: "#818cf8", fontFamily: "monospace", fontWeight: 700 }}>
                   Extracting insights…
                 </div>
-                <div style={{ fontSize: 10, color: "#334155", fontFamily: "monospace", marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: "#0f172a", fontFamily: "monospace", marginTop: 2 }}>
                   Reading transcript · Classifying video
                 </div>
               </div>
@@ -624,7 +626,7 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
           {/* Error */}
           {error && (
             <div style={{ margin: "12px 14px", padding: "10px 14px", background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 8 }}>
-              <span style={{ fontSize: 11, color: "#f87171", fontFamily: "monospace" }}>{error}</span>
+              <span style={{ fontSize: 13, color: "#f87171", fontFamily: "monospace" }}>{error}</span>
             </div>
           )}
 
@@ -632,7 +634,7 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
           {!loading && insights.length > 0 && (
             <div>
               <div style={{ padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, color: "#0f172a", textTransform: "uppercase", letterSpacing: "0.1em" }}>
                   {totalInsights} Insight{totalInsights !== 1 ? "s" : ""}
                   {totalSent > 0 && !allDelivered && (
                     <span style={{ color: "#10b981", marginLeft: 8 }}>· {totalSent} assets delivered</span>
@@ -642,7 +644,7 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
                   <button
                     onClick={() => void runSend()}
                     style={{
-                      fontSize: 10, fontFamily: "monospace", fontWeight: 800,
+                      fontSize: 12, fontFamily: "monospace", fontWeight: 800,
                       color: "#818cf8", background: "rgba(99,102,241,0.1)",
                       border: "1px solid rgba(99,102,241,0.25)",
                       borderRadius: 6, padding: "3px 10px", cursor: "pointer",
@@ -675,8 +677,8 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
                 onClick={() => setShowLog(p => !p)}
                 style={{
                   width: "100%", textAlign: "left", padding: "8px 0",
-                  fontSize: 9, fontFamily: "monospace", fontWeight: 800,
-                  color: "#334155", textTransform: "uppercase", letterSpacing: "0.1em",
+                  fontSize: 11, fontFamily: "monospace", fontWeight: 800,
+                  color: "#0f172a", textTransform: "uppercase", letterSpacing: "0.1em",
                   background: "none", border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", gap: 6,
                 }}
@@ -690,9 +692,9 @@ export function InsightsDrawer({ isOpen, video, videoType, cachedInsights, loadi
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   {log.map(e => (
                     <div key={e.id} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                      <span style={{ fontSize: 9, color: "#1e293b", fontFamily: "monospace", flexShrink: 0, minWidth: 64 }}>{e.ts}</span>
+                      <span style={{ fontSize: 11, color: "#1e293b", fontFamily: "monospace", flexShrink: 0, minWidth: 64 }}>{e.ts}</span>
                       <span style={{
-                        fontSize: 10, fontFamily: "monospace",
+                        fontSize: 12, fontFamily: "monospace",
                         color: e.ok === true ? "#10b981" : e.ok === false ? "#f87171" : "#475569",
                       }}>
                         {e.ok === true ? "✓" : e.ok === false ? "✕" : "·"} {e.msg}
