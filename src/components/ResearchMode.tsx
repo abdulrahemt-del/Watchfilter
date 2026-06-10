@@ -229,6 +229,86 @@ function FindingBlock({ finding, index }: { finding: ResearchFinding; index: num
   );
 }
 
+// ── Research questions panel ──────────────────────────────────────────────────
+
+function ResearchQuestionsPanel({ questions }: { questions: string[] }) {
+  if (!questions.length) return null;
+  return (
+    <div className="rounded-2xl p-5 space-y-3.5"
+      style={{ background: "rgba(15,37,53,0.65)", border: "1px solid #1e2d45" }}>
+      <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Research Questions</p>
+      <div className="space-y-3">
+        {questions.map((q, i) => (
+          <div key={i} className="flex gap-3 items-baseline">
+            <span className="text-xs font-mono font-black shrink-0 w-6 text-right"
+              style={{ color: "rgba(56,189,248,0.45)" }}>
+              Q{i}
+            </span>
+            <p className="text-base text-slate-300 leading-relaxed">{q}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Grouped findings ──────────────────────────────────────────────────────────
+
+function GroupedFindings({ findings, questions }: { findings: ResearchFinding[]; questions: string[] }) {
+  if (!findings.length) return null;
+
+  // Map findings to their question index
+  const grouped: { qi: number; question: string; items: { f: ResearchFinding; fi: number }[] }[] =
+    questions.map((q, qi) => ({
+      qi,
+      question: q,
+      items: findings
+        .map((f, fi) => ({ f, fi }))
+        .filter(({ f }) => f.answersQuestion === qi),
+    })).filter(g => g.items.length > 0);
+
+  // Orphaned findings — answersQuestion out of range
+  const orphaned = findings
+    .map((f, fi) => ({ f, fi }))
+    .filter(({ f }) => f.answersQuestion < 0 || f.answersQuestion >= questions.length);
+
+  return (
+    <div className="space-y-6">
+      {grouped.map(({ qi, question, items }) => (
+        <div key={qi} className="space-y-3">
+          {/* Question header */}
+          <div className="flex gap-3 items-start">
+            <span
+              className="text-xs font-mono font-black px-2 py-0.5 rounded shrink-0 mt-0.5"
+              style={{ color: "#38bdf8", background: "rgba(56,189,248,0.10)", border: "1px solid rgba(56,189,248,0.25)" }}
+            >
+              Q{qi}
+            </span>
+            <p className="text-base font-bold text-slate-200 leading-snug">{question}</p>
+          </div>
+
+          {/* Findings under this question */}
+          <div className="space-y-3 pl-8">
+            {items.map(({ f, fi }) => (
+              <FindingBlock key={fi} finding={f} index={fi} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Orphaned findings (shouldn't happen but handle gracefully) */}
+      {orphaned.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">Additional Findings</p>
+          {orphaned.map(({ f, fi }) => (
+            <FindingBlock key={fi} finding={f} index={fi} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Contrarian block ──────────────────────────────────────────────────────────
 
 function ContraBlock({ contra }: { contra: ContraFinding }) {
@@ -468,7 +548,7 @@ export function ResearchMode() {
       {/* Loading */}
       {loading && (
         <div className="space-y-4 animate-pulse">
-          {[24, 48, 48, 36].map((h, i) => (
+          {[24, 16, 48, 48, 36].map((h, i) => (
             <div key={i} className="rounded-2xl" style={{ height: `${h * 4}px`, background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
           ))}
         </div>
@@ -509,15 +589,18 @@ export function ResearchMode() {
             </div>
           </div>
 
-          {/* Findings */}
+          {/* Research Questions */}
+          {report.researchQuestions?.length > 0 && (
+            <ResearchQuestionsPanel questions={report.researchQuestions} />
+          )}
+
+          {/* Findings grouped under their research questions */}
           {report.findings.length > 0 && (
-            <div className="space-y-3">
+            <div className="space-y-2">
               <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">
                 {report.findings.length} {report.findings.length === 1 ? "Finding" : "Findings"} — each with cited evidence
               </p>
-              {report.findings.map((f, i) => (
-                <FindingBlock key={i} finding={f} index={i} />
-              ))}
+              <GroupedFindings findings={report.findings} questions={report.researchQuestions ?? []} />
             </div>
           )}
 

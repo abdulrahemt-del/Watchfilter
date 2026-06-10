@@ -30,11 +30,12 @@ export interface QuoteCluster {
 
 export interface ResearchFinding {
   statement: string;
+  answersQuestion: number;       // index into researchQuestions[]
   evidenceCount: number;
   creatorCount: number;
   videoCount: number;
   consensusStrength: "Strong" | "Moderate" | "Weak" | "Insufficient";
-  confidenceScore: number;
+  confidenceScore: number;       // hard-capped by creator count server-side
   confidence: "High" | "Moderate" | "Limited";
   clusters: QuoteCluster[];
 }
@@ -64,6 +65,7 @@ export interface ResearchImplication {
 export interface ResearchReport {
   query: string;
   topic: string;
+  researchQuestions: string[];
   evidenceQuality: "Strong" | "Moderate" | "Limited" | "Insufficient";
   videosMatched: number;
   creatorsMatched: number;
@@ -79,18 +81,20 @@ export interface ResearchReport {
   totalIndexed: number;
 }
 
-// ── GPT raw types (before route enrichment) ────────────────────────────────────
+// ── GPT raw types ──────────────────────────────────────────────────────────────
 
 interface RawRef { idx: number; quote: string; whyItSupports: string; }
 interface RawCluster { theme: string; evidenceRefs: RawRef[]; }
 interface RawFinding {
   statement: string;
+  answersQuestion: number;
   confidenceScore: number;
   clusters: RawCluster[];
 }
 interface RawCreatorStance { creator: string; stance: "agree" | "neutral" | "disagree"; reason: string; }
 interface RawSynthesis {
   topic: string;
+  researchQuestions: string[];
   evidenceQuality: string;
   consensusScore: number;
   confidenceScore: number;
@@ -103,61 +107,104 @@ interface RawSynthesis {
   evidenceGaps: string;
 }
 
+// ── Hard confidence caps by creator count ─────────────────────────────────────
+// These are enforced server-side — GPT cannot override them.
+
+function capConfidence(score: number, creatorCount: number): number {
+  const max =
+    creatorCount >= 7 ? 95
+    : creatorCount >= 5 ? 85
+    : creatorCount >= 3 ? 75
+    : creatorCount >= 2 ? 65
+    : 55;
+  return Math.min(score, max);
+}
+
 // ── Prompt ─────────────────────────────────────────────────────────────────────
 
 const SYNTHESIS_SYSTEM = [
-  "You are a professional research analyst. Your job is to identify what the evidence actually shows — not to summarize or be helpful.",
-  "You behave like an investment analyst or investigative journalist: evidence-first, no speculation.",
+  "You are a research analyst. Your job is not to summarize what creators said — it is to discover what the evidence collectively suggests.",
+  "You think like an investigative journalist or investment analyst: find patterns, relationships, causal claims, and repeated behaviors.",
   "",
-  "═══ EVIDENCE VALIDATION (do this before attaching any quote to a finding) ═══",
-  "For every quote you consider attaching, ask: 'Does this quote EXPLICITLY support this finding?'",
-  "If the answer is 'partially', 'tangentially', or 'indirectly' — EXCLUDE the quote.",
-  "1 strong, direct quote is better than 5 weak ones.",
-  "A quote must be attached to AT MOST 1 finding.",
+  "═══ STEP 1: GENERATE RESEARCH QUESTIONS ═══",
+  "Before generating findings, generate 4–5 specific analytical questions the evidence might answer.",
+  "These questions must be specific to the query — not generic.",
   "",
-  "═══ FINDING RULES ═══",
-  "- Only state findings that are directly traceable to cited evidence.",
-  "- Each finding must have at least 1 cluster with at least 1 directly supporting quote.",
-  "- If evidence is weak, say so — reduce confidenceScore accordingly.",
-  "- Do not extrapolate beyond what the quotes explicitly say.",
-  "- Group supporting quotes into sub-theme clusters (e.g. 'Pricing signals', 'Churn data').",
-  "  A cluster is a group of quotes making the SAME specific point under the finding.",
+  "Example query: 'founder market fit'",
+  "Good questions:",
+  "  Q0: What specific behaviors distinguish founders who demonstrate strong market fit?",
+  "  Q1: Does prior industry experience measurably predict market fit outcomes?",
+  "  Q2: What is the observed timeline for developing genuine founder-market fit?",
+  "  Q3: Can founders without natural market fit compensate through deliberate means?",
+  "  Q4: What evidence from successful companies correlates with founder-market fit?",
   "",
-  "═══ CONTRARIAN RULE (strict) ═══",
-  "A contrarian view MAY ONLY appear if a creator in the evidence pool explicitly argues the OPPOSITE strategy or presents contradictory data.",
-  "Do NOT generate hypothetical objections. Do NOT invent devil's advocate positions.",
-  "If no real disagreement exists in the evidence: set contrarian to null.",
+  "Bad questions (too generic — do not use):",
+  "  'How important is founder market fit?' (circular)",
+  "  'What is founder market fit?' (definitional, not analytical)",
   "",
-  "═══ CONSENSUS MAP ═══",
-  "Categorize EVERY distinct creator from the evidence pool:",
-  "  agree    — creator's evidence directly supports the overall findings",
-  "  neutral  — creator's evidence is related but neither confirms nor contradicts",
-  "  disagree — creator explicitly argues against the findings or presents opposing data",
-  "Each entry must include a 1-sentence reason citing what the creator actually said.",
+  "═══ STEP 2: VALIDATE EVIDENCE ═══",
+  "For each evidence item, ask: 'Does this quote EXPLICITLY support a finding?' Partial/indirect support → exclude.",
+  "1 strong, direct quote beats 5 weak ones.",
+  "",
+  "═══ STEP 3: GENERATE FINDINGS ═══",
+  "Each finding must:",
+  "  a) Answer one of the research questions you generated (cite by index 0–4)",
+  "  b) Reveal a pattern, relationship, causal claim, repeated behavior, or strategic insight",
+  "  c) Be directly traceable to cited evidence",
+  "  d) Group supporting quotes into sub-theme clusters",
+  "",
+  "BANNED GENERIC CONCLUSIONS — never write unless evidence specifically proves it:",
+  "  'X matters' / 'X is important' / 'X helps' / 'Adaptability is key'",
+  "  'Successful founders are [trait]' without behavioral evidence",
+  "  'Engagement matters' / 'Mentorship helps' without specific proof",
+  "  Any conclusion that could apply to any business topic without the evidence",
+  "",
+  "GOOD FINDING EXAMPLES:",
+  "  'Founders in the evidence pool who built in markets they previously worked in for 3+ years raised Series A 2x faster'",
+  "  'Three creators independently identified the same 90-day milestone pattern before declaring product-market fit'",
+  "  'Evidence shows a consistent relationship between founder-led sales and early retention — not present in non-founder-led sales teams'",
   "",
   "═══ CONFIDENCE CALIBRATION ═══",
-  "  1 directly supporting source  → confidenceScore 30-50, evidenceQuality 'Limited'",
-  "  2 directly supporting sources → confidenceScore 50-68, evidenceQuality 'Moderate'",
-  "  3+ directly supporting sources → confidenceScore 68-85, evidenceQuality 'Strong'",
-  "  No direct support → confidenceScore <30, evidenceQuality 'Insufficient'",
-  "  Mixed/contradictory evidence → explicitly state this in evidenceGaps",
+  "Set confidenceScore as follows (server will enforce hard caps, but set them correctly):",
+  "  1 creator  → max 55",
+  "  2 creators → max 65",
+  "  3–4 creators → max 75",
+  "  5–6 creators → max 85",
+  "  7+ creators → max 95",
+  "If evidence is mixed or contradictory, reduce confidence further.",
+  "If evidence is insufficient, say so in evidenceGaps — do not fabricate certainty.",
+  "",
+  "═══ CONTRARIAN RULE ═══",
+  "Only include if a creator explicitly argues the OPPOSITE. No hypothetical objections. No devil's advocate.",
+  "If no real disagreement exists: contrarian = null.",
+  "",
+  "═══ CONSENSUS MAP ═══",
+  "Categorize every distinct creator: agree / neutral / disagree.",
+  "Each entry must cite what the creator actually said (1 sentence).",
   "",
   "Return ONLY valid JSON:",
   JSON.stringify({
     topic: "Specific topic label",
+    researchQuestions: [
+      "Q0: Specific analytical question",
+      "Q1: Specific analytical question",
+      "Q2: Specific analytical question",
+      "Q3: Specific analytical question",
+    ],
     evidenceQuality: "Strong | Moderate | Limited | Insufficient",
     consensusScore: 7,
     confidenceScore: 72,
-    summary: "1-2 sentences of factual synthesis. No claims beyond evidence. If evidence is weak, say so here.",
+    summary: "1-2 sentences of factual synthesis. What does the evidence collectively suggest? Honest about weak evidence.",
     findings: [
       {
-        statement: "Specific verifiable finding — not vague",
-        confidenceScore: 78,
+        statement: "Specific finding that reveals a pattern, relationship, or causal claim — not generic",
+        answersQuestion: 0,
+        confidenceScore: 62,
         clusters: [
           {
-            theme: "Sub-theme label (e.g. 'Revenue impact')",
+            theme: "Sub-theme label",
             evidenceRefs: [
-              { idx: 0, quote: "Verbatim quote from E0 that DIRECTLY supports this finding", whyItSupports: "1 sentence: exactly how this quote proves the finding" },
+              { idx: 0, quote: "Verbatim quote that DIRECTLY proves the finding", whyItSupports: "How this quote proves the finding" },
             ],
           },
         ],
@@ -165,8 +212,7 @@ const SYNTHESIS_SYSTEM = [
     ],
     contrarian: null,
     consensusMap: [
-      { creator: "Creator Name", stance: "agree", reason: "Explicitly stated X in E2" },
-      { creator: "Creator Name 2", stance: "neutral", reason: "Discussed related topic but did not address the specific finding" },
+      { creator: "Creator Name", stance: "agree", reason: "Cited specific X in E2" },
     ],
     implications: [
       { statement: "Implication directly following from findings — no speculation", basedOnFindings: "Finding 1" },
@@ -174,14 +220,14 @@ const SYNTHESIS_SYSTEM = [
     actions: [
       { title: "Specific action verb + object + measurable outcome", description: "How to execute", derivedFrom: "Finding 1" },
     ],
-    evidenceGaps: "What this evidence does NOT cover, what is uncertain, or where evidence is mixed/weak",
+    evidenceGaps: "What this evidence does NOT cover, what is uncertain, or where it is mixed/insufficient",
   }, null, 2),
 ].join("\n");
 
 // ── Evidence block ─────────────────────────────────────────────────────────────
 
 function buildEvidenceBlock(rows: ResearchRow[], scores: number[], uniqueCreators: string[]): string {
-  const block = rows.slice(0, 20).map((r, i) => [
+  const items = rows.slice(0, 20).map((r, i) => [
     `[E${i}] Relevance: ${(scores[i] * 100).toFixed(0)}%`,
     `Creator: ${r.channel_name ?? "Unknown"}`,
     `Video: ${r.video_title ?? "Unknown"}`,
@@ -189,11 +235,11 @@ function buildEvidenceBlock(rows: ResearchRow[], scores: number[], uniqueCreator
     r.quote ? `Quote: "${r.quote}"` : null,
     r.insight ? `Insight: ${r.insight}` : null,
     r.why_matters ? `Business implication: ${r.why_matters}` : null,
-    r.signal_strength ? `Signal strength: ${r.signal_strength}` : null,
-    r.contrarian ? `Contrarian angle noted: ${r.contrarian}` : null,
+    r.signal_strength ? `Signal: ${r.signal_strength}` : null,
+    r.contrarian ? `Contrarian angle: ${r.contrarian}` : null,
   ].filter(Boolean).join("\n")).join("\n\n");
 
-  return `Creators in evidence pool: ${uniqueCreators.join(", ")}\n\n${block}`;
+  return `Creators in pool: ${uniqueCreators.join(", ")}\n\n${items}`;
 }
 
 // ── Route ──────────────────────────────────────────────────────────────────────
@@ -255,7 +301,7 @@ export async function POST(req: Request) {
     ],
     response_format: { type: "json_object" },
     temperature: 0.15,
-    max_tokens: 2800,
+    max_tokens: 3000,
   });
 
   let raw: RawSynthesis;
@@ -265,7 +311,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Synthesis failed" }, { status: 500 });
   }
 
-  // ── Enrich: route fills in creator/video/timestamp from indexed rows ───────
+  // ── Enrich refs: route fills creator/video/timestamp from indexed rows ──────
   function enrichRef(ref: RawRef): SourceRef {
     const row = topRows[ref.idx] ?? topRows[0];
     return {
@@ -288,28 +334,28 @@ export async function POST(req: Request) {
     const allRefs = clusters.flatMap(cl => cl.sourceRefs);
     const uniqueCreatorsInFinding = new Set(allRefs.map(r => r.creator));
     const uniqueVideos = new Set(allRefs.map(r => r.videoId));
-    const evidenceCount = allRefs.length;
     const creatorCount = uniqueCreatorsInFinding.size;
-    const videoCount = uniqueVideos.size;
 
     const consensusStrength: ResearchFinding["consensusStrength"] =
       creatorCount >= 4 ? "Strong"
       : creatorCount === 3 ? "Moderate"
       : creatorCount === 2 ? "Weak"
-      : evidenceCount > 0 ? "Insufficient"
       : "Insufficient";
 
-    const cs = f.confidenceScore ?? 50;
+    // Hard server-side confidence cap — GPT cannot produce inflated confidence
+    const rawScore = f.confidenceScore ?? 50;
+    const cappedScore = capConfidence(rawScore, creatorCount);
     const confidence: ResearchFinding["confidence"] =
-      cs >= 70 ? "High" : cs >= 50 ? "Moderate" : "Limited";
+      cappedScore >= 70 ? "High" : cappedScore >= 50 ? "Moderate" : "Limited";
 
     return {
       statement: sanitizeText(f.statement ?? ""),
-      evidenceCount,
+      answersQuestion: typeof f.answersQuestion === "number" ? f.answersQuestion : 0,
+      evidenceCount: allRefs.length,
       creatorCount,
-      videoCount,
+      videoCount: uniqueVideos.size,
       consensusStrength,
-      confidenceScore: cs,
+      confidenceScore: cappedScore,
       confidence,
       clusters,
     };
@@ -333,14 +379,18 @@ export async function POST(req: Request) {
     ? raw.evidenceQuality as ResearchReport["evidenceQuality"]
     : "Moderate";
 
+  // Overall report confidence also capped
+  const overallConfidence = capConfidence(raw.confidenceScore ?? 50, creatorsInPool.size);
+
   const report: ResearchReport = {
     query,
     topic: sanitizeText(raw.topic ?? query),
+    researchQuestions: (raw.researchQuestions ?? []).map(q => sanitizeText(q)),
     evidenceQuality,
     videosMatched: videoIds.size,
     creatorsMatched: creatorsInPool.size,
     consensusScore: raw.consensusScore ?? 5,
-    confidenceScore: raw.confidenceScore ?? 50,
+    confidenceScore: overallConfidence,
     summary: sanitizeText(raw.summary ?? ""),
     findings,
     contrarian,
