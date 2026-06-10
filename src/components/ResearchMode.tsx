@@ -82,14 +82,14 @@ function SourceCitation({ r, index }: { r: SourceRef; index: number }) {
     <div className="rounded-xl p-4 space-y-3" style={CARD_STYLE}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
-          <p className="text-[11px] font-mono font-black text-slate-300 uppercase tracking-wider truncate">
+          <p className="text-sm font-mono font-black text-slate-300 uppercase tracking-wider truncate">
             {r.creator}
           </p>
-          <p className="text-[10px] font-mono text-slate-500 truncate">{r.videoTitle}</p>
+          <p className="text-xs font-mono text-slate-500 truncate">{r.videoTitle}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {r.signalStrength && (
-            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded"
+            <span className="text-xs font-mono font-bold px-1.5 py-0.5 rounded"
               style={{ color: sigColor, background: `${sigColor}15`, border: `1px solid ${sigColor}35` }}>
               {r.signalStrength}
             </span>
@@ -98,7 +98,7 @@ function SourceCitation({ r, index }: { r: SourceRef; index: number }) {
             href={link}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[10px] font-mono font-bold text-[#38bdf8] hover:text-white border border-[#38bdf8]/30 hover:border-[#38bdf8]/60 px-2 py-0.5 rounded transition-colors"
+            className="text-xs font-mono font-bold text-[#38bdf8] hover:text-white border border-[#38bdf8]/30 hover:border-[#38bdf8]/60 px-2 py-0.5 rounded transition-colors"
           >
             {r.timestampStr ? `@${r.timestampStr} ↗` : "Watch ↗"}
           </a>
@@ -107,20 +107,20 @@ function SourceCitation({ r, index }: { r: SourceRef; index: number }) {
 
       {r.quote && (
         <blockquote className="border-l-2 border-[#38bdf8]/40 pl-3">
-          <p className="text-sm text-slate-200 italic leading-relaxed">
+          <p className="text-base text-slate-200 italic leading-relaxed">
             &ldquo;{r.quote}&rdquo;
           </p>
         </blockquote>
       )}
 
       {r.whyItSupports && (
-        <p className="text-[11px] text-slate-400 leading-relaxed">
+        <p className="text-sm text-slate-400 leading-relaxed">
           <span className="font-mono font-black text-slate-500">WHY THIS SUPPORTS: </span>
           {r.whyItSupports}
         </p>
       )}
 
-      <span className="text-[9px] font-mono text-slate-700">Source {index + 1}</span>
+      <span className="text-xs font-mono text-slate-700">Source {index + 1}</span>
     </div>
   );
 }
@@ -139,14 +139,14 @@ function ClusterBlock({ cluster, startIndex }: { cluster: QuoteCluster; startInd
       >
         <div className="flex items-center gap-2.5">
           <span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8]/60 shrink-0" />
-          <span className="text-[11px] font-mono font-black text-[#38bdf8] uppercase tracking-wider">
+          <span className="text-sm font-mono font-black text-[#38bdf8] uppercase tracking-wider">
             {cluster.theme}
           </span>
-          <span className="text-[10px] font-mono text-slate-500">
+          <span className="text-xs font-mono text-slate-500">
             {cluster.sourceRefs.length} {cluster.sourceRefs.length === 1 ? "quote" : "quotes"}
           </span>
         </div>
-        <span className="text-[10px] font-mono text-slate-600">{open ? "▲" : "▼"}</span>
+        <span className="text-xs font-mono text-slate-600">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
         <div className="px-4 pb-4 pt-3 space-y-3" style={{ background: "rgba(10,20,35,0.5)" }}>
@@ -179,35 +179,35 @@ function FindingBlock({ finding, index }: { finding: ResearchFinding; index: num
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
-            <span className="text-[10px] font-mono font-black text-slate-500 shrink-0 mt-1">F{index + 1}</span>
-            <p className="text-sm font-bold text-white leading-snug">{finding.statement}</p>
+            <span className="text-xs font-mono font-black text-slate-500 shrink-0 mt-1">F{index + 1}</span>
+            <p className="text-base font-bold text-white leading-snug">{finding.statement}</p>
           </div>
-          <span className="text-[10px] font-mono text-slate-600 shrink-0">{open ? "▲" : "▼"}</span>
+          <span className="text-xs font-mono text-slate-600 shrink-0">{open ? "▲" : "▼"}</span>
         </div>
 
         {/* Stats row */}
         <div className="flex flex-wrap items-center gap-2 pl-6">
-          <span className="text-[9px] font-mono font-black px-2 py-0.5 rounded"
+          <span className="text-xs font-mono font-black px-2 py-0.5 rounded"
             style={{ color: cMeta.color, background: cMeta.bg, border: `1px solid ${cMeta.border}` }}>
             {cMeta.label}
           </span>
-          <span className="text-[9px] font-mono font-black px-2 py-0.5 rounded"
+          <span className="text-xs font-mono font-black px-2 py-0.5 rounded"
             style={{ color: sMeta.color, background: `${sMeta.color}10`, border: `1px solid ${sMeta.color}30` }}>
             {sMeta.label}
           </span>
-          <span className="text-[10px] font-mono text-slate-400">
+          <span className="text-xs font-mono text-slate-400">
             <span className="text-white font-bold">{finding.creatorCount}</span> creators
           </span>
-          <span className="text-slate-600 font-mono text-[10px]">·</span>
-          <span className="text-[10px] font-mono text-slate-400">
+          <span className="text-slate-600 font-mono text-xs">·</span>
+          <span className="text-xs font-mono text-slate-400">
             <span className="text-white font-bold">{finding.videoCount}</span> videos
           </span>
-          <span className="text-slate-600 font-mono text-[10px]">·</span>
-          <span className="text-[10px] font-mono text-slate-400">
+          <span className="text-slate-600 font-mono text-xs">·</span>
+          <span className="text-xs font-mono text-slate-400">
             <span className="text-white font-bold">{finding.evidenceCount}</span> quotes
           </span>
-          <span className="text-slate-600 font-mono text-[10px]">·</span>
-          <span className="text-[10px] font-mono"
+          <span className="text-slate-600 font-mono text-xs">·</span>
+          <span className="text-xs font-mono"
             style={{ color: cMeta.color }}>
             {finding.confidenceScore}% confidence
           </span>
@@ -217,7 +217,7 @@ function FindingBlock({ finding, index }: { finding: ResearchFinding; index: num
       {/* Clustered evidence */}
       {open && (
         <div className="px-5 pb-5 pt-4 space-y-3" style={{ background: "rgba(10,20,35,0.6)" }}>
-          <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Supporting Evidence</p>
+          <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">Supporting Evidence</p>
           {finding.clusters.map((cl, ci) => {
             const start = refCount;
             refCount += cl.sourceRefs.length;
@@ -244,12 +244,12 @@ function ContraBlock({ contra }: { contra: ContraFinding }) {
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
-            <span className="text-[10px] font-mono font-black text-amber-600 shrink-0 mt-0.5">DISSENT</span>
-            <p className="text-sm font-bold text-amber-200 leading-snug">{contra.statement}</p>
+            <span className="text-xs font-mono font-black text-amber-600 shrink-0 mt-0.5">DISSENT</span>
+            <p className="text-base font-bold text-amber-200 leading-snug">{contra.statement}</p>
           </div>
-          <span className="text-[10px] font-mono text-amber-800 shrink-0">{open ? "▲" : "▼"}</span>
+          <span className="text-xs font-mono text-amber-800 shrink-0">{open ? "▲" : "▼"}</span>
         </div>
-        <p className="text-[10px] font-mono text-amber-800 pl-[3.5rem]">
+        <p className="text-xs font-mono text-amber-800 pl-[3.5rem]">
           From evidence — not a hypothetical objection
         </p>
       </button>
@@ -258,23 +258,23 @@ function ContraBlock({ contra }: { contra: ContraFinding }) {
           <div className="rounded-xl p-4 space-y-3" style={{ border: "1px solid rgba(251,191,36,0.2)", background: "rgba(15,37,53,0.5)" }}>
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-0.5 min-w-0">
-                <p className="text-[11px] font-mono font-black text-amber-300 uppercase tracking-wider truncate">
+                <p className="text-sm font-mono font-black text-amber-300 uppercase tracking-wider truncate">
                   {contra.sourceRef.creator}
                 </p>
-                <p className="text-[10px] font-mono text-amber-700 truncate">{contra.sourceRef.videoTitle}</p>
+                <p className="text-xs font-mono text-amber-700 truncate">{contra.sourceRef.videoTitle}</p>
               </div>
               <a href={link} target="_blank" rel="noopener noreferrer"
-                className="text-[10px] font-mono font-bold text-amber-400 hover:text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded transition-colors shrink-0">
+                className="text-xs font-mono font-bold text-amber-400 hover:text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded transition-colors shrink-0">
                 {contra.sourceRef.timestampStr ? `@${contra.sourceRef.timestampStr} ↗` : "Watch ↗"}
               </a>
             </div>
             {contra.sourceRef.quote && (
               <blockquote className="border-l-2 border-amber-500/40 pl-3">
-                <p className="text-sm text-amber-200 italic leading-relaxed">&ldquo;{contra.sourceRef.quote}&rdquo;</p>
+                <p className="text-base text-amber-200 italic leading-relaxed">&ldquo;{contra.sourceRef.quote}&rdquo;</p>
               </blockquote>
             )}
             {contra.sourceRef.whyItSupports && (
-              <p className="text-[11px] text-amber-600 leading-relaxed">
+              <p className="text-sm text-amber-600 leading-relaxed">
                 <span className="font-mono font-black">WHY THIS CONTRASTS: </span>
                 {contra.sourceRef.whyItSupports}
               </p>
@@ -299,7 +299,7 @@ function ConsensusMapBlock({ map }: { map: CreatorStance[] }) {
 
   return (
     <div className="rounded-2xl p-5 space-y-4" style={{ background: "rgba(15,37,53,0.65)", border: "1px solid #1e2d45" }}>
-      <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Creator Consensus Map</p>
+      <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Creator Consensus Map</p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {(["agree", "neutral", "disagree"] as const).map(stance => {
@@ -309,20 +309,20 @@ function ConsensusMapBlock({ map }: { map: CreatorStance[] }) {
             <div key={stance} className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: meta.color }} />
-                <span className="text-[10px] font-mono font-black uppercase tracking-wider" style={{ color: meta.color }}>
+                <span className="text-xs font-mono font-black uppercase tracking-wider" style={{ color: meta.color }}>
                   {meta.label} ({items.length})
                 </span>
               </div>
               {items.length === 0 ? (
-                <p className="text-[10px] font-mono text-slate-700 pl-3.5">None in evidence pool</p>
+                <p className="text-xs font-mono text-slate-700 pl-3.5">None in evidence pool</p>
               ) : (
                 <div className="space-y-2 pl-3.5">
                   {items.map((s, i) => (
                     <div key={i} className="rounded-lg p-3 space-y-1"
                       style={{ background: meta.bg, border: `1px solid ${meta.border}` }}>
-                      <p className="text-[11px] font-mono font-black uppercase tracking-wide truncate"
+                      <p className="text-sm font-mono font-black uppercase tracking-wide truncate"
                         style={{ color: meta.color }}>{s.creator}</p>
-                      <p className="text-[10px] text-slate-400 leading-relaxed">{s.reason}</p>
+                      <p className="text-xs text-slate-400 leading-relaxed">{s.reason}</p>
                     </div>
                   ))}
                 </div>
@@ -397,8 +397,8 @@ export function ResearchMode() {
 
       {/* Header */}
       <div className="space-y-1">
-        <p className="text-sm font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Mode</p>
-        <p className="text-xs text-slate-400 font-mono">
+        <p className="text-base font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Mode</p>
+        <p className="text-sm text-slate-400 font-mono">
           Evidence-first intelligence search across {report?.totalIndexed ? `${report.totalIndexed} indexed data points` : "your analyzed video library"}.
         </p>
       </div>
@@ -411,14 +411,14 @@ export function ResearchMode() {
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search everything you've learned..."
-          className="flex-1 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none font-mono"
+          className="flex-1 rounded-xl px-4 py-3 text-base text-white placeholder:text-slate-500 focus:outline-none font-mono"
           style={{ background: "rgba(15,37,53,0.7)", border: "1px solid #1e2d45" }}
           disabled={loading}
         />
         <button
           type="submit"
           disabled={loading || !query.trim()}
-          className="px-5 py-3 bg-[#38bdf8] hover:bg-[#7dd3fc] disabled:opacity-40 text-[#0f2535] text-sm font-black rounded-xl transition-colors whitespace-nowrap"
+          className="px-5 py-3 bg-[#38bdf8] hover:bg-[#7dd3fc] disabled:opacity-40 text-[#0f2535] text-base font-black rounded-xl transition-colors whitespace-nowrap"
         >
           {loading ? "Researching..." : "Search"}
         </button>
@@ -427,13 +427,13 @@ export function ResearchMode() {
       {/* Suggested queries */}
       {!report && !loading && (
         <div className="space-y-3">
-          <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Suggested searches</p>
+          <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Suggested searches</p>
           <div className="flex flex-wrap gap-2">
             {SUGGESTED.map(s => (
               <button
                 key={s}
                 onClick={() => { setQuery(s); void runSearch(s); }}
-                className="text-[11px] font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
+                className="text-sm font-mono px-4 py-2 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
                 style={{ border: "1px solid #1e2d45", background: "rgba(15,37,53,0.5)" }}
               >
                 {s}
@@ -450,16 +450,16 @@ export function ResearchMode() {
           <p>{error}</p>
           {error.includes("indexed yet") && (
             <div className="space-y-1.5">
-              <p className="text-[11px] text-red-400/70">New analyses index automatically. To index your existing library:</p>
+              <p className="text-sm text-red-400/70">New analyses index automatically. To index your existing library:</p>
               <button
                 onClick={handleReindexAll}
                 disabled={reindexing}
-                className="text-[11px] font-mono font-bold text-white px-3 py-1 rounded disabled:opacity-50 transition-colors"
+                className="text-sm font-mono font-bold text-white px-3 py-1 rounded disabled:opacity-50 transition-colors"
                 style={{ background: "rgba(127,29,29,0.5)", border: "1px solid rgba(185,28,28,0.5)" }}
               >
                 {reindexing ? "Indexing..." : "Index my library now"}
               </button>
-              {reindexMsg && <p className="text-[11px] text-emerald-400">{reindexMsg}</p>}
+              {reindexMsg && <p className="text-sm text-emerald-400">{reindexMsg}</p>}
             </div>
           )}
         </div>
@@ -483,15 +483,15 @@ export function ResearchMode() {
             style={{ background: "rgba(15,37,53,0.7)", border: "1px solid #1e2d45", boxShadow: "0 4px 32px #0000002e,inset 0 1px #ffffff08" }}>
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="space-y-1 min-w-0">
-                <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Intelligence Report</p>
-                <h2 className="text-base font-black text-white leading-tight">{report.topic}</h2>
+                <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">Intelligence Report</p>
+                <h2 className="text-xl font-black text-white leading-tight">{report.topic}</h2>
               </div>
               <div className="flex items-center gap-2 flex-wrap shrink-0">
-                <span className="text-[10px] font-mono font-black px-2.5 py-1 rounded-lg"
+                <span className="text-xs font-mono font-black px-2.5 py-1 rounded-lg"
                   style={{ color: qualityMeta?.color, background: `${qualityMeta?.color}18`, border: `1px solid ${qualityMeta?.color}30` }}>
                   {qualityMeta?.label}
                 </span>
-                <div className="flex gap-3 text-[11px] font-mono text-slate-400">
+                <div className="flex gap-3 text-sm font-mono text-slate-400">
                   <span><span className="text-white font-black">{report.creatorsMatched}</span> creators</span>
                   <span><span className="text-white font-black">{report.videosMatched}</span> videos</span>
                   <span><span className="text-white font-black">{report.consensusScore}/10</span> consensus</span>
@@ -504,15 +504,15 @@ export function ResearchMode() {
               </div>
             </div>
             <div className="border-t pt-3" style={{ borderColor: "#1e2d45" }}>
-              <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-1.5">Summary</p>
-              <p className="text-sm text-slate-300 leading-relaxed">{report.summary}</p>
+              <p className="text-xs font-mono text-slate-600 uppercase tracking-widest mb-1.5">Summary</p>
+              <p className="text-base text-slate-300 leading-relaxed">{report.summary}</p>
             </div>
           </div>
 
           {/* Findings */}
           {report.findings.length > 0 && (
             <div className="space-y-3">
-              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+              <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">
                 {report.findings.length} {report.findings.length === 1 ? "Finding" : "Findings"} — each with cited evidence
               </p>
               {report.findings.map((f, i) => (
@@ -524,15 +524,15 @@ export function ResearchMode() {
           {/* Contrarian */}
           {report.contrarian ? (
             <div className="space-y-3">
-              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Dissenting View</p>
+              <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Dissenting View</p>
               <ContraBlock contra={report.contrarian} />
             </div>
           ) : (
             <div className="rounded-xl px-4 py-2.5 flex items-center gap-2"
               style={{ background: "rgba(15,37,53,0.4)", border: "1px solid #1e2d45" }}>
-              <span className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Contrarian</span>
-              <span className="text-[10px] font-mono text-slate-600">—</span>
-              <span className="text-[11px] font-mono text-slate-500">No direct contradictory evidence found in this query.</span>
+              <span className="text-xs font-mono text-slate-600 uppercase tracking-widest">Contrarian</span>
+              <span className="text-xs font-mono text-slate-600">—</span>
+              <span className="text-sm font-mono text-slate-500">No direct contradictory evidence found in this query.</span>
             </div>
           )}
 
@@ -547,13 +547,13 @@ export function ResearchMode() {
           {report.implications.length > 0 && (
             <div className="rounded-2xl p-5 space-y-3"
               style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }}>
-              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Strategic Implications</p>
+              <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Strategic Implications</p>
               {report.implications.map((imp, i) => (
                 <div key={i} className="flex gap-3 items-start">
                   <span className="text-[#38bdf8] shrink-0 mt-0.5 font-black">→</span>
                   <div className="space-y-0.5">
-                    <p className="text-sm text-slate-300 leading-relaxed">{imp.statement}</p>
-                    <p className="text-[10px] font-mono text-slate-600">{imp.basedOnFindings}</p>
+                    <p className="text-base text-slate-300 leading-relaxed">{imp.statement}</p>
+                    <p className="text-xs font-mono text-slate-600">{imp.basedOnFindings}</p>
                   </div>
                 </div>
               ))}
@@ -564,13 +564,13 @@ export function ResearchMode() {
           {report.actions.length > 0 && (
             <div className="rounded-2xl p-5 space-y-3"
               style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.2)" }}>
-              <p className="text-[10px] font-mono text-emerald-700 uppercase tracking-widest">Action Opportunities</p>
+              <p className="text-xs font-mono text-emerald-700 uppercase tracking-widest">Action Opportunities</p>
               {report.actions.map((a, i) => (
                 <div key={i} className="rounded-xl p-4 space-y-1.5"
                   style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(16,185,129,0.2)" }}>
-                  <p className="text-sm font-bold text-emerald-300">{a.title}</p>
-                  <p className="text-xs text-slate-400 leading-relaxed">{a.description}</p>
-                  <p className="text-[10px] font-mono text-emerald-800">{a.derivedFrom}</p>
+                  <p className="text-base font-bold text-emerald-300">{a.title}</p>
+                  <p className="text-sm text-slate-400 leading-relaxed">{a.description}</p>
+                  <p className="text-xs font-mono text-emerald-800">{a.derivedFrom}</p>
                 </div>
               ))}
             </div>
@@ -580,19 +580,19 @@ export function ResearchMode() {
           {report.evidenceGaps && (
             <div className="rounded-xl px-4 py-3 flex gap-3 items-start"
               style={{ background: "rgba(15,37,53,0.5)", border: "1px solid #1e2d45" }}>
-              <span className="text-[10px] font-mono font-black text-slate-600 uppercase tracking-wider shrink-0 pt-0.5">GAPS</span>
-              <p className="text-xs text-slate-500 leading-relaxed">{report.evidenceGaps}</p>
+              <span className="text-xs font-mono font-black text-slate-600 uppercase tracking-wider shrink-0 pt-0.5">GAPS</span>
+              <p className="text-sm text-slate-500 leading-relaxed">{report.evidenceGaps}</p>
             </div>
           )}
 
           {/* Footer */}
           <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "#1e2d45" }}>
-            <p className="text-[10px] font-mono text-slate-700">
+            <p className="text-xs font-mono text-slate-700">
               {report.totalIndexed} data points searched · Evidence validated before citation
             </p>
             <button
               onClick={() => { setReport(null); setError(null); setQuery(""); setTimeout(() => inputRef.current?.focus(), 50); }}
-              className="text-[11px] font-mono text-[#38bdf8] hover:text-white transition-colors"
+              className="text-sm font-mono text-[#38bdf8] hover:text-white transition-colors"
             >
               New search →
             </button>
