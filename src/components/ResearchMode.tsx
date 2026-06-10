@@ -4,10 +4,12 @@ import { useState, useRef } from "react";
 import type {
   ResearchReport,
   ResearchFinding,
+  ResearchPattern,
   ContraFinding,
   SourceRef,
   QuoteCluster,
   CreatorStance,
+  ResearchAction,
 } from "@/app/api/research/search/route";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -55,6 +57,22 @@ const STANCE_META = {
   disagree: { color: "#f87171", bg: "rgba(248,113,113,0.08)", border: "rgba(248,113,113,0.25)", label: "DISAGREE" },
 };
 
+const PATTERN_META: Record<ResearchPattern["patternType"], { label: string; color: string; icon: string }> = {
+  repeated_behavior:  { label: "REPEATED BEHAVIOR",  color: "#38bdf8", icon: "↻" },
+  repeated_outcome:   { label: "REPEATED OUTCOME",   color: "#10b981", icon: "→" },
+  repeated_strategy:  { label: "REPEATED STRATEGY",  color: "#a78bfa", icon: "⊕" },
+  repeated_mistake:   { label: "REPEATED MISTAKE",   color: "#f87171", icon: "✕" },
+  success_factor:     { label: "SUCCESS FACTOR",     color: "#10b981", icon: "★" },
+  failure_factor:     { label: "FAILURE FACTOR",     color: "#f87171", icon: "▼" },
+};
+
+const ACTION_CATEGORY_META: Record<ResearchAction["category"], { label: string; color: string; border: string; bg: string }> = {
+  decision:            { label: "Decision",            color: "#38bdf8", border: "rgba(56,189,248,0.25)",  bg: "rgba(56,189,248,0.06)"  },
+  task:                { label: "Task",                color: "#10b981", border: "rgba(16,185,129,0.25)",  bg: "rgba(16,185,129,0.06)"  },
+  experiment:          { label: "Experiment",          color: "#a78bfa", border: "rgba(167,139,250,0.25)", bg: "rgba(167,139,250,0.06)" },
+  content_opportunity: { label: "Content Opportunity", color: "#fbbf24", border: "rgba(251,191,36,0.25)",  bg: "rgba(251,191,36,0.06)"  },
+};
+
 const SUGGESTED = [
   "pricing strategy",
   "founder market fit",
@@ -77,14 +95,11 @@ const CARD_STYLE = {
 function SourceCitation({ r, index }: { r: SourceRef; index: number }) {
   const sigColor = SIGNAL_COLOR[r.signalStrength ?? ""] ?? "#94a3b8";
   const link = ytUrl(r.videoId, r.timestampStr);
-
   return (
     <div className="rounded-xl p-4 space-y-3" style={CARD_STYLE}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
-          <p className="text-sm font-mono font-black text-slate-300 uppercase tracking-wider truncate">
-            {r.creator}
-          </p>
+          <p className="text-sm font-mono font-black text-slate-300 uppercase tracking-wider truncate">{r.creator}</p>
           <p className="text-xs font-mono text-slate-500 truncate">{r.videoTitle}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -94,32 +109,23 @@ function SourceCitation({ r, index }: { r: SourceRef; index: number }) {
               {r.signalStrength}
             </span>
           )}
-          <a
-            href={link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs font-mono font-bold text-[#38bdf8] hover:text-white border border-[#38bdf8]/30 hover:border-[#38bdf8]/60 px-2 py-0.5 rounded transition-colors"
-          >
+          <a href={link} target="_blank" rel="noopener noreferrer"
+            className="text-xs font-mono font-bold text-[#38bdf8] hover:text-white border border-[#38bdf8]/30 hover:border-[#38bdf8]/60 px-2 py-0.5 rounded transition-colors">
             {r.timestampStr ? `@${r.timestampStr} ↗` : "Watch ↗"}
           </a>
         </div>
       </div>
-
       {r.quote && (
         <blockquote className="border-l-2 border-[#38bdf8]/40 pl-3">
-          <p className="text-base text-slate-200 italic leading-relaxed">
-            &ldquo;{r.quote}&rdquo;
-          </p>
+          <p className="text-base text-slate-200 italic leading-relaxed">&ldquo;{r.quote}&rdquo;</p>
         </blockquote>
       )}
-
       {r.whyItSupports && (
         <p className="text-sm text-slate-400 leading-relaxed">
           <span className="font-mono font-black text-slate-500">WHY THIS SUPPORTS: </span>
           {r.whyItSupports}
         </p>
       )}
-
       <span className="text-xs font-mono text-slate-700">Source {index + 1}</span>
     </div>
   );
@@ -129,19 +135,14 @@ function SourceCitation({ r, index }: { r: SourceRef; index: number }) {
 
 function ClusterBlock({ cluster, startIndex }: { cluster: QuoteCluster; startIndex: number }) {
   const [open, setOpen] = useState(true);
-
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #1e2d45" }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors"
-        style={{ background: "rgba(22,96,136,0.18)" }}
-      >
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left"
+        style={{ background: "rgba(22,96,136,0.18)" }}>
         <div className="flex items-center gap-2.5">
           <span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8]/60 shrink-0" />
-          <span className="text-sm font-mono font-black text-[#38bdf8] uppercase tracking-wider">
-            {cluster.theme}
-          </span>
+          <span className="text-sm font-mono font-black text-[#38bdf8] uppercase tracking-wider">{cluster.theme}</span>
           <span className="text-xs font-mono text-slate-500">
             {cluster.sourceRefs.length} {cluster.sourceRefs.length === 1 ? "quote" : "quotes"}
           </span>
@@ -150,9 +151,7 @@ function ClusterBlock({ cluster, startIndex }: { cluster: QuoteCluster; startInd
       </button>
       {open && (
         <div className="px-4 pb-4 pt-3 space-y-3" style={{ background: "rgba(10,20,35,0.5)" }}>
-          {cluster.sourceRefs.map((ref, i) => (
-            <SourceCitation key={i} r={ref} index={startIndex + i} />
-          ))}
+          {cluster.sourceRefs.map((ref, i) => <SourceCitation key={i} r={ref} index={startIndex + i} />)}
         </div>
       )}
     </div>
@@ -165,18 +164,12 @@ function FindingBlock({ finding, index }: { finding: ResearchFinding; index: num
   const [open, setOpen] = useState(true);
   const cMeta = CONFIDENCE_META[finding.confidence];
   const sMeta = STRENGTH_META[finding.consensusStrength] ?? STRENGTH_META.Insufficient;
-
   let refCount = 0;
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #1e2d45", boxShadow: "0 4px 24px #00000028,inset 0 1px #ffffff08" }}>
-
-      {/* Header */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full text-left p-5 space-y-3.5 transition-colors"
-        style={{ background: "linear-gradient(140deg,#0f2535 0%,#0e3154 100%)" }}
-      >
+      <button onClick={() => setOpen(o => !o)} className="w-full text-left p-5 space-y-3.5"
+        style={{ background: "linear-gradient(140deg,#0f2535 0%,#0e3154 100%)" }}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
             <span className="text-xs font-mono font-black text-slate-500 shrink-0 mt-1">F{index + 1}</span>
@@ -184,8 +177,6 @@ function FindingBlock({ finding, index }: { finding: ResearchFinding; index: num
           </div>
           <span className="text-xs font-mono text-slate-600 shrink-0">{open ? "▲" : "▼"}</span>
         </div>
-
-        {/* Stats row */}
         <div className="flex flex-wrap items-center gap-2 pl-6">
           <span className="text-xs font-mono font-black px-2 py-0.5 rounded"
             style={{ color: cMeta.color, background: cMeta.bg, border: `1px solid ${cMeta.border}` }}>
@@ -195,26 +186,15 @@ function FindingBlock({ finding, index }: { finding: ResearchFinding; index: num
             style={{ color: sMeta.color, background: `${sMeta.color}10`, border: `1px solid ${sMeta.color}30` }}>
             {sMeta.label}
           </span>
-          <span className="text-xs font-mono text-slate-400">
-            <span className="text-white font-bold">{finding.creatorCount}</span> creators
-          </span>
+          <span className="text-xs font-mono text-slate-400"><span className="text-white font-bold">{finding.creatorCount}</span> creators</span>
           <span className="text-slate-600 font-mono text-xs">·</span>
-          <span className="text-xs font-mono text-slate-400">
-            <span className="text-white font-bold">{finding.videoCount}</span> videos
-          </span>
+          <span className="text-xs font-mono text-slate-400"><span className="text-white font-bold">{finding.videoCount}</span> videos</span>
           <span className="text-slate-600 font-mono text-xs">·</span>
-          <span className="text-xs font-mono text-slate-400">
-            <span className="text-white font-bold">{finding.evidenceCount}</span> quotes
-          </span>
+          <span className="text-xs font-mono text-slate-400"><span className="text-white font-bold">{finding.evidenceCount}</span> quotes</span>
           <span className="text-slate-600 font-mono text-xs">·</span>
-          <span className="text-xs font-mono"
-            style={{ color: cMeta.color }}>
-            {finding.confidenceScore}% confidence
-          </span>
+          <span className="text-xs font-mono" style={{ color: cMeta.color }}>{finding.confidenceScore}% confidence</span>
         </div>
       </button>
-
-      {/* Clustered evidence */}
       {open && (
         <div className="px-5 pb-5 pt-4 space-y-3" style={{ background: "rgba(10,20,35,0.6)" }}>
           <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">Supporting Evidence</p>
@@ -229,19 +209,52 @@ function FindingBlock({ finding, index }: { finding: ResearchFinding; index: num
   );
 }
 
-// ── Research questions panel ──────────────────────────────────────────────────
+// ── Research objective card ───────────────────────────────────────────────────
 
-function ResearchQuestionsPanel({ questions }: { questions: string[] }) {
-  if (!questions.length) return null;
+function ResearchObjectiveCard({ objective, query }: { objective: string; query: string }) {
   return (
-    <div className="rounded-2xl p-5 space-y-3.5"
-      style={{ background: "rgba(15,37,53,0.65)", border: "1px solid #1e2d45" }}>
-      <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Research Questions</p>
+    <div className="rounded-2xl p-5 space-y-2"
+      style={{ background: "rgba(15,37,53,0.8)", border: "1px solid rgba(56,189,248,0.35)", boxShadow: "0 0 24px rgba(56,189,248,0.06),inset 0 1px #ffffff08" }}>
+      <p className="text-xs font-mono font-black text-[#38bdf8]/60 uppercase tracking-widest">Research Objective</p>
+      <p className="text-base text-white leading-relaxed font-medium">{objective}</p>
+      <p className="text-xs font-mono text-slate-600">Query: &ldquo;{query}&rdquo;</p>
+    </div>
+  );
+}
+
+// ── Research framework panel ──────────────────────────────────────────────────
+
+function ResearchFrameworkPanel({ subtopics, questions }: { subtopics: string[]; questions: string[] }) {
+  const [showSubtopics, setShowSubtopics] = useState(false);
+  return (
+    <div className="rounded-2xl p-5 space-y-4" style={{ background: "rgba(15,37,53,0.65)", border: "1px solid #1e2d45" }}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Research Framework</p>
+        {subtopics.length > 0 && (
+          <button onClick={() => setShowSubtopics(s => !s)}
+            className="text-xs font-mono text-slate-600 hover:text-[#38bdf8] transition-colors">
+            {showSubtopics ? "Hide subtopics ▲" : "Show subtopics ▼"}
+          </button>
+        )}
+      </div>
+
+      {/* Subtopics (collapsible) */}
+      {showSubtopics && subtopics.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {subtopics.map((s, i) => (
+            <span key={i} className="text-xs font-mono px-2.5 py-1 rounded-lg text-slate-400"
+              style={{ background: "rgba(56,189,248,0.06)", border: "1px solid rgba(56,189,248,0.15)" }}>
+              {s}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Research questions */}
       <div className="space-y-3">
         {questions.map((q, i) => (
           <div key={i} className="flex gap-3 items-baseline">
-            <span className="text-xs font-mono font-black shrink-0 w-6 text-right"
-              style={{ color: "rgba(56,189,248,0.45)" }}>
+            <span className="text-xs font-mono font-black shrink-0 w-6 text-right" style={{ color: "rgba(56,189,248,0.45)" }}>
               Q{i}
             </span>
             <p className="text-base text-slate-300 leading-relaxed">{q}</p>
@@ -252,22 +265,75 @@ function ResearchQuestionsPanel({ questions }: { questions: string[] }) {
   );
 }
 
+// ── Evidence overview ─────────────────────────────────────────────────────────
+
+function EvidenceOverview({ report, qualityMeta }: { report: ResearchReport; qualityMeta: { color: string; label: string } | null }) {
+  const confColor = report.confidenceScore >= 68 ? "#10b981" : report.confidenceScore >= 50 ? "#fbbf24" : "#f87171";
+  return (
+    <div className="rounded-2xl p-5 space-y-4"
+      style={{ background: "rgba(15,37,53,0.7)", border: "1px solid #1e2d45", boxShadow: "0 4px 32px #0000002e,inset 0 1px #ffffff08" }}>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="space-y-1 min-w-0">
+          <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">Evidence Overview</p>
+          <h2 className="text-xl font-black text-white leading-tight">{report.topic}</h2>
+        </div>
+        {qualityMeta && (
+          <span className="text-xs font-mono font-black px-2.5 py-1 rounded-lg shrink-0"
+            style={{ color: qualityMeta.color, background: `${qualityMeta.color}18`, border: `1px solid ${qualityMeta.color}30` }}>
+            {qualityMeta.label}
+          </span>
+        )}
+      </div>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Creators", value: report.creatorsMatched },
+          { label: "Videos", value: report.videosMatched },
+          { label: "Quotes used", value: report.quotesUsed },
+          { label: "Quotes rejected", value: report.quotesRejected, muted: true },
+        ].map(({ label, value, muted }) => (
+          <div key={label} className="rounded-xl p-3 text-center" style={{ background: "rgba(10,20,35,0.5)", border: "1px solid #1e2d45" }}>
+            <p className="text-xl font-black" style={{ color: muted ? "#475569" : "white" }}>{value}</p>
+            <p className="text-xs font-mono text-slate-500 mt-0.5">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Coverage + Confidence bars */}
+      <div className="space-y-2.5">
+        <ProgressBar label="Question Coverage" value={report.coverageScore} color="#38bdf8" />
+        <ProgressBar label="Consensus" value={report.consensusScore * 10} color="#a78bfa" />
+        <ProgressBar label="Confidence" value={report.confidenceScore} color={confColor} />
+      </div>
+    </div>
+  );
+}
+
+function ProgressBar({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-mono text-slate-500">{label}</span>
+        <span className="text-xs font-mono font-black" style={{ color }}>{value}%</span>
+      </div>
+      <div className="rounded-full h-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(value, 100)}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
 // ── Grouped findings ──────────────────────────────────────────────────────────
 
 function GroupedFindings({ findings, questions }: { findings: ResearchFinding[]; questions: string[] }) {
   if (!findings.length) return null;
 
-  // Map findings to their question index
-  const grouped: { qi: number; question: string; items: { f: ResearchFinding; fi: number }[] }[] =
-    questions.map((q, qi) => ({
-      qi,
-      question: q,
-      items: findings
-        .map((f, fi) => ({ f, fi }))
-        .filter(({ f }) => f.answersQuestion === qi),
-    })).filter(g => g.items.length > 0);
+  const grouped = questions.map((q, qi) => ({
+    qi, question: q,
+    items: findings.map((f, fi) => ({ f, fi })).filter(({ f }) => f.answersQuestion === qi),
+  })).filter(g => g.items.length > 0);
 
-  // Orphaned findings — answersQuestion out of range
   const orphaned = findings
     .map((f, fi) => ({ f, fi }))
     .filter(({ f }) => f.answersQuestion < 0 || f.answersQuestion >= questions.length);
@@ -276,35 +342,73 @@ function GroupedFindings({ findings, questions }: { findings: ResearchFinding[];
     <div className="space-y-6">
       {grouped.map(({ qi, question, items }) => (
         <div key={qi} className="space-y-3">
-          {/* Question header */}
           <div className="flex gap-3 items-start">
-            <span
-              className="text-xs font-mono font-black px-2 py-0.5 rounded shrink-0 mt-0.5"
-              style={{ color: "#38bdf8", background: "rgba(56,189,248,0.10)", border: "1px solid rgba(56,189,248,0.25)" }}
-            >
+            <span className="text-xs font-mono font-black px-2 py-0.5 rounded shrink-0 mt-0.5"
+              style={{ color: "#38bdf8", background: "rgba(56,189,248,0.10)", border: "1px solid rgba(56,189,248,0.25)" }}>
               Q{qi}
             </span>
             <p className="text-base font-bold text-slate-200 leading-snug">{question}</p>
           </div>
-
-          {/* Findings under this question */}
           <div className="space-y-3 pl-8">
-            {items.map(({ f, fi }) => (
-              <FindingBlock key={fi} finding={f} index={fi} />
-            ))}
+            {items.map(({ f, fi }) => <FindingBlock key={fi} finding={f} index={fi} />)}
           </div>
         </div>
       ))}
-
-      {/* Orphaned findings (shouldn't happen but handle gracefully) */}
       {orphaned.length > 0 && (
         <div className="space-y-3">
           <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">Additional Findings</p>
-          {orphaned.map(({ f, fi }) => (
-            <FindingBlock key={fi} finding={f} index={fi} />
-          ))}
+          {orphaned.map(({ f, fi }) => <FindingBlock key={fi} finding={f} index={fi} />)}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Patterns panel ────────────────────────────────────────────────────────────
+
+function PatternsPanel({ patterns }: { patterns: ResearchPattern[] }) {
+  if (!patterns.length) return null;
+  return (
+    <div className="rounded-2xl p-5 space-y-4" style={{ background: "rgba(15,37,53,0.65)", border: "1px solid #1e2d45" }}>
+      <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Patterns</p>
+      <div className="space-y-3">
+        {patterns.map((p, i) => {
+          const meta = PATTERN_META[p.patternType];
+          return (
+            <div key={i} className="flex gap-3 items-start rounded-xl p-3.5"
+              style={{ background: "rgba(10,20,35,0.5)", border: "1px solid #1e2d45" }}>
+              <div className="flex flex-col items-center gap-1 shrink-0 pt-0.5">
+                <span className="text-base font-black" style={{ color: meta.color }}>{meta.icon}</span>
+              </div>
+              <div className="space-y-1 min-w-0">
+                <span className="text-xs font-mono font-black" style={{ color: meta.color }}>{meta.label}</span>
+                <p className="text-base text-slate-300 leading-relaxed">{p.description}</p>
+                <p className="text-xs font-mono text-slate-600">{p.creatorCount} {p.creatorCount === 1 ? "creator" : "creators"}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Conclusions card ──────────────────────────────────────────────────────────
+
+function ConclusionsCard({ conclusions, confidenceScore }: { conclusions: string; confidenceScore: number }) {
+  if (!conclusions) return null;
+  const confColor = confidenceScore >= 68 ? "#10b981" : confidenceScore >= 50 ? "#fbbf24" : "#f87171";
+  return (
+    <div className="rounded-2xl p-6 space-y-3"
+      style={{ background: "rgba(15,37,53,0.85)", border: "1px solid rgba(56,189,248,0.3)", boxShadow: "0 0 32px rgba(56,189,248,0.06),inset 0 1px #ffffff08" }}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-mono font-black text-[#38bdf8]/70 uppercase tracking-widest">What the Evidence Suggests</p>
+        <span className="text-xs font-mono font-black px-2 py-0.5 rounded"
+          style={{ color: confColor, background: `${confColor}10`, border: `1px solid ${confColor}30` }}>
+          {confidenceScore}% confidence
+        </span>
+      </div>
+      <p className="text-base text-slate-200 leading-relaxed">{conclusions}</p>
     </div>
   );
 }
@@ -314,14 +418,10 @@ function GroupedFindings({ findings, questions }: { findings: ResearchFinding[];
 function ContraBlock({ contra }: { contra: ContraFinding }) {
   const [open, setOpen] = useState(true);
   const link = ytUrl(contra.sourceRef.videoId, contra.sourceRef.timestampStr);
-
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(251,191,36,0.28)", boxShadow: "inset 0 1px #ffffff05" }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full text-left p-5 space-y-2 transition-colors"
-        style={{ background: "linear-gradient(140deg,#1a1200 0%,#0f2535 100%)" }}
-      >
+    <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(251,191,36,0.28)" }}>
+      <button onClick={() => setOpen(o => !o)} className="w-full text-left p-5 space-y-2"
+        style={{ background: "linear-gradient(140deg,#1a1200 0%,#0f2535 100%)" }}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
             <span className="text-xs font-mono font-black text-amber-600 shrink-0 mt-0.5">DISSENT</span>
@@ -329,18 +429,14 @@ function ContraBlock({ contra }: { contra: ContraFinding }) {
           </div>
           <span className="text-xs font-mono text-amber-800 shrink-0">{open ? "▲" : "▼"}</span>
         </div>
-        <p className="text-xs font-mono text-amber-800 pl-[3.5rem]">
-          From evidence — not a hypothetical objection
-        </p>
+        <p className="text-xs font-mono text-amber-800 pl-[3.5rem]">From evidence — not a hypothetical objection</p>
       </button>
       {open && (
         <div className="px-5 pb-5 pt-4 space-y-3" style={{ background: "rgba(10,20,35,0.7)" }}>
           <div className="rounded-xl p-4 space-y-3" style={{ border: "1px solid rgba(251,191,36,0.2)", background: "rgba(15,37,53,0.5)" }}>
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-0.5 min-w-0">
-                <p className="text-sm font-mono font-black text-amber-300 uppercase tracking-wider truncate">
-                  {contra.sourceRef.creator}
-                </p>
+                <p className="text-sm font-mono font-black text-amber-300 uppercase tracking-wider truncate">{contra.sourceRef.creator}</p>
                 <p className="text-xs font-mono text-amber-700 truncate">{contra.sourceRef.videoTitle}</p>
               </div>
               <a href={link} target="_blank" rel="noopener noreferrer"
@@ -370,17 +466,14 @@ function ContraBlock({ contra }: { contra: ContraFinding }) {
 
 function ConsensusMapBlock({ map }: { map: CreatorStance[] }) {
   if (!map.length) return null;
-
   const by = {
     agree:    map.filter(s => s.stance === "agree"),
     neutral:  map.filter(s => s.stance === "neutral"),
     disagree: map.filter(s => s.stance === "disagree"),
   };
-
   return (
     <div className="rounded-2xl p-5 space-y-4" style={{ background: "rgba(15,37,53,0.65)", border: "1px solid #1e2d45" }}>
       <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Creator Consensus Map</p>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {(["agree", "neutral", "disagree"] as const).map(stance => {
           const items = by[stance];
@@ -400,8 +493,7 @@ function ConsensusMapBlock({ map }: { map: CreatorStance[] }) {
                   {items.map((s, i) => (
                     <div key={i} className="rounded-lg p-3 space-y-1"
                       style={{ background: meta.bg, border: `1px solid ${meta.border}` }}>
-                      <p className="text-sm font-mono font-black uppercase tracking-wide truncate"
-                        style={{ color: meta.color }}>{s.creator}</p>
+                      <p className="text-sm font-mono font-black uppercase tracking-wide truncate" style={{ color: meta.color }}>{s.creator}</p>
                       <p className="text-xs text-slate-400 leading-relaxed">{s.reason}</p>
                     </div>
                   ))}
@@ -415,11 +507,73 @@ function ConsensusMapBlock({ map }: { map: CreatorStance[] }) {
   );
 }
 
+// ── Actionable intelligence ───────────────────────────────────────────────────
+
+function ActionableIntelligence({ actions, implications }: { actions: ResearchAction[]; implications: { statement: string; basedOnFindings: string }[] }) {
+  if (!actions.length && !implications.length) return null;
+
+  const grouped = {
+    decision:            actions.filter(a => a.category === "decision"),
+    task:                actions.filter(a => a.category === "task"),
+    experiment:          actions.filter(a => a.category === "experiment"),
+    content_opportunity: actions.filter(a => a.category === "content_opportunity"),
+  } as const;
+
+  return (
+    <div className="rounded-2xl p-5 space-y-5" style={{ background: "rgba(15,37,53,0.65)", border: "1px solid #1e2d45" }}>
+      <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Actionable Intelligence</p>
+
+      {/* Implications */}
+      {implications.length > 0 && (
+        <div className="space-y-2.5">
+          {implications.map((imp, i) => (
+            <div key={i} className="flex gap-3 items-start">
+              <span className="text-[#38bdf8] shrink-0 mt-0.5 font-black">→</span>
+              <div className="space-y-0.5">
+                <p className="text-base text-slate-300 leading-relaxed">{imp.statement}</p>
+                <p className="text-xs font-mono text-slate-600">{imp.basedOnFindings}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Actions grouped by category */}
+      {(["decision", "task", "experiment", "content_opportunity"] as const).map(cat => {
+        const items = grouped[cat];
+        if (!items.length) return null;
+        const meta = ACTION_CATEGORY_META[cat];
+        return (
+          <div key={cat} className="space-y-2">
+            <p className="text-xs font-mono font-black uppercase tracking-wider" style={{ color: meta.color }}>
+              {meta.label}s
+            </p>
+            <div className="space-y-2">
+              {items.map((a, i) => (
+                <div key={i} className="rounded-xl p-4 space-y-1.5"
+                  style={{ background: meta.bg, border: `1px solid ${meta.border}` }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-base font-bold leading-snug" style={{ color: meta.color }}>{a.title}</p>
+                    <span className="text-xs font-mono text-slate-500 shrink-0">{a.confidenceScore}%</span>
+                  </div>
+                  <p className="text-sm text-slate-400 leading-relaxed">{a.description}</p>
+                  <p className="text-xs font-mono text-slate-600">{a.derivedFrom}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ResearchMode() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingStage, setLoadingStage] = useState<"framework" | "synthesis" | null>(null);
   const [report, setReport] = useState<ResearchReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reindexing, setReindexing] = useState(false);
@@ -445,8 +599,12 @@ export function ResearchMode() {
     if (!trimmed) return;
     setQuery(trimmed);
     setLoading(true);
+    setLoadingStage("framework");
     setError(null);
     setReport(null);
+
+    // Brief delay to show "framework" stage before switching to "synthesis"
+    const stageTimer = setTimeout(() => setLoadingStage("synthesis"), 2500);
 
     try {
       const res = await fetch("/api/research/search", {
@@ -456,30 +614,30 @@ export function ResearchMode() {
       });
       const data = await res.json() as ResearchReport & { error?: string };
       if (!res.ok || data.error) {
-        setError(data.error ?? "Search failed");
+        setError(data.error ?? "Research failed");
       } else {
         setReport(data);
       }
     } catch {
       setError("Network error — please try again");
     } finally {
+      clearTimeout(stageTimer);
       setLoading(false);
+      setLoadingStage(null);
     }
   }
 
   const qualityMeta = report ? (QUALITY_META[report.evidenceQuality] ?? QUALITY_META.Moderate) : null;
 
   return (
-    <div
-      className="min-h-screen text-slate-100 p-8 space-y-6 max-w-6xl mx-auto"
-      style={{ background: "linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)" }}
-    >
+    <div className="min-h-screen text-slate-100 p-8 space-y-6 max-w-6xl mx-auto"
+      style={{ background: "linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)" }}>
 
       {/* Header */}
       <div className="space-y-1">
         <p className="text-base font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Mode</p>
         <p className="text-sm text-slate-400 font-mono">
-          Evidence-first intelligence search across {report?.totalIndexed ? `${report.totalIndexed} indexed data points` : "your analyzed video library"}.
+          Intelligence discovery across {report?.totalIndexed ? `${report.totalIndexed} indexed data points` : "your analyzed video library"}.
         </p>
       </div>
 
@@ -490,32 +648,26 @@ export function ResearchMode() {
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search everything you've learned..."
+          placeholder="What do you want to understand?"
           className="flex-1 rounded-xl px-4 py-3 text-base text-white placeholder:text-slate-500 focus:outline-none font-mono"
           style={{ background: "rgba(15,37,53,0.7)", border: "1px solid #1e2d45" }}
           disabled={loading}
         />
-        <button
-          type="submit"
-          disabled={loading || !query.trim()}
-          className="px-5 py-3 bg-[#38bdf8] hover:bg-[#7dd3fc] disabled:opacity-40 text-[#0f2535] text-base font-black rounded-xl transition-colors whitespace-nowrap"
-        >
-          {loading ? "Researching..." : "Search"}
+        <button type="submit" disabled={loading || !query.trim()}
+          className="px-5 py-3 bg-[#38bdf8] hover:bg-[#7dd3fc] disabled:opacity-40 text-[#0f2535] text-base font-black rounded-xl transition-colors whitespace-nowrap">
+          {loading ? "Researching..." : "Research"}
         </button>
       </form>
 
       {/* Suggested queries */}
       {!report && !loading && (
         <div className="space-y-3">
-          <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Suggested searches</p>
+          <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Research topics</p>
           <div className="flex flex-wrap gap-2">
             {SUGGESTED.map(s => (
-              <button
-                key={s}
-                onClick={() => { setQuery(s); void runSearch(s); }}
+              <button key={s} onClick={() => { setQuery(s); void runSearch(s); }}
                 className="text-sm font-mono px-4 py-2 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
-                style={{ border: "1px solid #1e2d45", background: "rgba(15,37,53,0.5)" }}
-              >
+                style={{ border: "1px solid #1e2d45", background: "rgba(15,37,53,0.5)" }}>
                 {s}
               </button>
             ))}
@@ -531,12 +683,9 @@ export function ResearchMode() {
           {error.includes("indexed yet") && (
             <div className="space-y-1.5">
               <p className="text-sm text-red-400/70">New analyses index automatically. To index your existing library:</p>
-              <button
-                onClick={handleReindexAll}
-                disabled={reindexing}
-                className="text-sm font-mono font-bold text-white px-3 py-1 rounded disabled:opacity-50 transition-colors"
-                style={{ background: "rgba(127,29,29,0.5)", border: "1px solid rgba(185,28,28,0.5)" }}
-              >
+              <button onClick={handleReindexAll} disabled={reindexing}
+                className="text-sm font-mono font-bold text-white px-3 py-1 rounded disabled:opacity-50"
+                style={{ background: "rgba(127,29,29,0.5)", border: "1px solid rgba(185,28,28,0.5)" }}>
                 {reindexing ? "Indexing..." : "Index my library now"}
               </button>
               {reindexMsg && <p className="text-sm text-emerald-400">{reindexMsg}</p>}
@@ -545,12 +694,20 @@ export function ResearchMode() {
         </div>
       )}
 
-      {/* Loading */}
+      {/* Loading with stage labels */}
       {loading && (
-        <div className="space-y-4 animate-pulse">
-          {[24, 16, 48, 48, 36].map((h, i) => (
-            <div key={i} className="rounded-2xl" style={{ height: `${h * 4}px`, background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
-          ))}
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#38bdf8] animate-pulse" />
+            <p className="text-sm font-mono text-[#38bdf8]">
+              {loadingStage === "framework" ? "Building research framework..." : "Analyzing evidence..."}
+            </p>
+          </div>
+          <div className="space-y-4 animate-pulse">
+            {[20, 40, 12, 56, 48, 36].map((h, i) => (
+              <div key={i} className="rounded-2xl" style={{ height: `${h * 4}px`, background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -558,43 +715,18 @@ export function ResearchMode() {
       {report && !loading && (
         <div className="space-y-5">
 
-          {/* Report header */}
-          <div className="rounded-2xl p-5 space-y-4"
-            style={{ background: "rgba(15,37,53,0.7)", border: "1px solid #1e2d45", boxShadow: "0 4px 32px #0000002e,inset 0 1px #ffffff08" }}>
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="space-y-1 min-w-0">
-                <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">Intelligence Report</p>
-                <h2 className="text-xl font-black text-white leading-tight">{report.topic}</h2>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap shrink-0">
-                <span className="text-xs font-mono font-black px-2.5 py-1 rounded-lg"
-                  style={{ color: qualityMeta?.color, background: `${qualityMeta?.color}18`, border: `1px solid ${qualityMeta?.color}30` }}>
-                  {qualityMeta?.label}
-                </span>
-                <div className="flex gap-3 text-sm font-mono text-slate-400">
-                  <span><span className="text-white font-black">{report.creatorsMatched}</span> creators</span>
-                  <span><span className="text-white font-black">{report.videosMatched}</span> videos</span>
-                  <span><span className="text-white font-black">{report.consensusScore}/10</span> consensus</span>
-                  <span>
-                    <span className="font-black" style={{ color: report.confidenceScore >= 68 ? "#10b981" : report.confidenceScore >= 50 ? "#fbbf24" : "#f87171" }}>
-                      {report.confidenceScore}%
-                    </span> confidence
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="border-t pt-3" style={{ borderColor: "#1e2d45" }}>
-              <p className="text-xs font-mono text-slate-600 uppercase tracking-widest mb-1.5">Summary</p>
-              <p className="text-base text-slate-300 leading-relaxed">{report.summary}</p>
-            </div>
-          </div>
+          {/* 1. Research Objective */}
+          <ResearchObjectiveCard objective={report.researchObjective} query={report.query} />
 
-          {/* Research Questions */}
-          {report.researchQuestions?.length > 0 && (
-            <ResearchQuestionsPanel questions={report.researchQuestions} />
+          {/* 2. Research Framework (subtopics + questions) */}
+          {(report.subtopics?.length > 0 || report.researchQuestions?.length > 0) && (
+            <ResearchFrameworkPanel subtopics={report.subtopics ?? []} questions={report.researchQuestions ?? []} />
           )}
 
-          {/* Findings grouped under their research questions */}
+          {/* 3. Evidence Overview */}
+          <EvidenceOverview report={report} qualityMeta={qualityMeta} />
+
+          {/* 4. Key Findings grouped by question */}
           {report.findings.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">
@@ -604,62 +736,36 @@ export function ResearchMode() {
             </div>
           )}
 
-          {/* Contrarian */}
+          {/* 5. Patterns */}
+          {(report.patterns?.length > 0) && (
+            <PatternsPanel patterns={report.patterns} />
+          )}
+
+          {/* 6. Contrarian / Contradictions */}
           {report.contrarian ? (
             <div className="space-y-3">
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Dissenting View</p>
+              <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Contradictions</p>
               <ContraBlock contra={report.contrarian} />
             </div>
           ) : (
             <div className="rounded-xl px-4 py-2.5 flex items-center gap-2"
               style={{ background: "rgba(15,37,53,0.4)", border: "1px solid #1e2d45" }}>
-              <span className="text-xs font-mono text-slate-600 uppercase tracking-widest">Contrarian</span>
+              <span className="text-xs font-mono text-slate-600 uppercase tracking-widest">Contradictions</span>
               <span className="text-xs font-mono text-slate-600">—</span>
-              <span className="text-sm font-mono text-slate-500">No direct contradictory evidence found in this query.</span>
+              <span className="text-sm font-mono text-slate-500">No direct contradictory evidence found.</span>
             </div>
           )}
 
-          {/* Creator Consensus Map */}
-          {report.consensusMap.length > 0 && (
-            <div className="space-y-3">
-              <ConsensusMapBlock map={report.consensusMap} />
-            </div>
-          )}
+          {/* 7. Creator Consensus Map */}
+          {report.consensusMap.length > 0 && <ConsensusMapBlock map={report.consensusMap} />}
 
-          {/* Implications */}
-          {report.implications.length > 0 && (
-            <div className="rounded-2xl p-5 space-y-3"
-              style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }}>
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Strategic Implications</p>
-              {report.implications.map((imp, i) => (
-                <div key={i} className="flex gap-3 items-start">
-                  <span className="text-[#38bdf8] shrink-0 mt-0.5 font-black">→</span>
-                  <div className="space-y-0.5">
-                    <p className="text-base text-slate-300 leading-relaxed">{imp.statement}</p>
-                    <p className="text-xs font-mono text-slate-600">{imp.basedOnFindings}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* 8. Conclusions */}
+          <ConclusionsCard conclusions={report.conclusions} confidenceScore={report.confidenceScore} />
 
-          {/* Actions */}
-          {report.actions.length > 0 && (
-            <div className="rounded-2xl p-5 space-y-3"
-              style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.2)" }}>
-              <p className="text-xs font-mono text-emerald-700 uppercase tracking-widest">Action Opportunities</p>
-              {report.actions.map((a, i) => (
-                <div key={i} className="rounded-xl p-4 space-y-1.5"
-                  style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(16,185,129,0.2)" }}>
-                  <p className="text-base font-bold text-emerald-300">{a.title}</p>
-                  <p className="text-sm text-slate-400 leading-relaxed">{a.description}</p>
-                  <p className="text-xs font-mono text-emerald-800">{a.derivedFrom}</p>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* 9. Actionable Intelligence */}
+          <ActionableIntelligence actions={report.actions} implications={report.implications} />
 
-          {/* Evidence gaps */}
+          {/* 10. Research Gaps */}
           {report.evidenceGaps && (
             <div className="rounded-xl px-4 py-3 flex gap-3 items-start"
               style={{ background: "rgba(15,37,53,0.5)", border: "1px solid #1e2d45" }}>
@@ -675,9 +781,8 @@ export function ResearchMode() {
             </p>
             <button
               onClick={() => { setReport(null); setError(null); setQuery(""); setTimeout(() => inputRef.current?.focus(), 50); }}
-              className="text-sm font-mono text-[#38bdf8] hover:text-white transition-colors"
-            >
-              New search →
+              className="text-sm font-mono text-[#38bdf8] hover:text-white transition-colors">
+              New research →
             </button>
           </div>
         </div>
