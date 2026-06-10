@@ -111,10 +111,8 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
             </span>
             <div className="min-w-0 space-y-1">
               <h3 className="text-base font-black text-white leading-snug">{theme.title}</h3>
-              <span className={`text-[10px] font-mono font-black uppercase tracking-widest ${
-                theme.isKeyTheme ? "text-emerald-500" : "text-amber-400"
-              }`}>
-                {theme.isKeyTheme ? "● Key Theme" : "◎ Emerging Signal"}
+              <span className="text-[10px] font-mono font-black uppercase tracking-widest text-emerald-500">
+                ● Key Theme
               </span>
             </div>
           </div>
@@ -299,8 +297,7 @@ export function ResearchMode() {
     }
   }
 
-  const keyThemes = report?.themes.filter(t => t.isKeyTheme) ?? [];
-  const emergingSignals = report?.themes.filter(t => !t.isKeyTheme) ?? [];
+  const keyThemes = report?.themes ?? [];
 
   return (
     <div className="min-h-screen text-slate-100 p-8 space-y-6 max-w-6xl mx-auto"
@@ -422,23 +419,12 @@ export function ResearchMode() {
             </div>
           )}
 
-          {/* Emerging Signals */}
-          {emergingSignals.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">
-                Emerging Signals — {emergingSignals.length} {emergingSignals.length === 1 ? "signal" : "signals"}
-              </p>
-              {emergingSignals.map((theme, i) => (
-                <ThemeCard key={i} theme={theme} index={keyThemes.length + i} />
-              ))}
-            </div>
-          )}
-
           {/* Empty state */}
-          {report.themes.length === 0 && (
-            <div className="rounded-xl px-5 py-4"
-              style={{ background: "rgba(15,37,53,0.5)", border: "1px solid #1e2d45" }}>
-              <p className="text-sm text-slate-500">No directly relevant themes found. Try a more specific search term or index more videos.</p>
+          {keyThemes.length === 0 && (
+            <div className="rounded-xl px-5 py-4 space-y-1.5"
+              style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(185,28,28,0.3)" }}>
+              <p className="text-sm font-mono font-black text-red-400/70 uppercase tracking-widest">Insufficient Evidence</p>
+              <p className="text-sm text-slate-500">No directly relevant evidence found for this topic. The indexed content may not cover it, or try a more specific query.</p>
             </div>
           )}
 

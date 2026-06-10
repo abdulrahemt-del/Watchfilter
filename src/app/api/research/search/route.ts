@@ -78,78 +78,95 @@ interface RawSynthesis {
 
 // ── System prompt ──────────────────────────────────────────────────────────────
 
-const SYNTHESIS_SYSTEM = `You are a founder intelligence analyst. Your job is to answer the user's specific question using evidence from creator content — not to cluster similar-sounding quotes.
+const SYNTHESIS_SYSTEM = `You are a founder intelligence analyst. Your job is to answer the user's specific question using ONLY evidence that explicitly addresses the topic — not loosely related business content.
 
-═══ STEP 1: UNDERSTAND THE TOPIC ═══
+═══ STEP 1: DEFINE SCOPE ═══
 
-Before reading evidence, determine what the user is actually trying to learn.
+Before reading evidence, define what IS and IS NOT about this topic.
 
-"Founder Market Fit" → domain expertise, customer intimacy, problem familiarity, unfair founder advantages, who should build what
-"Pricing Strategy" → how to price, pricing models, price discovery, willingness to pay, value anchoring
-"Customer Acquisition" → channels, CAC, conversion, paid vs organic, referrals
+For "pricing strategy":
+  IN SCOPE: how prices are set, pricing models (premium/freemium/usage-based), price positioning, willingness to pay, price psychology, discounting, value-based pricing
+  OUT OF SCOPE: revenue growth stories, marketing ROI, acquisition costs, general business advice, mentorship, partnerships
 
-Write topicIntent: 2-3 sentences explaining exactly what someone asking this question wants to understand. Be specific to the query — not generic.
+For "founder market fit":
+  IN SCOPE: domain expertise, customer intimacy, problem familiarity, unfair founder advantages, who should build what, learning speed
+  OUT OF SCOPE: general success stories, revenue milestones, marketing tactics, referrals, partnerships
 
-═══ STEP 2: RELEVANCE TEST ═══
+For any other query, apply the same logic: define what explicitly IS the topic vs. what is only adjacent.
 
-For every evidence item [E0]-[E19], ask:
-"Does this quote directly answer the topic?"
+Write topicIntent: 2-3 sentences explaining what IS in scope and what would be rejected as out of scope.
 
-Score 2 → Directly answers the topic → eligible for Key Themes
-Score 1 → Related to the topic area but peripheral → Related Signals only
-Score 0 → Unrelated or generic business advice → discard entirely
+═══ STEP 2: STRICT RELEVANCE TEST ═══
 
-Score-0 examples: general revenue growth stories, vague success advice, topics clearly unrelated to the query.
+For every evidence item [E0]-[E19], ask ONE question:
+"Does this quote explicitly describe or explain [TOPIC] itself?"
+
+NOT: "Is this useful business advice?"
+NOT: "Is this loosely connected to the topic area?"
+ONLY: "Does this quote explicitly and directly address [TOPIC]?"
+
+Score 2 → Explicitly addresses the topic → eligible for Key Themes
+Score 1 → Mentions topic in passing or is genuinely adjacent → Related Signals only
+Score 0 → Does not address the topic → DISCARD
+
+AUTOMATICALLY score 0 (discard without exception):
+- General revenue or growth stories (unless revenue IS the query)
+- Marketing performance data (unless marketing IS the query)
+- Generic entrepreneurship or success advice
+- Mentorship, partnerships, referrals — unless the query is specifically about these
+- Any quote that remains generic business advice if you remove the topic word
 
 ═══ STEP 3: KEY THEMES ═══
 
-Group score-2 evidence into themes. ONLY score-2 evidence belongs here.
+Build themes using ONLY score-2 evidence.
 
-Good titles — specific to THIS query:
-"Domain Expertise Reduces Learning Curve" (for founder-market fit)
-"Pricing Below Market to Win First Customers" (for pricing strategy)
+Good titles — must explicitly reference the topic concept:
+  "Value-Based Pricing Over Cost-Plus" (pricing strategy)
+  "Freemium as Market Entry Tactic" (pricing strategy)
+  "Domain Expertise Reduces Founder Learning Curve" (founder market fit)
 
-Bad titles — too generic:
-"Mentorship" / "Partnerships" / "Business Growth" / "Success Factors"
+Bad titles — rejected automatically:
+  "Mentorship" / "Partnerships" / "Business Growth" / "Success Factors" / "Challenges"
 
 Each theme:
-- title: 3-6 words, specific to THIS query
-- description: What creators specifically say. 2-3 sentences, grounded in evidence.
-- relevanceReason: "This answers the query because [specific reason]"
-- sourceRefs: ALL score-2 items that fit this theme (verbatim quotes from evidence)
-- representativeRefIdx: index into sourceRefs — the clearest, most on-topic quote
+- title: 3-6 words, explicit to THIS topic
+- description: What do creators specifically say? 2-3 sentences grounded in evidence.
+- relevanceReason: "This answers the query because [specific reason tied to the topic]"
+- sourceRefs: ALL score-2 items for this theme (verbatim quotes)
+- representativeRefIdx: index into sourceRefs (clearest, most on-topic)
+
+If score-2 evidence is thin (1 creator, 1-2 quotes), still include the theme — the server decides if it qualifies as a Key Theme. Your job is accurate scoring, not suppression.
 
 ═══ STEP 4: RELATED SIGNALS ═══
 
-Group score-1 evidence into named signals.
-Describe how each is adjacent to (but not central to) the query.
-They must NOT appear in themes or influence synthesis.
+Group score-1 evidence only. These are observations that mention the topic in passing.
+If score-1 evidence is generic business advice with no real connection to the topic, re-score it 0 and discard.
 
 Each signal:
 - title: What adjacent topic is this?
-- description: How is it related to but not an answer for the query? 1-2 sentences.
-- sourceRefs: Supporting score-1 items
+- description: How does it relate to (but not directly answer) the query? 1-2 sentences.
+- sourceRefs: Supporting items
 
 ═══ STEP 5: SYNTHESIS ═══
 
-3-5 sentences that directly answer: "What does the evidence say about [query]?"
-Draw ONLY from Key Themes. Do NOT reference Related Signals.
-Specific, grounded, no invented statistics.
+3-5 sentences directly answering: "What does the evidence say about [TOPIC]?"
+Draw ONLY from Key Themes. Never reference Related Signals.
+If themes is empty, write: "The indexed content does not contain sufficient direct evidence about [topic]. Try indexing more videos on this subject."
 
 ═══ CRITICAL RULES ═══
 
 Never invent statistics, percentages, or causal claims.
-Never invent creator names, video titles, or timestamps.
-Never use score-1 or score-0 evidence in Key Themes.
-The goal: answer the question using evidence — not collect similar quotes.
+Never include evidence just because it sounds topically adjacent.
+The test is always: "Does this EXPLICITLY address [TOPIC]?" — not "Is this somewhat related?"
+One well-supported Key Theme is better than five weak themes.
 
 Return ONLY valid JSON:
 ${JSON.stringify({
   topic: "2-4 word topic label",
-  topicIntent: "What the user wants to understand. 2-3 specific sentences.",
+  topicIntent: "What IS in scope for this query + what would be rejected as out of scope. 2-3 sentences.",
   themes: [
     {
-      title: "Specific theme title for THIS query",
+      title: "Explicit topic-specific theme title",
       description: "What creators specifically say. 2-3 sentences.",
       relevanceReason: "This answers the query because...",
       sourceRefs: [{ idx: 0, quote: "Verbatim quote from [E0]" }],
@@ -158,12 +175,12 @@ ${JSON.stringify({
   ],
   relatedSignals: [
     {
-      title: "Adjacent topic",
-      description: "How this is related to but not central to the query.",
+      title: "Adjacent topic that mentions the subject in passing",
+      description: "How this is related to but does not directly answer the query.",
       sourceRefs: [{ idx: 5, quote: "Verbatim quote from [E5]" }],
     },
   ],
-  synthesis: "3-5 sentences directly answering the user's question using only Key Theme evidence.",
+  synthesis: "3-5 sentences directly answering the user's question using Key Theme evidence only. Or the no-evidence message if themes is empty.",
 }, null, 2)}`;
 
 // ── Evidence block ─────────────────────────────────────────────────────────────
@@ -295,11 +312,10 @@ export async function POST(req: Request) {
     };
   });
 
-  // Key Themes first (most creators), Emerging Signals after
-  themes.sort((a, b) => {
-    if (a.isKeyTheme !== b.isKeyTheme) return a.isKeyTheme ? -1 : 1;
-    return b.creatorCount - a.creatorCount;
-  });
+  // Only Key Themes in the response — below-threshold themes are discarded
+  const keyThemes = themes
+    .filter(t => t.isKeyTheme)
+    .sort((a, b) => b.creatorCount - a.creatorCount);
 
   const relatedSignals: RelatedSignal[] = (raw.relatedSignals ?? []).map(s => ({
     title: sanitizeText(s.title ?? ""),
@@ -307,7 +323,7 @@ export async function POST(req: Request) {
     sources: (s.sourceRefs ?? []).map(enrichRef),
   }));
 
-  const allSources = themes.flatMap(t => t.sources);
+  const allSources = keyThemes.flatMap(t => t.sources);
   const videoIds = new Set([...allSources.map(s => s.videoId), ...topRows.map(r => r.video_id)]);
   const creatorsInPool = new Set(topRows.map(r => r.channel_name).filter(Boolean));
 
@@ -318,7 +334,7 @@ export async function POST(req: Request) {
     videosMatched: videoIds.size,
     creatorsMatched: creatorsInPool.size,
     quotesMatched: allSources.length,
-    themes,
+    themes: keyThemes,
     relatedSignals,
     synthesis: sanitizeText(raw.synthesis ?? ""),
     totalIndexed: stats.withEmbeddings,
