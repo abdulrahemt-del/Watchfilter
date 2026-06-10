@@ -28,27 +28,16 @@ export interface QuoteCluster {
   sourceRefs: SourceRef[];
 }
 
-export interface ResearchHypothesisResult {
-  statement: string;
-  relatedQuestion: number;
-  status: "supported" | "rejected" | "inconclusive";
-  supportStrength: number;
-  supportingCreators: number;
-  contradictingCreators: number;
-  rejectionReason: string | null;
-}
+export type EvidenceStrength = "strong" | "moderate" | "limited" | "mixed" | "insufficient" | "none";
 
-export interface ResearchFinding {
-  statement: string;
-  hypothesisIndex: number;
-  testedHypothesis: string;
-  answersQuestion: number;
-  evidenceCount: number;
+export interface ResearchQuestionAnswer {
+  question: string;
+  questionIndex: number;
+  evidenceStrength: EvidenceStrength;
+  conclusion: string;
   creatorCount: number;
+  evidenceCount: number;
   videoCount: number;
-  consensusStrength: "Strong" | "Moderate" | "Weak" | "Insufficient";
-  confidenceScore: number;
-  confidence: "High" | "Moderate" | "Limited";
   clusters: QuoteCluster[];
 }
 
@@ -80,12 +69,11 @@ export interface ResearchAction {
   title: string;
   description: string;
   derivedFrom: string;
-  confidenceScore: number;
 }
 
 export interface ResearchImplication {
   statement: string;
-  basedOnFindings: string;
+  basedOn: string;
 }
 
 export interface ResearchReport {
@@ -94,7 +82,6 @@ export interface ResearchReport {
   topic: string;
   subtopics: string[];
   researchQuestions: string[];
-  hypotheses: ResearchHypothesisResult[];
   evidenceQuality: "Strong" | "Moderate" | "Limited" | "Insufficient";
   videosMatched: number;
   creatorsMatched: number;
@@ -103,7 +90,7 @@ export interface ResearchReport {
   coverageScore: number;
   consensusScore: number;
   confidenceScore: number;
-  findings: ResearchFinding[];
+  questionAnswers: ResearchQuestionAnswer[];
   patterns: ResearchPattern[];
   contrarian: ContraFinding | null;
   consensusMap: CreatorStance[];
@@ -121,35 +108,17 @@ interface RawFramework {
   topic: string;
   subtopics: string[];
   researchQuestions: string[];
-  hypotheses: string[];
 }
 
 interface RawRef { idx: number; quote: string; whyItSupports: string; }
 interface RawCluster { theme: string; evidenceRefs: RawRef[]; }
-interface RawFinding {
-  statement: string;
-  hypothesisIdx: number;
-  answersQuestion: number;
-  confidenceScore: number;
+interface RawQuestionAnswer {
+  questionIndex: number;
+  evidenceStrength: string;
+  conclusion: string;
   clusters: RawCluster[];
 }
-interface RawHypothesisTested {
-  hypothesisIdx: number;
-  statement: string;
-  relatedQuestion: number;
-  supportingRefs: number[];
-  contradictingRefs: number[];
-  supportStrength: number;
-  supportingCreators: number;
-  contradictingCreators: number;
-  status: "supported" | "rejected" | "inconclusive";
-  rejectionReason: string | null;
-}
-interface RawPattern {
-  patternType: string;
-  description: string;
-  creatorCount: number;
-}
+interface RawPattern { patternType: string; description: string; creatorCount: number; }
 interface RawCreatorStance { creator: string; stance: "agree" | "neutral" | "disagree"; reason: string; }
 interface RawSynthesis {
   evidenceQuality: string;
@@ -157,19 +126,31 @@ interface RawSynthesis {
   confidenceScore: number;
   quotesUsed: number;
   quotesRejected: number;
-  coverageScore: number;
-  hypothesisTesting: RawHypothesisTested[];
-  findings: RawFinding[];
+  questionAnswers: RawQuestionAnswer[];
   patterns: RawPattern[];
   contrarian: { statement: string; evidenceRef: RawRef } | null;
   consensusMap: RawCreatorStance[];
   conclusions: string;
-  implications: { statement: string; basedOnFindings: string }[];
-  actions: { category: string; title: string; description: string; derivedFrom: string; confidenceScore: number }[];
+  implications: { statement: string; basedOn: string }[];
+  actions: { category: string; title: string; description: string; derivedFrom: string }[];
   evidenceGaps: string;
 }
 
-// ── Hard confidence caps by creator count ─────────────────────────────────────
+// ── Server-side evidence strength enforcement ─────────────────────────────────
+// GPT cannot over-rate weak evidence.
+
+const VALID_STRENGTHS: EvidenceStrength[] = ["strong", "moderate", "limited", "mixed", "insufficient", "none"];
+
+function enforceEvidenceStrength(raw: string, creatorCount: number): EvidenceStrength {
+  if (creatorCount === 0) return "none";
+  if (creatorCount === 1 && (raw === "strong" || raw === "moderate")) return "limited";
+  if (creatorCount === 2 && raw === "strong") return "moderate";
+  return VALID_STRENGTHS.includes(raw as EvidenceStrength) ? (raw as EvidenceStrength) : "insufficient";
+}
+
+const STRENGTH_SCORE: Record<EvidenceStrength, number> = {
+  strong: 85, moderate: 65, limited: 40, mixed: 45, insufficient: 20, none: 0,
+};
 
 function capConfidence(score: number, creatorCount: number): number {
   const max =
@@ -181,216 +162,171 @@ function capConfidence(score: number, creatorCount: number): number {
   return Math.min(score, max);
 }
 
-// ── Enforce hypothesis status server-side ──────────────────────────────────────
-// GPT cannot override these rules.
+// ── Call 1: Research framework ─────────────────────────────────────────────────
 
-function enforceHypothesisStatus(raw: RawHypothesisTested): ResearchHypothesisResult["status"] {
-  if (raw.supportingCreators === 0 || raw.supportStrength < 20) return "rejected";
-  if (raw.supportingCreators < 2) return "inconclusive";
-  if (raw.supportStrength < 40) return "inconclusive";
-  return "supported";
-}
+const FRAMEWORK_SYSTEM = `You are a research director. Given a search query, generate a research framework.
 
-// ── Call 1: Research design + hypothesis generation ────────────────────────────
+Output:
+1. researchObjective — What the user is REALLY asking. Not a restatement. The deeper intent.
+2. topic — Clean 2-4 word label.
+3. subtopics — 6-10 specific dimensions to investigate within this topic.
+4. researchQuestions — 4-6 specific analytical questions the evidence should answer.
 
-const RESEARCH_DESIGN_SYSTEM = `You are a research director generating a research design before any evidence is seen.
+RESEARCH QUESTION RULES:
+Each question must be:
+  - Specific and directly answerable by creator evidence
+  - About patterns, behaviors, comparisons, or outcomes — not definitions
+  - Capable of receiving an honest "insufficient" answer if evidence is absent
 
-Given a search query, output:
-1. researchObjective — What the user is REALLY asking (1 sentence, not a restatement of the query)
-2. topic — Clean 2-4 word label
-3. subtopics — 6-10 specific dimensions to investigate
-4. researchQuestions — 4-5 specific analytical questions (not circular, not definitional)
-5. hypotheses — 5-10 testable claims that COULD answer the research objective
+BANNED question patterns:
+  "What is X?" — definitional, not analytical
+  "Why is X important?" — assumes conclusion
+  "How does X help?" — assumes X helps
+  "What role does X play?" — vague
 
-HYPOTHESIS RULES:
-Hypotheses are testable claims. They can be proven or disproven by evidence.
-They must be specific. They must make a claim about behavior, outcome, frequency, or comparison.
-
-BANNED hypothesis patterns:
-  "X is important" / "X matters" / "X helps" / "X is key"
-  Any hypothesis that cannot be falsified
-
-GOOD hypothesis examples (for query "distribution channels"):
-  "Partnerships consistently produce the first 100 customers more often than paid advertising"
-  "Content marketing requires 6+ months before generating measurable acquisition returns"
-  "Product-led growth shows stronger unit economics than sales-led models at early stage"
-  "Cold outreach achieves higher conversion for enterprise than SMB across creator accounts"
-  "Referral programs consistently generate the highest-LTV customers relative to other channels"
-  "Paid advertising becomes effective only after achieving product-market fit"
-  "Community-based distribution outperforms influencer marketing for B2B products"
+GOOD question patterns:
+  "Which specific [channels/behaviors/approaches] appear most frequently in [success/failure] accounts?"
+  "How do creators who used [A] describe outcomes compared to those who used [B]?"
+  "What conditions appear consistently before [specific outcome] across multiple creator accounts?"
+  "Which approaches do experienced creators explicitly warn against, and why?"
+  "What timelines or milestones appear in successful [X] stories?"
 
 Return ONLY valid JSON:
-{"researchObjective":"...","topic":"...","subtopics":["..."],"researchQuestions":["Q0: ...","Q1: ...","Q2: ...","Q3: ...","Q4: ..."],"hypotheses":["H0: ...","H1: ...","H2: ...","H3: ...","H4: ...","H5: ..."]}`;
+{"researchObjective":"...","topic":"...","subtopics":["..."],"researchQuestions":["Q0: ...","Q1: ...","Q2: ...","Q3: ...","Q4: ..."]}`;
 
-async function generateResearchDesign(query: string): Promise<RawFramework> {
+async function generateFramework(query: string): Promise<RawFramework> {
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: RESEARCH_DESIGN_SYSTEM },
+      { role: "system", content: FRAMEWORK_SYSTEM },
       { role: "user",   content: `Query: "${query}"` },
     ],
     response_format: { type: "json_object" },
     temperature: 0.2,
-    max_tokens: 800,
+    max_tokens: 700,
   });
   return JSON.parse(sanitizeText(completion.choices[0].message.content ?? "{}")) as RawFramework;
 }
 
-// ── Call 2: Hypothesis testing + synthesis ─────────────────────────────────────
+// ── Call 2: Question answering + synthesis ─────────────────────────────────────
 
-function buildTestingPrompt(framework: RawFramework): string {
-  const hypothesesBlock = framework.hypotheses.map((h, i) => `H${i}: ${h}`).join("\n");
+function buildSynthesisPrompt(framework: RawFramework): string {
   const questionsBlock = framework.researchQuestions.map((q, i) => `Q${i}: ${q}`).join("\n");
 
   return [
-    "You are a hypothesis-driven research analyst.",
-    "Your job: TEST each hypothesis against evidence. Then generate findings ONLY from hypotheses that survive.",
+    "You are an evidence analyst. Your job: answer each research question using ONLY what the evidence shows.",
     "",
-    "═══ RESEARCH DESIGN ═══",
-    `Research Objective: ${framework.researchObjective}`,
+    "═══ CRITICAL RULES ═══",
     "",
-    "Research Questions:",
-    questionsBlock,
+    "NEVER invent:",
+    "  - Percentages or statistics that do not appear verbatim in an evidence quote",
+    "  - Causal effects ('X increases Y')",
+    "  - Performance improvements ('companies that do X see better results')",
+    "  - Outcomes creators did not explicitly describe",
     "",
-    "Hypotheses to test:",
-    hypothesesBlock,
+    "NEVER use these phrases:",
+    "  'X increases Y by N%' — unless N% appears verbatim in a creator quote",
+    "  'Research shows...' — WatchFilter is not a research database",
+    "  'Studies indicate...' — same",
+    "  'Companies that do X...' — fabricated population claim",
+    "  'Successful founders tend to...' — without specific evidence from specific creators",
+    "  Any causal or statistical claim not grounded in a direct quote",
     "",
-    "═══ PHASE A: HYPOTHESIS TESTING ═══",
-    "For each hypothesis H0-H{n}, examine the evidence pool and determine:",
+    "═══ FOR EACH RESEARCH QUESTION ═══",
+    `Research Questions:\n${questionsBlock}`,
     "",
-    "1. SUPPORTING EVIDENCE: Which [E] items DIRECTLY support this hypothesis?",
-    "   Direct = the quote explicitly demonstrates the claim in the hypothesis.",
-    "   Indirect / related / merely-mentioned = does NOT count as support.",
+    "STEP 1 — EVIDENCE COLLECTION",
+    "Which [E] items DIRECTLY answer this question?",
+    "Direct = the quote explicitly discusses this specific question topic.",
+    "Reject evidence that is merely related, tangential, or about a different sub-topic.",
+    "It is correct and expected to find 0 supporting items for some questions.",
     "",
-    "2. CONTRADICTING EVIDENCE: Which [E] items explicitly argue AGAINST this hypothesis?",
+    "STEP 2 — EVIDENCE STRENGTH (apply honestly, never inflate)",
+    "STRONG:       3+ creators with direct, explicit evidence addressing this question",
+    "MODERATE:     2 creators with direct evidence",
+    "LIMITED:      1 creator with direct evidence",
+    "MIXED:        2+ creators with conflicting answers to the same question",
+    "INSUFFICIENT: Evidence is related but doesn't directly answer the question",
+    "NONE:         No evidence addresses this question at all",
     "",
-    "3. SUPPORTING CREATORS: Count distinct creators in the supporting refs.",
+    "STEP 3 — WRITE CONCLUSION",
+    "Begin with the strength prefix, then describe what creators actually said:",
+    "  'Strong evidence suggests [describe what multiple creators said/showed]...'",
+    "  'Moderate evidence suggests [describe what 2 creators said]...'",
+    "  'Limited evidence — [Creator Name] discussed this, noting [what they said]...'",
+    "  'Evidence is mixed: [Creator A] found [X] while [Creator B] found [Y]...'",
+    "  'Evidence is insufficient — creators touched on [related topic] but did not directly address [specific question].'",
+    "  'No evidence found on this question in the analyzed content.'",
     "",
-    "4. SUPPORT STRENGTH: Score 0-100.",
-    "   0  = no evidence",
-    "   20 = tangentially mentioned once",
-    "   40 = 1 creator with direct evidence",
-    "   60 = 2 creators with direct evidence",
-    "   75 = 3-4 creators with strong direct evidence",
-    "   90 = 5+ creators with strong direct evidence",
+    "NUMBERS IN CONCLUSIONS:",
+    "  Correct: 'Creator A reported their CAC dropped from $120 to $45 after switching to referrals' (from a quote)",
+    "  Wrong:   'Referrals reduce CAC by 63%' (invented — even if the math is right, you cannot state it this way)",
     "",
-    "5. VERDICT:",
-    "   SUPPORTED    = supportingCreators ≥ 2 AND supportStrength ≥ 40 AND not fatally contradicted",
-    "   INCONCLUSIVE = supportingCreators = 1 OR contradicting evidence exists without a clear winner",
-    "   REJECTED     = supportingCreators = 0 OR evidence directly refutes the hypothesis",
+    "NEVER upgrade evidence strength. If you have 1 creator, the ceiling is LIMITED.",
+    "NEVER write a confident conclusion on INSUFFICIENT or NONE evidence.",
     "",
-    "   Note: rejectionReason must explain WHY — not just say 'insufficient evidence'.",
-    "   Good: 'Only 1 creator cited partnerships, and another explicitly said cold outreach outperformed it for them'",
-    "   Bad:  'Not enough evidence'",
+    "═══ PATTERNS ═══",
+    "Identify recurring themes across multiple creators — independent of research questions.",
+    "Minimum 2 creators per pattern.",
+    "Describe what creators specifically said/did — not generic business wisdom.",
     "",
-    "═══ PHASE B: FINDINGS (SUPPORTED HYPOTHESES ONLY) ═══",
-    "Generate a finding for each SUPPORTED hypothesis.",
-    "Do NOT generate findings for REJECTED or INCONCLUSIVE hypotheses.",
-    "",
-    "A finding is NOT a quote summary.",
-    "A finding answers: 'What does the evidence collectively suggest about this hypothesis?'",
-    "It must contain one of:",
-    "  - A causal or correlational claim ('X appears before Y across N cases')",
-    "  - A frequency observation ('7 of 8 creators who did X reported Y')",
-    "  - A comparative outcome ('Channel A outperformed Channel B in N creator accounts')",
-    "  - A pattern ('Founders who did X consistently reported Y within Z timeframe')",
-    "",
-    "BANNED finding patterns:",
-    "  'X is important' / 'X matters' / 'X helps' / 'Adaptability is key'",
-    "  Generic business advice that could apply to any topic without the evidence",
-    "",
-    "Each finding must include clusters of supporting evidence organized by sub-theme.",
-    "",
-    "═══ PHASE C: PATTERNS ═══",
-    "Identify patterns that emerge across multiple creators — independent of hypotheses.",
-    "Minimum 2 creators per pattern. Specific, not generic.",
-    "",
-    "═══ PHASE D: CONCLUSIONS ═══",
-    "What does the totality of SUPPORTED hypotheses and patterns suggest?",
-    "State what a rational observer should conclude.",
-    "Be honest about what remains unanswered.",
-    "",
-    "═══ CONFIDENCE CALIBRATION ═══",
-    "Hard caps by creator count (server enforces, but set correctly):",
-    "  1 creator → max 55 | 2 → max 65 | 3-4 → max 75 | 5-6 → max 85 | 7+ → max 95",
+    "═══ OVERALL CONCLUSIONS ═══",
+    "What does the totality of answered questions suggest about the research objective?",
+    "Be explicit about which questions had insufficient evidence.",
+    "No invented statistics. No manufactured certainty.",
     "",
     "═══ CONTRARIAN RULE ═══",
-    "Only if a creator explicitly argues the opposite of a supported hypothesis.",
-    "Never invent disagreement. If none: contrarian = null.",
+    "Only if a creator explicitly argues against the prevailing evidence.",
+    "If none: contrarian = null.",
     "",
     "═══ ACTIONABLE INTELLIGENCE ═══",
+    "Each action ties directly to a specific question answer.",
     "Categories: decision / task / experiment / content_opportunity",
-    "Each action ties directly to a supported finding.",
+    "Actions must be grounded in the evidence — no advice invented from thin air.",
     "",
     "Return ONLY valid JSON:",
     JSON.stringify({
       evidenceQuality: "Strong | Moderate | Limited | Insufficient",
-      consensusScore: 7,
-      confidenceScore: 65,
-      quotesUsed: 12,
-      quotesRejected: 5,
-      coverageScore: 60,
-      hypothesisTesting: [
+      consensusScore: 6,
+      confidenceScore: 60,
+      quotesUsed: 10,
+      quotesRejected: 7,
+      questionAnswers: [
         {
-          hypothesisIdx: 0,
-          statement: "Partnerships consistently produce first 100 customers more often than paid ads",
-          relatedQuestion: 0,
-          supportingRefs: [0, 3, 7],
-          contradictingRefs: [],
-          supportStrength: 72,
-          supportingCreators: 3,
-          contradictingCreators: 0,
-          status: "supported",
-          rejectionReason: null,
-        },
-        {
-          hypothesisIdx: 1,
-          statement: "SEO is the primary scalable channel for founders without large networks",
-          relatedQuestion: 2,
-          supportingRefs: [5],
-          contradictingRefs: [12],
-          supportStrength: 28,
-          supportingCreators: 1,
-          contradictingCreators: 1,
-          status: "rejected",
-          rejectionReason: "Only 1 creator mentioned SEO, and another explicitly argued it took 18 months to produce results — making it impractical for early-stage acquisition",
-        },
-      ],
-      findings: [
-        {
-          statement: "Evidence confirms across 3 creators: partnerships produced the first 100 customers faster than any other channel tested",
-          hypothesisIdx: 0,
-          answersQuestion: 0,
-          confidenceScore: 68,
+          questionIndex: 0,
+          evidenceStrength: "moderate",
+          conclusion: "Moderate evidence suggests partnerships appear consistently in early customer acquisition stories — Creator A and Creator B both cited partnership-led growth as their primary first-100-customer strategy.",
           clusters: [
             {
-              theme: "Partnership acceleration",
+              theme: "Partnership as first channel",
               evidenceRefs: [
-                { idx: 0, quote: "Direct quote proving the finding", whyItSupports: "Why this proves the hypothesis" },
+                { idx: 0, quote: "Direct verbatim quote from the evidence", whyItSupports: "Why this directly answers the question" },
               ],
             },
           ],
         },
+        {
+          questionIndex: 2,
+          evidenceStrength: "none",
+          conclusion: "No evidence found on this question in the analyzed content.",
+          clusters: [],
+        },
       ],
       patterns: [
-        {
-          patternType: "repeated_behavior",
-          description: "Specific repeated behavior observed across N creators — not generic",
-          creatorCount: 3,
-        },
+        { patternType: "repeated_behavior", description: "Specific behavior observed in 3 creator accounts — not generic", creatorCount: 3 },
       ],
       contrarian: null,
       consensusMap: [
-        { creator: "Creator Name", stance: "agree", reason: "What they specifically said" },
+        { creator: "Creator Name", stance: "agree", reason: "Specifically cited X as their primary approach" },
       ],
-      conclusions: "2-3 sentences: what a rational observer should conclude from supported hypotheses. Honest about rejected/inconclusive hypotheses and what remains unknown.",
+      conclusions: "2-3 sentences describing what the answered questions collectively suggest. Honest about gaps. No invented statistics.",
       implications: [
-        { statement: "Implication flowing directly from a supported hypothesis", basedOnFindings: "H0 finding" },
+        { statement: "Implication following directly from Q0 answer", basedOn: "Q0 — moderate evidence" },
       ],
       actions: [
-        { category: "task", title: "Specific action + measurable outcome", description: "How to execute", derivedFrom: "H0 finding", confidenceScore: 72 },
+        { category: "task", title: "Specific executable action tied to evidence", description: "How to act on this finding", derivedFrom: "Q0 moderate evidence on partnerships" },
       ],
-      evidenceGaps: "Which hypotheses were rejected or inconclusive, and what additional evidence would resolve them.",
+      evidenceGaps: "Which questions had insufficient or no evidence, and what additional content would answer them.",
     }, null, 2),
   ].join("\n");
 }
@@ -436,13 +372,12 @@ export async function POST(req: Request) {
     } as Partial<ResearchReport>, { status: 422 });
   }
 
-  // Call 1 and embedding run in parallel — neither depends on the other
+  // Framework generation and embedding run in parallel
   const [framework, queryVec] = await Promise.all([
-    generateResearchDesign(query),
+    generateFramework(query),
     embedText(query),
   ]);
 
-  // ── Vector search ────────────────────────────────────────────────────────────
   let filtered = allRows;
   if (body.filters?.channel) filtered = filtered.filter(r => r.channel_name === body.filters!.channel);
   if (body.filters?.signalStrength) {
@@ -466,17 +401,13 @@ export async function POST(req: Request) {
     } as Partial<ResearchReport>, { status: 422 });
   }
 
-  // ── Call 2: Hypothesis testing + synthesis ───────────────────────────────────
   const uniqueCreators = [...new Set(topRows.map(r => r.channel_name).filter(Boolean))] as string[];
   const evidenceBlock = buildEvidenceBlock(topRows, topScores, uniqueCreators);
 
   const userMessage = [
     `Research Objective: "${framework.researchObjective}"`,
     "",
-    "Hypotheses to test:",
-    ...framework.hypotheses.map((h, i) => `H${i}: ${h}`),
-    "",
-    "Research Questions (for context):",
+    "Research Questions:",
     ...framework.researchQuestions.map((q, i) => `Q${i}: ${q}`),
     "",
     `Evidence Pool (${topRows.length} items from ${uniqueCreators.length} creators):`,
@@ -487,7 +418,7 @@ export async function POST(req: Request) {
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: buildTestingPrompt(framework) },
+      { role: "system", content: buildSynthesisPrompt(framework) },
       { role: "user",   content: userMessage },
     ],
     response_format: { type: "json_object" },
@@ -502,7 +433,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Synthesis failed" }, { status: 500 });
   }
 
-  // ── Enrich refs: route fills creator/video/timestamp from indexed rows ────────
+  // ── Enrich refs ──────────────────────────────────────────────────────────────
   function enrichRef(ref: RawRef): SourceRef {
     const row = topRows[ref.idx] ?? topRows[0];
     return {
@@ -516,72 +447,36 @@ export async function POST(req: Request) {
     };
   }
 
-  // ── Build hypothesis results with server-side status enforcement ──────────────
-  const hypotheses: ResearchHypothesisResult[] = (raw.hypothesisTesting ?? []).map(h => {
-    const enforcedStatus = enforceHypothesisStatus(h);
-    const cappedStrength = capConfidence(h.supportStrength ?? 0, h.supportingCreators ?? 0);
+  // ── Build question answers with server-side strength enforcement ───────────
+  const questionAnswers: ResearchQuestionAnswer[] = framework.researchQuestions.map((q, qi) => {
+    const raw_qa = (raw.questionAnswers ?? []).find(a => a.questionIndex === qi);
+
+    const clusters: QuoteCluster[] = (raw_qa?.clusters ?? []).map(cl => ({
+      theme: sanitizeText(cl.theme ?? ""),
+      sourceRefs: (cl.evidenceRefs ?? []).map(enrichRef),
+    }));
+
+    const allRefs = clusters.flatMap(cl => cl.sourceRefs);
+    const uniqueCreatorsInAnswer = new Set(allRefs.map(r => r.creator));
+    const uniqueVideos = new Set(allRefs.map(r => r.videoId));
+    const creatorCount = uniqueCreatorsInAnswer.size;
+
+    // Server enforces: can't rate 1-creator evidence as strong/moderate
+    const enforcedStrength = enforceEvidenceStrength(raw_qa?.evidenceStrength ?? "none", creatorCount);
+
     return {
-      statement: sanitizeText(h.statement ?? framework.hypotheses[h.hypothesisIdx] ?? ""),
-      relatedQuestion: typeof h.relatedQuestion === "number" ? h.relatedQuestion : 0,
-      status: enforcedStatus,
-      supportStrength: cappedStrength,
-      supportingCreators: h.supportingCreators ?? 0,
-      contradictingCreators: h.contradictingCreators ?? 0,
-      rejectionReason: h.rejectionReason ? sanitizeText(h.rejectionReason) : null,
+      question: sanitizeText(q),
+      questionIndex: qi,
+      evidenceStrength: enforcedStrength,
+      conclusion: sanitizeText(raw_qa?.conclusion ?? "No evidence found on this question in the analyzed content."),
+      creatorCount,
+      evidenceCount: allRefs.length,
+      videoCount: uniqueVideos.size,
+      clusters,
     };
   });
 
-  // Only findings whose hypothesis passed server-side enforcement are kept
-  const supportedIndices = new Set(
-    hypotheses.map((h, i) => ({ h, i }))
-      .filter(({ h }) => h.status === "supported")
-      .map(({ i }) => i)
-  );
-
-  // ── Build findings (only from supported hypotheses) ───────────────────────────
-  const findings: ResearchFinding[] = (raw.findings ?? [])
-    .filter(f => supportedIndices.has(f.hypothesisIdx))
-    .map(f => {
-      const clusters: QuoteCluster[] = (f.clusters ?? []).map(cl => ({
-        theme: sanitizeText(cl.theme ?? ""),
-        sourceRefs: (cl.evidenceRefs ?? []).map(enrichRef),
-      }));
-
-      const allRefs = clusters.flatMap(cl => cl.sourceRefs);
-      const uniqueCreatorsInFinding = new Set(allRefs.map(r => r.creator));
-      const uniqueVideos = new Set(allRefs.map(r => r.videoId));
-      const creatorCount = uniqueCreatorsInFinding.size;
-
-      const consensusStrength: ResearchFinding["consensusStrength"] =
-        creatorCount >= 4 ? "Strong"
-        : creatorCount === 3 ? "Moderate"
-        : creatorCount === 2 ? "Weak"
-        : "Insufficient";
-
-      const cappedScore = capConfidence(f.confidenceScore ?? 50, creatorCount);
-      const confidence: ResearchFinding["confidence"] =
-        cappedScore >= 70 ? "High" : cappedScore >= 50 ? "Moderate" : "Limited";
-
-      const hypothesisStatement = hypotheses[f.hypothesisIdx]?.statement
-        ?? framework.hypotheses[f.hypothesisIdx]
-        ?? "";
-
-      return {
-        statement: sanitizeText(f.statement ?? ""),
-        hypothesisIndex: f.hypothesisIdx,
-        testedHypothesis: sanitizeText(hypothesisStatement),
-        answersQuestion: typeof f.answersQuestion === "number" ? f.answersQuestion : 0,
-        evidenceCount: allRefs.length,
-        creatorCount,
-        videoCount: uniqueVideos.size,
-        consensusStrength,
-        confidenceScore: cappedScore,
-        confidence,
-        clusters,
-      };
-    });
-
-  // ── Build remaining ──────────────────────────────────────────────────────────
+  // ── Patterns ─────────────────────────────────────────────────────────────────
   const VALID_PATTERN_TYPES = new Set([
     "repeated_behavior", "repeated_outcome", "repeated_strategy",
     "repeated_mistake", "success_factor", "failure_factor",
@@ -613,7 +508,6 @@ export async function POST(req: Request) {
     title: sanitizeText(a.title ?? ""),
     description: sanitizeText(a.description ?? ""),
     derivedFrom: sanitizeText(a.derivedFrom ?? ""),
-    confidenceScore: typeof a.confidenceScore === "number" ? a.confidenceScore : 60,
   }));
 
   const videoIds = new Set(topRows.map(r => r.video_id));
@@ -624,13 +518,15 @@ export async function POST(req: Request) {
     ? raw.evidenceQuality as ResearchReport["evidenceQuality"]
     : "Moderate";
 
-  // Coverage = fraction of research questions that have at least one finding
-  const questionsCovered = new Set(findings.map(f => f.answersQuestion));
-  const coverageScore = framework.researchQuestions.length > 0
-    ? Math.round((questionsCovered.size / framework.researchQuestions.length) * 100)
-    : 0;
+  // Coverage: fraction of questions with strong/moderate evidence
+  const wellAnswered = questionAnswers.filter(a => a.evidenceStrength === "strong" || a.evidenceStrength === "moderate").length;
+  const coverageScore = Math.round((wellAnswered / Math.max(1, questionAnswers.length)) * 100);
 
-  const overallConfidence = capConfidence(raw.confidenceScore ?? 50, creatorsInPool.size);
+  // Confidence: average strength score, capped by creator pool size
+  const avgStrengthScore = Math.round(
+    questionAnswers.reduce((sum, a) => sum + STRENGTH_SCORE[a.evidenceStrength], 0) / Math.max(1, questionAnswers.length)
+  );
+  const overallConfidence = capConfidence(avgStrengthScore, creatorsInPool.size);
 
   const report: ResearchReport = {
     query,
@@ -638,23 +534,22 @@ export async function POST(req: Request) {
     topic: sanitizeText(framework.topic ?? query),
     subtopics: (framework.subtopics ?? []).map(s => sanitizeText(s)),
     researchQuestions: (framework.researchQuestions ?? []).map(q => sanitizeText(q)),
-    hypotheses,
     evidenceQuality,
     videosMatched: videoIds.size,
     creatorsMatched: creatorsInPool.size,
-    quotesUsed: raw.quotesUsed ?? findings.reduce((n, f) => n + f.evidenceCount, 0),
+    quotesUsed: raw.quotesUsed ?? questionAnswers.reduce((n, a) => n + a.evidenceCount, 0),
     quotesRejected: raw.quotesRejected ?? 0,
     coverageScore,
     consensusScore: raw.consensusScore ?? 5,
     confidenceScore: overallConfidence,
-    findings,
+    questionAnswers,
     patterns,
     contrarian,
     consensusMap,
     conclusions: sanitizeText(raw.conclusions ?? ""),
     implications: (raw.implications ?? []).map(i => ({
       statement: sanitizeText(i.statement),
-      basedOnFindings: sanitizeText(i.basedOnFindings),
+      basedOn: sanitizeText(i.basedOn),
     })),
     actions,
     evidenceGaps: sanitizeText(raw.evidenceGaps ?? ""),
