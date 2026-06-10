@@ -58,10 +58,11 @@ function SourceCitation({ ref: r, index }: { ref: SourceRef; index: number }) {
 
   return (
     <div
-      className="rounded-xl border p-4 space-y-3"
+      className="rounded-xl p-4 space-y-3"
       style={{
-        background: "linear-gradient(135deg,#0c1829 0%,#111f36 100%)",
-        borderColor: "rgba(148,163,184,0.12)",
+        background: "rgba(15,37,53,0.6)",
+        border: "1px solid #1e2d45",
+        boxShadow: "inset 0 1px #ffffff05",
       }}
     >
       {/* Creator row */}
@@ -121,12 +122,12 @@ function FindingBlock({ finding, index }: { finding: ResearchFinding; index: num
   const meta = CONFIDENCE_META[finding.confidence];
 
   return (
-    <div className="rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(148,163,184,0.15)" }}>
+    <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #1e2d45", boxShadow: "0 4px 24px #0000002a,inset 0 1px #ffffff08" }}>
       {/* Finding header */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full text-left p-5 space-y-3 hover:bg-white/2 transition-colors"
-        style={{ background: "linear-gradient(135deg,#111827 0%,#1e293b 100%)" }}
+        className="w-full text-left p-5 space-y-3 transition-colors"
+        style={{ background: "linear-gradient(140deg,#0f2535 0%,#0e3154 100%)" }}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
@@ -155,7 +156,7 @@ function FindingBlock({ finding, index }: { finding: ResearchFinding; index: num
       {open && (
         <div
           className="border-t px-5 pb-5 pt-4 space-y-3"
-          style={{ borderColor: "rgba(148,163,184,0.1)", background: "#0d1525" }}
+          style={{ borderColor: "#1e2d45", background: "rgba(10,20,35,0.7)" }}
         >
           <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Supporting Evidence</p>
           {finding.sourceRefs.map((ref, i) => (
@@ -175,13 +176,13 @@ function ContraBlock({ contra }: { contra: ContraFinding }) {
 
   return (
     <div
-      className="rounded-2xl border overflow-hidden"
-      style={{ borderColor: "rgba(251,191,36,0.2)" }}
+      className="rounded-2xl overflow-hidden"
+      style={{ border: "1px solid rgba(251,191,36,0.25)", boxShadow: "0 4px 24px #0000002a,inset 0 1px #ffffff05" }}
     >
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full text-left p-5 space-y-3 transition-colors"
-        style={{ background: "linear-gradient(135deg,#1a1200 0%,#1c1a0a 100%)" }}
+        style={{ background: "linear-gradient(140deg,#1a1200 0%,#0f2535 100%)" }}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
@@ -197,10 +198,10 @@ function ContraBlock({ contra }: { contra: ContraFinding }) {
       {open && (
         <div
           className="border-t px-5 pb-5 pt-4 space-y-3"
-          style={{ borderColor: "rgba(251,191,36,0.1)", background: "#120f00" }}
+          style={{ borderColor: "rgba(251,191,36,0.15)", background: "rgba(10,20,35,0.7)" }}
         >
           <p className="text-[10px] font-mono text-amber-700 uppercase tracking-widest">Source</p>
-          <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: "rgba(251,191,36,0.15)", background: "rgba(251,191,36,0.03)" }}>
+          <div className="rounded-xl p-4 space-y-3" style={{ border: "1px solid rgba(251,191,36,0.2)", background: "rgba(15,37,53,0.6)" }}>
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-0.5 min-w-0">
                 <p className="text-[11px] font-mono font-black text-amber-300 uppercase tracking-wider truncate">
@@ -292,12 +293,15 @@ export function ResearchMode() {
   const qualityMeta = report ? QUALITY_META[report.evidenceQuality] : null;
 
   return (
-    <div className="min-h-screen bg-[#080f1a] text-slate-100 p-6 space-y-6 max-w-4xl mx-auto">
+    <div
+      className="min-h-screen text-slate-100 p-6 space-y-6 max-w-4xl mx-auto"
+      style={{ background: "linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)" }}
+    >
 
       {/* Header */}
       <div className="space-y-1">
-        <h1 className="text-xl font-black text-white tracking-tight">Research Mode</h1>
-        <p className="text-sm text-slate-500 font-mono">
+        <p className="text-sm font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Mode</p>
+        <p className="text-xs text-slate-400 font-mono">
           Evidence-first search across {report?.totalIndexed ? `${report.totalIndexed} indexed data points` : "your analyzed video library"}.
         </p>
       </div>
@@ -310,13 +314,14 @@ export function ResearchMode() {
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search everything you've learned..."
-          className="flex-1 bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 font-mono"
+          className="flex-1 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none font-mono"
+          style={{ background: "rgba(15,37,53,0.7)", border: "1px solid #1e2d45" }}
           disabled={loading}
         />
         <button
           type="submit"
           disabled={loading || !query.trim()}
-          className="px-5 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-black rounded-xl transition-colors whitespace-nowrap"
+          className="px-5 py-3 bg-[#38bdf8] hover:bg-[#7dd3fc] disabled:opacity-40 text-[#0f2535] text-sm font-black rounded-xl transition-colors whitespace-nowrap"
         >
           {loading ? "Researching..." : "Search"}
         </button>
@@ -325,13 +330,14 @@ export function ResearchMode() {
       {/* Suggested queries */}
       {!report && !loading && (
         <div className="space-y-3">
-          <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Suggested searches</p>
+          <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Suggested searches</p>
           <div className="flex flex-wrap gap-2">
             {SUGGESTED.map(s => (
               <button
                 key={s}
                 onClick={() => { setQuery(s); void runSearch(s); }}
-                className="text-[11px] font-mono px-3 py-1.5 border border-slate-800 hover:border-blue-500/40 hover:text-blue-300 text-slate-500 rounded-lg transition-colors"
+                className="text-[11px] font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
+                style={{ border: "1px solid #1e2d45", background: "rgba(15,37,53,0.5)" }}
               >
                 {s}
               </button>
@@ -342,7 +348,8 @@ export function ResearchMode() {
 
       {/* Error */}
       {error && (
-        <div className="bg-red-950/40 border border-red-800/40 rounded-xl px-4 py-3 text-sm text-red-300 font-mono space-y-2">
+        <div className="rounded-xl px-4 py-3 text-sm text-red-300 font-mono space-y-2"
+          style={{ background: "rgba(127,29,29,0.25)", border: "1px solid rgba(185,28,28,0.4)" }}>
           <p>{error}</p>
           {error.includes("indexed yet") && (
             <div className="space-y-1.5">
@@ -352,7 +359,8 @@ export function ResearchMode() {
               <button
                 onClick={handleReindexAll}
                 disabled={reindexing}
-                className="text-[11px] font-mono font-bold text-white bg-red-900/60 hover:bg-red-800/60 border border-red-700/50 px-3 py-1 rounded disabled:opacity-50 transition-colors"
+                className="text-[11px] font-mono font-bold text-white px-3 py-1 rounded disabled:opacity-50 transition-colors"
+                style={{ background: "rgba(127,29,29,0.5)", border: "1px solid rgba(185,28,28,0.5)" }}
               >
                 {reindexing ? "Indexing..." : "Index my library now"}
               </button>
@@ -365,10 +373,10 @@ export function ResearchMode() {
       {/* Loading skeleton */}
       {loading && (
         <div className="space-y-4 animate-pulse">
-          <div className="h-20 bg-slate-900 rounded-2xl" />
-          <div className="h-48 bg-slate-900 rounded-2xl" />
-          <div className="h-48 bg-slate-900 rounded-2xl" />
-          <div className="h-32 bg-slate-900 rounded-2xl" />
+          <div className="h-20 rounded-2xl" style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
+          <div className="h-48 rounded-2xl" style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
+          <div className="h-48 rounded-2xl" style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
+          <div className="h-32 rounded-2xl" style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
         </div>
       )}
 
@@ -377,8 +385,8 @@ export function ResearchMode() {
         <div className="space-y-5">
 
           {/* Report header */}
-          <div className="rounded-2xl border border-slate-800 p-5 space-y-4"
-            style={{ background: "linear-gradient(135deg,#0d1525 0%,#111f36 100%)" }}>
+          <div className="rounded-2xl p-5 space-y-4"
+            style={{ background: "rgba(15,37,53,0.7)", border: "1px solid #1e2d45", boxShadow: "0 4px 32px #0000002e,inset 0 1px #ffffff08" }}>
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="space-y-1 min-w-0">
                 <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Intelligence Report</p>
@@ -411,7 +419,7 @@ export function ResearchMode() {
             </div>
 
             {/* Summary — clearly labelled as synthesis */}
-            <div className="border-t border-slate-800 pt-3">
+            <div className="border-t pt-3" style={{ borderColor: "#1e2d45" }}>
               <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-1.5">Summary</p>
               <p className="text-sm text-slate-300 leading-relaxed">{report.summary}</p>
             </div>
@@ -439,8 +447,8 @@ export function ResearchMode() {
 
           {/* Implications */}
           {report.implications.length > 0 && (
-            <div className="rounded-2xl border border-slate-800 p-5 space-y-3"
-              style={{ background: "#0d1525" }}>
+            <div className="rounded-2xl p-5 space-y-3"
+              style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }}>
               <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Strategic Implications</p>
               {report.implications.map((imp, i) => (
                 <div key={i} className="flex gap-3 items-start">
@@ -456,12 +464,12 @@ export function ResearchMode() {
 
           {/* Actions */}
           {report.actions.length > 0 && (
-            <div className="rounded-2xl border border-emerald-900/30 p-5 space-y-3"
-              style={{ background: "rgba(16,185,129,0.03)" }}>
+            <div className="rounded-2xl p-5 space-y-3"
+              style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.2)" }}>
               <p className="text-[10px] font-mono text-emerald-700 uppercase tracking-widest">Action Opportunities</p>
               {report.actions.map((a, i) => (
-                <div key={i} className="border border-emerald-900/40 rounded-xl p-4 space-y-1.5"
-                  style={{ background: "rgba(16,185,129,0.04)" }}>
+                <div key={i} className="rounded-xl p-4 space-y-1.5"
+                  style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(16,185,129,0.2)" }}>
                   <p className="text-sm font-bold text-emerald-300">{a.title}</p>
                   <p className="text-xs text-slate-400 leading-relaxed">{a.description}</p>
                   <p className="text-[10px] font-mono text-emerald-800">{a.derivedFrom}</p>
@@ -472,15 +480,15 @@ export function ResearchMode() {
 
           {/* Evidence gaps */}
           {report.evidenceGaps && (
-            <div className="rounded-xl border border-slate-800 px-4 py-3 flex gap-3 items-start"
-              style={{ background: "#0a111e" }}>
+            <div className="rounded-xl px-4 py-3 flex gap-3 items-start"
+              style={{ background: "rgba(15,37,53,0.5)", border: "1px solid #1e2d45" }}>
               <span className="text-[10px] font-mono font-black text-slate-600 uppercase tracking-wider shrink-0 pt-0.5">GAPS</span>
               <p className="text-xs text-slate-500 leading-relaxed">{report.evidenceGaps}</p>
             </div>
           )}
 
           {/* Footer */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-900">
+          <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "#1e2d45" }}>
             <p className="text-[10px] font-mono text-slate-700">
               {report.totalIndexed} data points searched · Evidence-first synthesis
             </p>
