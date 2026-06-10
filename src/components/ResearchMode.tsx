@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import type {
   ResearchReport,
   ResearchTheme,
+  RelatedSignal,
   ThemeSource,
 } from "@/app/api/research/search/route";
 
@@ -26,7 +27,6 @@ const SIGNAL_COLOR: Record<string, string> = {
   Low: "#94a3b8",
 };
 
-// Theme accent colors — cycle through these
 const THEME_COLORS = [
   { accent: "#38bdf8", border: "rgba(56,189,248,0.28)",  bg: "rgba(56,189,248,0.06)"  },
   { accent: "#10b981", border: "rgba(16,185,129,0.28)",  bg: "rgba(16,185,129,0.06)"  },
@@ -56,7 +56,6 @@ function QuoteCard({ source, accent }: { source: ThemeSource; accent: string }) 
   return (
     <div className="rounded-xl p-4 space-y-3"
       style={{ background: "rgba(8,16,28,0.6)", border: "1px solid #1e2d45" }}>
-      {/* Creator + video + timestamp */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
           <p className="text-sm font-mono font-black text-slate-300 uppercase tracking-wider truncate">
@@ -78,8 +77,6 @@ function QuoteCard({ source, accent }: { source: ThemeSource; accent: string }) 
           </a>
         </div>
       </div>
-
-      {/* Quote */}
       {source.quote && (
         <blockquote className="border-l-2 pl-3" style={{ borderColor: `${accent}50` }}>
           <p className="text-base text-slate-200 italic leading-relaxed">
@@ -102,18 +99,24 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
     <div className="rounded-2xl overflow-hidden"
       style={{ border: `1px solid ${color.border}`, boxShadow: "0 4px 24px #00000025" }}>
 
-      {/* Theme header */}
       <div className="p-5 space-y-4"
         style={{ background: "linear-gradient(140deg,#0c1e30 0%,#0e2d4a 100%)" }}>
 
         {/* Title row */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3 min-w-0">
-            <span className="text-xs font-mono font-black shrink-0 mt-0.5 px-1.5 py-0.5 rounded"
+            <span className="text-xs font-mono font-black shrink-0 mt-1 px-1.5 py-0.5 rounded"
               style={{ color: color.accent, background: color.bg, border: `1px solid ${color.border}` }}>
               T{index + 1}
             </span>
-            <h3 className="text-base font-black text-white leading-snug">{theme.title}</h3>
+            <div className="min-w-0 space-y-1">
+              <h3 className="text-base font-black text-white leading-snug">{theme.title}</h3>
+              <span className={`text-[10px] font-mono font-black uppercase tracking-widest ${
+                theme.isKeyTheme ? "text-emerald-500" : "text-amber-400"
+              }`}>
+                {theme.isKeyTheme ? "● Key Theme" : "◎ Emerging Signal"}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-3 shrink-0 text-xs font-mono text-slate-500">
             <span><span className="text-white font-black">{theme.creatorCount}</span> {theme.creatorCount === 1 ? "creator" : "creators"}</span>
@@ -123,6 +126,14 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
 
         {/* Description */}
         <p className="text-base text-slate-300 leading-relaxed">{theme.description}</p>
+
+        {/* Relevance reason */}
+        {theme.relevanceReason && (
+          <p className="text-xs font-mono text-slate-500 italic pl-3 border-l-2"
+            style={{ borderColor: `${color.accent}30` }}>
+            {theme.relevanceReason}
+          </p>
+        )}
 
         {/* Creator pills */}
         {theme.creators.length > 0 && (
@@ -164,7 +175,7 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
         )}
       </div>
 
-      {/* Expand to show all quotes */}
+      {/* Expand */}
       {otherSources.length > 0 && (
         <div style={{ background: "rgba(8,16,28,0.4)" }}>
           <button
@@ -189,6 +200,41 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
   );
 }
 
+// ── Related signals panel ─────────────────────────────────────────────────────
+
+function RelatedSignalsPanel({ signals }: { signals: RelatedSignal[] }) {
+  if (!signals.length) return null;
+  return (
+    <div className="rounded-2xl p-5 space-y-4"
+      style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(148,163,184,0.1)" }}>
+      <div className="space-y-0.5">
+        <p className="text-xs font-mono font-black text-slate-600 uppercase tracking-widest">Related Signals</p>
+        <p className="text-xs font-mono text-slate-700">Adjacent observations — not central to your query</p>
+      </div>
+      <div className="space-y-0">
+        {signals.map((sig, i) => (
+          <div key={i}>
+            {i > 0 && <div className="border-t my-4" style={{ borderColor: "#1e2d45" }} />}
+            <div className="space-y-1.5">
+              <p className="text-sm font-black text-slate-500">{sig.title}</p>
+              <p className="text-sm text-slate-600 leading-relaxed">{sig.description}</p>
+              {sig.sources[0]?.quote && (
+                <blockquote className="border-l-2 pl-3 text-xs text-slate-700 italic"
+                  style={{ borderColor: "#2d3f52" }}>
+                  &ldquo;{sig.sources[0].quote}&rdquo;
+                  {sig.sources[0].creator && (
+                    <span className="not-italic"> — {sig.sources[0].creator}</span>
+                  )}
+                </blockquote>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Synthesis panel ───────────────────────────────────────────────────────────
 
 function SynthesisPanel({ synthesis }: { synthesis: string }) {
@@ -196,48 +242,8 @@ function SynthesisPanel({ synthesis }: { synthesis: string }) {
   return (
     <div className="rounded-2xl p-5 space-y-3"
       style={{ background: "rgba(15,37,53,0.65)", border: "1px solid rgba(16,185,129,0.25)" }}>
-      <p className="text-xs font-mono font-black text-emerald-700 uppercase tracking-widest">What Creators Are Saying</p>
+      <p className="text-xs font-mono font-black text-emerald-700 uppercase tracking-widest">What the Evidence Suggests</p>
       <p className="text-base text-slate-200 leading-relaxed">{synthesis}</p>
-    </div>
-  );
-}
-
-// ── Disagreements panel ───────────────────────────────────────────────────────
-
-function DisagreementsPanel({ disagreements }: { disagreements: string[] }) {
-  if (!disagreements.length) return null;
-  return (
-    <div className="rounded-2xl p-5 space-y-3"
-      style={{ background: "rgba(15,37,53,0.65)", border: "1px solid rgba(251,191,36,0.25)" }}>
-      <p className="text-xs font-mono font-black text-amber-700 uppercase tracking-widest">What Creators Disagree On</p>
-      <div className="space-y-2">
-        {disagreements.map((d, i) => (
-          <div key={i} className="flex gap-3 items-start">
-            <span className="text-amber-500 shrink-0 mt-0.5 font-black">⟷</span>
-            <p className="text-base text-slate-300 leading-relaxed">{d}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Takeaways panel ───────────────────────────────────────────────────────────
-
-function TakeawaysPanel({ takeaways }: { takeaways: string[] }) {
-  if (!takeaways.length) return null;
-  return (
-    <div className="rounded-2xl p-5 space-y-3"
-      style={{ background: "rgba(15,37,53,0.65)", border: "1px solid rgba(56,189,248,0.25)" }}>
-      <p className="text-xs font-mono font-black text-[#38bdf8]/70 uppercase tracking-widest">Actionable Takeaways</p>
-      <div className="space-y-2.5">
-        {takeaways.map((t, i) => (
-          <div key={i} className="flex gap-3 items-start">
-            <span className="text-[#38bdf8] shrink-0 mt-0.5 font-black">→</span>
-            <p className="text-base text-slate-300 leading-relaxed">{t}</p>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -292,6 +298,9 @@ export function ResearchMode() {
       setLoading(false);
     }
   }
+
+  const keyThemes = report?.themes.filter(t => t.isKeyTheme) ?? [];
+  const emergingSignals = report?.themes.filter(t => !t.isKeyTheme) ?? [];
 
   return (
     <div className="min-h-screen text-slate-100 p-8 space-y-6 max-w-6xl mx-auto"
@@ -373,15 +382,18 @@ export function ResearchMode() {
       {report && !loading && (
         <div className="space-y-5">
 
-          {/* Stats header */}
-          <div className="rounded-2xl p-5"
+          {/* Stats header with topic intent */}
+          <div className="rounded-2xl p-5 space-y-3"
             style={{ background: "rgba(15,37,53,0.8)", border: "1px solid #1e2d45", boxShadow: "inset 0 1px #ffffff08" }}>
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="space-y-1">
+            <div className="flex items-start justify-between gap-6 flex-wrap">
+              <div className="space-y-1.5 flex-1 min-w-0">
                 <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">Topic</p>
                 <h2 className="text-xl font-black text-white">{report.topic}</h2>
+                {report.topicIntent && (
+                  <p className="text-sm text-slate-400 leading-relaxed">{report.topicIntent}</p>
+                )}
               </div>
-              <div className="flex items-center gap-6 text-sm font-mono text-slate-400">
+              <div className="flex items-center gap-6 text-sm font-mono text-slate-400 shrink-0">
                 <div className="text-center">
                   <p className="text-xl font-black text-white">{report.videosMatched}</p>
                   <p className="text-xs">videos</p>
@@ -399,32 +411,42 @@ export function ResearchMode() {
           </div>
 
           {/* Key Themes */}
-          {report.themes.length > 0 && (
+          {keyThemes.length > 0 && (
             <div className="space-y-3">
               <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">
-                Key Themes — {report.themes.length} {report.themes.length === 1 ? "theme" : "themes"} identified
+                Key Themes — {keyThemes.length} {keyThemes.length === 1 ? "theme" : "themes"}
               </p>
-              {report.themes.map((theme, i) => (
+              {keyThemes.map((theme, i) => (
                 <ThemeCard key={i} theme={theme} index={i} />
               ))}
             </div>
           )}
 
-          {report.themes.length === 0 && (
-            <div className="rounded-xl px-5 py-4"
-              style={{ background: "rgba(15,37,53,0.5)", border: "1px solid #1e2d45" }}>
-              <p className="text-sm text-slate-500">No recurring themes found. Try a different search term or index more videos.</p>
+          {/* Emerging Signals */}
+          {emergingSignals.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">
+                Emerging Signals — {emergingSignals.length} {emergingSignals.length === 1 ? "signal" : "signals"}
+              </p>
+              {emergingSignals.map((theme, i) => (
+                <ThemeCard key={i} theme={theme} index={keyThemes.length + i} />
+              ))}
             </div>
           )}
 
-          {/* What Creators Are Saying */}
+          {/* Empty state */}
+          {report.themes.length === 0 && (
+            <div className="rounded-xl px-5 py-4"
+              style={{ background: "rgba(15,37,53,0.5)", border: "1px solid #1e2d45" }}>
+              <p className="text-sm text-slate-500">No directly relevant themes found. Try a more specific search term or index more videos.</p>
+            </div>
+          )}
+
+          {/* Related Signals */}
+          <RelatedSignalsPanel signals={report.relatedSignals} />
+
+          {/* What the Evidence Suggests */}
           <SynthesisPanel synthesis={report.synthesis} />
-
-          {/* What Creators Disagree On */}
-          <DisagreementsPanel disagreements={report.disagreements} />
-
-          {/* Actionable Takeaways */}
-          <TakeawaysPanel takeaways={report.takeaways} />
 
           {/* Footer */}
           <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "#1e2d45" }}>
