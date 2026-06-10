@@ -39,7 +39,7 @@ export interface ResearchReport {
   creatorsMatched: number;
   quotesMatched: number;
   themes: ResearchTheme[];
-  agreements: string[];
+  synthesis: string;
   disagreements: string[];
   takeaways: string[];
   totalIndexed: number;
@@ -57,7 +57,7 @@ interface RawTheme {
 interface RawSynthesis {
   topic: string;
   themes: RawTheme[];
-  agreements: string[];
+  synthesis: string;
   disagreements: string[];
   takeaways: string[];
 }
@@ -105,10 +105,12 @@ Order themes by: how many creators mention them (most first).
 - sourceRefs: ALL evidence items that belong to this theme (cite [E] index + quote verbatim from evidence)
 - representativeRefIdx: index into sourceRefs — the clearest, most specific quote that captures the theme
 
-═══ AGREEMENTS ═══
+═══ WHAT CREATORS ARE SAYING ═══
 
-Things mentioned by 3+ creators with no significant pushback.
-Be specific: not "AI is useful" but "Most creators recommend starting with internal automation before customer-facing agents"
+Write 3-5 sentences of flowing prose that synthesizes the collective wisdom across all themes.
+This is the big-picture answer: "If you read everything in this evidence pool, what is the overall message?"
+Ground it in what creators actually said. Be specific to the themes you found.
+Do not list bullet points — write a paragraph a founder would read to get the full picture in 30 seconds.
 
 ═══ DISAGREEMENTS ═══
 
@@ -146,9 +148,7 @@ ${JSON.stringify({
       representativeRefIdx: 0,
     },
   ],
-  agreements: [
-    "Specific idea mentioned by multiple creators with no disagreement",
-  ],
+  synthesis: "3-5 sentences of prose summarizing the collective wisdom. What is the overall message? Be specific to what creators actually said.",
   disagreements: [
     "Creator type A argues X, while Creator type B argues Y — describe the actual disagreement",
   ],
@@ -295,7 +295,7 @@ export async function POST(req: Request) {
     creatorsMatched: creatorsInPool.size,
     quotesMatched: allSources.length,
     themes,
-    agreements: (raw.agreements ?? []).map(s => sanitizeText(s)),
+    synthesis: sanitizeText(raw.synthesis ?? ""),
     disagreements: (raw.disagreements ?? []).map(s => sanitizeText(s)),
     takeaways: (raw.takeaways ?? []).map(s => sanitizeText(s)),
     totalIndexed: stats.withEmbeddings,

@@ -189,22 +189,15 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
   );
 }
 
-// ── Agreements panel ──────────────────────────────────────────────────────────
+// ── Synthesis panel ───────────────────────────────────────────────────────────
 
-function AgreementsPanel({ agreements }: { agreements: string[] }) {
-  if (!agreements.length) return null;
+function SynthesisPanel({ synthesis }: { synthesis: string }) {
+  if (!synthesis) return null;
   return (
     <div className="rounded-2xl p-5 space-y-3"
       style={{ background: "rgba(15,37,53,0.65)", border: "1px solid rgba(16,185,129,0.25)" }}>
-      <p className="text-xs font-mono font-black text-emerald-700 uppercase tracking-widest">What Creators Agree On</p>
-      <div className="space-y-2">
-        {agreements.map((a, i) => (
-          <div key={i} className="flex gap-3 items-start">
-            <span className="text-emerald-500 shrink-0 mt-0.5 font-black">✓</span>
-            <p className="text-base text-slate-300 leading-relaxed">{a}</p>
-          </div>
-        ))}
-      </div>
+      <p className="text-xs font-mono font-black text-emerald-700 uppercase tracking-widest">What Creators Are Saying</p>
+      <p className="text-base text-slate-200 leading-relaxed">{synthesis}</p>
     </div>
   );
 }
@@ -424,8 +417,8 @@ export function ResearchMode() {
             </div>
           )}
 
-          {/* What Creators Agree On */}
-          <AgreementsPanel agreements={report.agreements} />
+          {/* What Creators Are Saying */}
+          <SynthesisPanel synthesis={report.synthesis} />
 
           {/* What Creators Disagree On */}
           <DisagreementsPanel disagreements={report.disagreements} />
