@@ -294,7 +294,7 @@ export function ResearchMode() {
 
   return (
     <div
-      className="min-h-screen text-slate-100 p-6 space-y-6 max-w-4xl mx-auto"
+      className="min-h-screen text-slate-100 p-8 space-y-6 max-w-6xl mx-auto"
       style={{ background: "linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)" }}
     >
 
