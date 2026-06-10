@@ -47,7 +47,7 @@ function FeedButton({ onNavigate, className, children }: { onNavigate?: (nav: Na
   return <a href="/" className={className}>{children}</a>;
 }
 
-export function MarketIntelligencePulse({ onNavigate }: { onNavigate?: (nav: NavItem) => void }) {
+export function MarketIntelligencePulse({ onNavigate, onAnalyze }: { onNavigate?: (nav: NavItem) => void; onAnalyze?: (url: string) => void }) {
   const { data: session, status } = useSession();
   const email = session?.user?.email ?? "anon";
 
@@ -830,7 +830,7 @@ export function MarketIntelligencePulse({ onNavigate }: { onNavigate?: (nav: Nav
             {emergingSignalThemes.filter(t => t.macroTakeaway).length} of {emergingSignalThemes.length} synthesized
           </span>
         </div>
-        <CollapsibleSignalCards themes={emergingSignalThemes} loading={isLoading && !emergingSignalThemes.length} />
+        <CollapsibleSignalCards themes={emergingSignalThemes} loading={isLoading && !emergingSignalThemes.length} onAnalyze={onAnalyze} />
       </div>
 
       {/* ══════════════════════════════════════════════

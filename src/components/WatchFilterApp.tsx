@@ -1328,7 +1328,7 @@ export function WatchFilterApp() {
         </div>
 
         {/* ── Trends ── */}
-        {activeNav === "trends" && <MarketIntelligencePulse onNavigate={setActiveNav} />}
+        {activeNav === "trends" && <MarketIntelligencePulse onNavigate={setActiveNav} onAnalyze={(ytUrl) => void analyzeFromUrl(ytUrl)} />}
 
         {/* ── Cross-Channel Consensus ── */}
         {activeNav === "consensus-page" && <CrossChannelConsensusView />}

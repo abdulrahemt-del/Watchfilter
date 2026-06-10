@@ -33,6 +33,7 @@ export interface EmergingSignalTheme {
 interface Props {
   themes: EmergingSignalTheme[];
   loading?: boolean;
+  onAnalyze?: (url: string) => void;
 }
 
 const TREND = {
@@ -119,7 +120,7 @@ function IntelligenceGridCard({ theme, isOpen, onSelect }: CardProps) {
 }
 
 // ─── Full-width audit trail drawer ────────────────────────────────────────────
-function InlineAuditTrailDrawer({ theme }: { theme: EmergingSignalTheme }) {
+function InlineAuditTrailDrawer({ theme, onAnalyze }: { theme: EmergingSignalTheme; onAnalyze?: (url: string) => void }) {
   const auditSlug = theme.topicTitle.toLowerCase().replace(/\s+/g, '-');
 
   return (
@@ -208,15 +209,12 @@ function InlineAuditTrailDrawer({ theme }: { theme: EmergingSignalTheme }) {
                   )}
 
                   <div className="flex justify-end pt-0.5">
-                    <a
-                      href={watchUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      className="text-[9px] font-mono font-bold bg-[#274c77] hover:bg-[#2d5490] text-white border border-[#1e3a5f] px-2 py-0.5 rounded transition-colors uppercase tracking-wider"
+                    <button
+                      onClick={e => { e.stopPropagation(); onAnalyze ? onAnalyze(watchUrl) : window.open(watchUrl, '_blank'); }}
+                      className="text-[9px] font-mono font-bold bg-[#274c77] hover:bg-[#2d5490] text-white border border-[#1e3a5f] px-2 py-0.5 rounded transition-colors uppercase tracking-wider cursor-pointer"
                     >
                       Filter Insights ↗
-                    </a>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -268,7 +266,7 @@ function InlineAuditTrailDrawer({ theme }: { theme: EmergingSignalTheme }) {
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
-export function CollapsibleSignalCards({ themes, loading }: Props) {
+export function CollapsibleSignalCards({ themes, loading, onAnalyze }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
 
   if (loading && !themes.length) {
@@ -301,7 +299,7 @@ export function CollapsibleSignalCards({ themes, loading }: Props) {
       </div>
 
       {openId && themes.find(t => t.id === openId) && (
-        <InlineAuditTrailDrawer theme={themes.find(t => t.id === openId)!} />
+        <InlineAuditTrailDrawer theme={themes.find(t => t.id === openId)!} onAnalyze={onAnalyze} />
       )}
     </div>
   );

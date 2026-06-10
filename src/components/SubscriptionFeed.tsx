@@ -1601,15 +1601,12 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                                   </p>
                                 </a>
                                 <div className="flex justify-end">
-                                  <a
-                                    href={`https://www.youtube.com/watch?v=${v.videoId}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={e => e.stopPropagation()}
-                                    className="text-[8px] font-mono font-bold bg-white text-[#274c77] hover:bg-[#e7ecef] border border-white/80 px-2 py-0.5 rounded transition-colors uppercase tracking-wider font-black"
+                                  <button
+                                    onClick={e => { e.stopPropagation(); onAnalyze(`https://www.youtube.com/watch?v=${v.videoId}`); }}
+                                    className="text-[8px] font-mono font-bold bg-white text-[#274c77] hover:bg-[#e7ecef] border border-white/80 px-2 py-0.5 rounded transition-colors uppercase tracking-wider font-black cursor-pointer"
                                   >
                                     Filter Insights ↗
-                                  </a>
+                                  </button>
                                 </div>
                               </div>
                             </div>
