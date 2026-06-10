@@ -80,6 +80,27 @@ async function ensureSchema(): Promise<void> {
       UNIQUE(event, user_id)
     )`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_beta_events_event ON beta_events (event)`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS research_index (
+      id              TEXT PRIMARY KEY,
+      analysis_id     TEXT NOT NULL,
+      video_id        TEXT NOT NULL,
+      video_title     TEXT,
+      channel_name    TEXT,
+      upload_date     TEXT,
+      type            TEXT NOT NULL,
+      quote           TEXT,
+      timestamp_str   TEXT,
+      insight         TEXT,
+      why_matters     TEXT,
+      takeaway        TEXT,
+      signal_strength TEXT,
+      contrarian      TEXT,
+      category        TEXT,
+      embedding       TEXT,
+      indexed_at      TEXT NOT NULL
+    )`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_research_analysis_id ON research_index (analysis_id)`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_research_channel ON research_index (channel_name)`, args: [] },
   ], "write");
 
   for (const sql of [
@@ -469,6 +490,104 @@ export async function joinTeamWorkspaceWaitlist(
   } catch {
     return { alreadyJoined: true };
   }
+}
+
+// ── Research Index ────────────────────────────────────────────────────────────
+
+export interface ResearchRow {
+  id: string;
+  analysis_id: string;
+  video_id: string;
+  video_title: string | null;
+  channel_name: string | null;
+  upload_date: string | null;
+  type: string;
+  quote: string | null;
+  timestamp_str: string | null;
+  insight: string | null;
+  why_matters: string | null;
+  takeaway: string | null;
+  signal_strength: string | null;
+  contrarian: string | null;
+  category: string | null;
+  embedding: number[] | null;
+  indexed_at: string;
+}
+
+export async function upsertResearchRows(rows: Omit<ResearchRow, "indexed_at">[]): Promise<void> {
+  if (!rows.length) return;
+  const c = await db();
+  const now = new Date().toISOString();
+  await c.batch(
+    rows.map(r => ({
+      sql: `INSERT INTO research_index
+              (id, analysis_id, video_id, video_title, channel_name, upload_date,
+               type, quote, timestamp_str, insight, why_matters, takeaway,
+               signal_strength, contrarian, category, embedding, indexed_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET
+              embedding = excluded.embedding,
+              indexed_at = excluded.indexed_at`,
+      args: [
+        r.id, r.analysis_id, r.video_id, r.video_title ?? null, r.channel_name ?? null,
+        r.upload_date ?? null, r.type, r.quote ?? null, r.timestamp_str ?? null,
+        r.insight ?? null, r.why_matters ?? null, r.takeaway ?? null,
+        r.signal_strength ?? null, r.contrarian ?? null, r.category ?? null,
+        r.embedding ? JSON.stringify(r.embedding) : null, now,
+      ],
+    })),
+    "write",
+  );
+}
+
+export async function getResearchRowsByAnalysis(analysisId: string): Promise<string[]> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT id FROM research_index WHERE analysis_id = ?`,
+    args: [analysisId],
+  });
+  return rows.map(r => r.id as string);
+}
+
+export async function loadResearchIndex(limit = 3000): Promise<ResearchRow[]> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT * FROM research_index WHERE embedding IS NOT NULL ORDER BY indexed_at DESC LIMIT ?`,
+    args: [limit],
+  });
+  return rows.map(r => ({
+    id: r.id as string,
+    analysis_id: r.analysis_id as string,
+    video_id: r.video_id as string,
+    video_title: r.video_title as string | null,
+    channel_name: r.channel_name as string | null,
+    upload_date: r.upload_date as string | null,
+    type: r.type as string,
+    quote: r.quote as string | null,
+    timestamp_str: r.timestamp_str as string | null,
+    insight: r.insight as string | null,
+    why_matters: r.why_matters as string | null,
+    takeaway: r.takeaway as string | null,
+    signal_strength: r.signal_strength as string | null,
+    contrarian: r.contrarian as string | null,
+    category: r.category as string | null,
+    embedding: r.embedding ? safeJsonParse(r.embedding as string, null) as number[] | null : null,
+    indexed_at: r.indexed_at as string,
+  }));
+}
+
+export async function getResearchIndexStats(): Promise<{ total: number; withEmbeddings: number; channels: string[] }> {
+  const c = await db();
+  const [tot, emb, ch] = await Promise.all([
+    c.execute(`SELECT COUNT(*) as n FROM research_index`),
+    c.execute(`SELECT COUNT(*) as n FROM research_index WHERE embedding IS NOT NULL`),
+    c.execute(`SELECT DISTINCT channel_name FROM research_index WHERE channel_name IS NOT NULL ORDER BY channel_name`),
+  ]);
+  return {
+    total: Number(tot.rows[0]?.n ?? 0),
+    withEmbeddings: Number(emb.rows[0]?.n ?? 0),
+    channels: ch.rows.map(r => r.channel_name as string),
+  };
 }
 
 export async function getTeamWorkspaceWaitlistCount(): Promise<number> {

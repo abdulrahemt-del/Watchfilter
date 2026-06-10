@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 
-export type NavItem = "dashboard" | "analyze" | "library" | "trends" | "consensus-page" | "feed" | "workspace" | "upgrade";
+export type NavItem = "dashboard" | "analyze" | "library" | "trends" | "consensus-page" | "feed" | "workspace" | "research" | "upgrade";
 
 interface Props {
   active: NavItem;
@@ -16,6 +16,7 @@ const PRIMARY_NAV: { id: NavItem; icon: string; label: string; primary?: true }[
   { id: "analyze",   icon: "🔍", label: "Analyze Video", primary: true },
   { id: "feed",      icon: "📺", label: "Subscription Feed" },
   { id: "library",   icon: "💾", label: "Saved Briefings" },
+  { id: "research",        icon: "🔎", label: "Research Mode" },
   { id: "trends",         icon: "📈", label: "Creator Trends" },
   { id: "consensus-page", icon: "🔗", label: "Cross-Channel Consensus" },
   { id: "workspace",      icon: "👥", label: "Team Workspace" },

@@ -10,6 +10,7 @@ import { GlobalAudioPlayer, type GlobalAudioPlayerHandle } from "./GlobalAudioPl
 import { BriefingCard } from "./BriefingCard";
 import { SubscriptionFeed } from "./SubscriptionFeed";
 import { MarketIntelligencePulse } from "./MarketIntelligencePulse";
+import { ResearchMode } from "./ResearchMode";
 import type {
   AnalysisSummary,
   ApiErrorBody,
@@ -1329,6 +1330,8 @@ export function WatchFilterApp() {
 
         {/* ── Trends ── */}
         {activeNav === "trends" && <MarketIntelligencePulse onNavigate={setActiveNav} onAnalyze={(ytUrl) => void analyzeFromUrl(ytUrl)} />}
+
+        {activeNav === "research" && <ResearchMode />}
 
         {/* ── Cross-Channel Consensus ── */}
         {activeNav === "consensus-page" && <CrossChannelConsensusView />}

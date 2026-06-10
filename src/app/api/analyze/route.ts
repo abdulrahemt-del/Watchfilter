@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import { analyzeYouTubeVideo, TranscriptFetchError } from "@/lib/analyzeVideo";
 import { saveAnalysis, getLatestAnalysisByVideoId, recordBetaEvent } from "@/lib/db";
+import { indexAnalysis } from "@/lib/research/indexer";
 import { extractYouTubeVideoId } from "@/lib/youtube";
 import type { TranscriptFetchOverrides } from "@/lib/youtube";
 
@@ -107,6 +108,9 @@ export async function POST(request: Request) {
     recordBetaEvent("first_analysis_generated", userId).then(() => {
       console.log("[FIRST_ANALYSIS_GENERATED]", { userId, analysisId, timestamp: new Date().toISOString() });
     }).catch(() => {});
+
+    // Background research indexing — non-blocking, non-critical
+    indexAnalysis(analysisId).catch(() => {});
 
     return NextResponse.json(saved);
   } catch (error) {
