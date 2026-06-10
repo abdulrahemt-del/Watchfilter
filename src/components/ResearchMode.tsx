@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import type {
   ResearchReport,
   ResearchFinding,
+  ResearchHypothesisResult,
   ResearchPattern,
   ContraFinding,
   SourceRef,
@@ -41,7 +42,7 @@ const STRENGTH_META: Record<string, { color: string; label: string }> = {
   Strong:      { color: "#10b981", label: "STRONG CONSENSUS" },
   Moderate:    { color: "#fbbf24", label: "MODERATE CONSENSUS" },
   Weak:        { color: "#f87171", label: "WEAK CONSENSUS" },
-  Insufficient:{ color: "#94a3b8", label: "INSUFFICIENT EVIDENCE" },
+  Insufficient:{ color: "#94a3b8", label: "INSUFFICIENT" },
 };
 
 const QUALITY_META: Record<string, { color: string; label: string }> = {
@@ -55,6 +56,12 @@ const STANCE_META = {
   agree:    { color: "#10b981", bg: "rgba(16,185,129,0.08)",  border: "rgba(16,185,129,0.25)",  label: "AGREE" },
   neutral:  { color: "#94a3b8", bg: "rgba(148,163,184,0.06)", border: "rgba(148,163,184,0.20)", label: "NEUTRAL" },
   disagree: { color: "#f87171", bg: "rgba(248,113,113,0.08)", border: "rgba(248,113,113,0.25)", label: "DISAGREE" },
+};
+
+const HYPOTHESIS_STATUS_META = {
+  supported:    { color: "#10b981", bg: "rgba(16,185,129,0.10)",  border: "rgba(16,185,129,0.30)",  label: "SUPPORTED",    icon: "✓" },
+  inconclusive: { color: "#fbbf24", bg: "rgba(251,191,36,0.08)",  border: "rgba(251,191,36,0.25)",  label: "INCONCLUSIVE", icon: "⊙" },
+  rejected:     { color: "#f87171", bg: "rgba(248,113,113,0.08)", border: "rgba(248,113,113,0.25)", label: "REJECTED",     icon: "✗" },
 };
 
 const PATTERN_META: Record<ResearchPattern["patternType"], { label: string; color: string; icon: string }> = {
@@ -222,7 +229,7 @@ function ResearchObjectiveCard({ objective, query }: { objective: string; query:
   );
 }
 
-// ── Research framework panel ──────────────────────────────────────────────────
+// ── Research framework ────────────────────────────────────────────────────────
 
 function ResearchFrameworkPanel({ subtopics, questions }: { subtopics: string[]; questions: string[] }) {
   const [showSubtopics, setShowSubtopics] = useState(false);
@@ -237,8 +244,6 @@ function ResearchFrameworkPanel({ subtopics, questions }: { subtopics: string[];
           </button>
         )}
       </div>
-
-      {/* Subtopics (collapsible) */}
       {showSubtopics && subtopics.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {subtopics.map((s, i) => (
@@ -249,14 +254,10 @@ function ResearchFrameworkPanel({ subtopics, questions }: { subtopics: string[];
           ))}
         </div>
       )}
-
-      {/* Research questions */}
       <div className="space-y-3">
         {questions.map((q, i) => (
           <div key={i} className="flex gap-3 items-baseline">
-            <span className="text-xs font-mono font-black shrink-0 w-6 text-right" style={{ color: "rgba(56,189,248,0.45)" }}>
-              Q{i}
-            </span>
+            <span className="text-xs font-mono font-black shrink-0 w-6 text-right" style={{ color: "rgba(56,189,248,0.45)" }}>Q{i}</span>
             <p className="text-base text-slate-300 leading-relaxed">{q}</p>
           </div>
         ))}
@@ -267,7 +268,24 @@ function ResearchFrameworkPanel({ subtopics, questions }: { subtopics: string[];
 
 // ── Evidence overview ─────────────────────────────────────────────────────────
 
-function EvidenceOverview({ report, qualityMeta }: { report: ResearchReport; qualityMeta: { color: string; label: string } | null }) {
+function ProgressBar({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-mono text-slate-500">{label}</span>
+        <span className="text-xs font-mono font-black" style={{ color }}>{value}%</span>
+      </div>
+      <div className="rounded-full h-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+        <div className="h-full rounded-full" style={{ width: `${Math.min(value, 100)}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
+function EvidenceOverview({ report, qualityMeta }: {
+  report: ResearchReport;
+  qualityMeta: { color: string; label: string } | null;
+}) {
   const confColor = report.confidenceScore >= 68 ? "#10b981" : report.confidenceScore >= 50 ? "#fbbf24" : "#f87171";
   return (
     <div className="rounded-2xl p-5 space-y-4"
@@ -284,13 +302,11 @@ function EvidenceOverview({ report, qualityMeta }: { report: ResearchReport; qua
           </span>
         )}
       </div>
-
-      {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Creators", value: report.creatorsMatched },
-          { label: "Videos", value: report.videosMatched },
-          { label: "Quotes used", value: report.quotesUsed },
+          { label: "Creators", value: report.creatorsMatched, muted: false },
+          { label: "Videos", value: report.videosMatched, muted: false },
+          { label: "Quotes used", value: report.quotesUsed, muted: false },
           { label: "Quotes rejected", value: report.quotesRejected, muted: true },
         ].map(({ label, value, muted }) => (
           <div key={label} className="rounded-xl p-3 text-center" style={{ background: "rgba(10,20,35,0.5)", border: "1px solid #1e2d45" }}>
@@ -299,8 +315,6 @@ function EvidenceOverview({ report, qualityMeta }: { report: ResearchReport; qua
           </div>
         ))}
       </div>
-
-      {/* Coverage + Confidence bars */}
       <div className="space-y-2.5">
         <ProgressBar label="Question Coverage" value={report.coverageScore} color="#38bdf8" />
         <ProgressBar label="Consensus" value={report.consensusScore * 10} color="#a78bfa" />
@@ -310,54 +324,151 @@ function EvidenceOverview({ report, qualityMeta }: { report: ResearchReport; qua
   );
 }
 
-function ProgressBar({ label, value, color }: { label: string; value: number; color: string }) {
+// ── Hypothesis testing panel ──────────────────────────────────────────────────
+
+function HypothesisCard({ h, index, hasFinding }: {
+  h: ResearchHypothesisResult;
+  index: number;
+  hasFinding: boolean;
+}) {
+  const meta = HYPOTHESIS_STATUS_META[h.status];
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-mono text-slate-500">{label}</span>
-        <span className="text-xs font-mono font-black" style={{ color }}>{value}%</span>
+    <div className="rounded-xl p-4 space-y-2.5"
+      style={{ background: "rgba(10,20,35,0.55)", border: `1px solid ${meta.border}` }}>
+      <div className="flex items-start gap-3">
+        <span className="text-xs font-mono font-black px-2 py-0.5 rounded shrink-0 mt-0.5"
+          style={{ color: meta.color, background: meta.bg, border: `1px solid ${meta.border}` }}>
+          {meta.icon} {meta.label}
+        </span>
+        <p className="text-base text-slate-300 leading-snug">{h.statement}</p>
       </div>
-      <div className="rounded-full h-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(value, 100)}%`, background: color }} />
-      </div>
+
+      {h.status === "supported" && (
+        <div className="space-y-1.5 pl-1">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <div className="rounded-full h-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                <div className="h-full rounded-full" style={{ width: `${Math.min(h.supportStrength, 100)}%`, background: meta.color }} />
+              </div>
+            </div>
+            <span className="text-xs font-mono font-black shrink-0" style={{ color: meta.color }}>{h.supportStrength}%</span>
+          </div>
+          <div className="flex items-center gap-3 text-xs font-mono text-slate-500">
+            <span><span className="text-emerald-400 font-bold">{h.supportingCreators}</span> supporting</span>
+            {h.contradictingCreators > 0 && (
+              <span><span className="text-red-400 font-bold">{h.contradictingCreators}</span> opposing</span>
+            )}
+            {hasFinding && (
+              <span className="text-[#38bdf8]">→ finding generated</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {h.status === "inconclusive" && h.supportingCreators > 0 && (
+        <div className="flex items-center gap-3 text-xs font-mono text-slate-500 pl-1">
+          <span><span className="text-amber-400 font-bold">{h.supportingCreators}</span> partial support</span>
+          {h.contradictingCreators > 0 && (
+            <span><span className="text-red-400 font-bold">{h.contradictingCreators}</span> opposing</span>
+          )}
+          <span className="text-amber-700">insufficient for finding</span>
+        </div>
+      )}
+
+      {h.rejectionReason && (
+        <p className="text-xs text-slate-500 leading-relaxed pl-1 border-l border-red-900/40 ml-1"
+          style={{ paddingLeft: "0.75rem" }}>
+          {h.rejectionReason}
+        </p>
+      )}
     </div>
   );
 }
 
-// ── Grouped findings ──────────────────────────────────────────────────────────
+function HypothesisTestingPanel({ hypotheses, findings }: {
+  hypotheses: ResearchHypothesisResult[];
+  findings: ResearchFinding[];
+}) {
+  if (!hypotheses.length) return null;
+  const [expanded, setExpanded] = useState(true);
 
-function GroupedFindings({ findings, questions }: { findings: ResearchFinding[]; questions: string[] }) {
+  const supported = hypotheses.filter(h => h.status === "supported").length;
+  const inconclusive = hypotheses.filter(h => h.status === "inconclusive").length;
+  const rejected = hypotheses.filter(h => h.status === "rejected").length;
+  const findingIndices = new Set(findings.map(f => f.hypothesisIndex));
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #1e2d45" }}>
+      <button onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between px-5 py-4"
+        style={{ background: "rgba(15,37,53,0.8)" }}>
+        <div className="flex items-center gap-4">
+          <p className="text-xs font-mono font-black text-slate-400 uppercase tracking-widest">Hypothesis Testing</p>
+          <div className="flex items-center gap-2 text-xs font-mono">
+            <span className="px-1.5 py-0.5 rounded" style={{ color: "#10b981", background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.25)" }}>
+              {supported} supported
+            </span>
+            {inconclusive > 0 && (
+              <span className="px-1.5 py-0.5 rounded" style={{ color: "#fbbf24", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)" }}>
+                {inconclusive} inconclusive
+              </span>
+            )}
+            <span className="px-1.5 py-0.5 rounded" style={{ color: "#f87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)" }}>
+              {rejected} rejected
+            </span>
+          </div>
+        </div>
+        <span className="text-xs font-mono text-slate-600">{expanded ? "▲" : "▼"}</span>
+      </button>
+
+      {expanded && (
+        <div className="px-5 pb-5 pt-3 space-y-3" style={{ background: "rgba(8,16,28,0.6)" }}>
+          {hypotheses.map((h, i) => (
+            <HypothesisCard key={i} h={h} index={i} hasFinding={findingIndices.has(i)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Findings grouped by hypothesis ───────────────────────────────────────────
+
+function FindingsByHypothesis({ findings, hypotheses }: {
+  findings: ResearchFinding[];
+  hypotheses: ResearchHypothesisResult[];
+}) {
   if (!findings.length) return null;
 
-  const grouped = questions.map((q, qi) => ({
-    qi, question: q,
-    items: findings.map((f, fi) => ({ f, fi })).filter(({ f }) => f.answersQuestion === qi),
-  })).filter(g => g.items.length > 0);
+  // Group findings by hypothesisIndex
+  const groups = hypotheses
+    .map((h, hi) => ({ h, hi, items: findings.filter(f => f.hypothesisIndex === hi) }))
+    .filter(g => g.items.length > 0);
 
-  const orphaned = findings
-    .map((f, fi) => ({ f, fi }))
-    .filter(({ f }) => f.answersQuestion < 0 || f.answersQuestion >= questions.length);
+  // Orphaned (no matching hypothesis)
+  const orphaned = findings.filter(f => f.hypothesisIndex >= hypotheses.length || f.hypothesisIndex < 0);
 
   return (
     <div className="space-y-6">
-      {grouped.map(({ qi, question, items }) => (
-        <div key={qi} className="space-y-3">
+      {groups.map(({ h, hi, items }) => (
+        <div key={hi} className="space-y-3">
+          {/* Hypothesis header above its findings */}
           <div className="flex gap-3 items-start">
             <span className="text-xs font-mono font-black px-2 py-0.5 rounded shrink-0 mt-0.5"
-              style={{ color: "#38bdf8", background: "rgba(56,189,248,0.10)", border: "1px solid rgba(56,189,248,0.25)" }}>
-              Q{qi}
+              style={{ color: "#10b981", background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.25)" }}>
+              H{hi} ✓
             </span>
-            <p className="text-base font-bold text-slate-200 leading-snug">{question}</p>
+            <p className="text-base font-bold text-slate-200 leading-snug">{h.statement}</p>
           </div>
           <div className="space-y-3 pl-8">
-            {items.map(({ f, fi }) => <FindingBlock key={fi} finding={f} index={fi} />)}
+            {items.map((f, fi) => <FindingBlock key={fi} finding={f} index={findings.indexOf(f)} />)}
           </div>
         </div>
       ))}
       {orphaned.length > 0 && (
         <div className="space-y-3">
           <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">Additional Findings</p>
-          {orphaned.map(({ f, fi }) => <FindingBlock key={fi} finding={f} index={fi} />)}
+          {orphaned.map((f, i) => <FindingBlock key={i} finding={f} index={i} />)}
         </div>
       )}
     </div>
@@ -377,9 +488,7 @@ function PatternsPanel({ patterns }: { patterns: ResearchPattern[] }) {
           return (
             <div key={i} className="flex gap-3 items-start rounded-xl p-3.5"
               style={{ background: "rgba(10,20,35,0.5)", border: "1px solid #1e2d45" }}>
-              <div className="flex flex-col items-center gap-1 shrink-0 pt-0.5">
-                <span className="text-base font-black" style={{ color: meta.color }}>{meta.icon}</span>
-              </div>
+              <span className="text-base font-black shrink-0 pt-0.5" style={{ color: meta.color }}>{meta.icon}</span>
               <div className="space-y-1 min-w-0">
                 <span className="text-xs font-mono font-black" style={{ color: meta.color }}>{meta.label}</span>
                 <p className="text-base text-slate-300 leading-relaxed">{p.description}</p>
@@ -432,7 +541,7 @@ function ContraBlock({ contra }: { contra: ContraFinding }) {
         <p className="text-xs font-mono text-amber-800 pl-[3.5rem]">From evidence — not a hypothetical objection</p>
       </button>
       {open && (
-        <div className="px-5 pb-5 pt-4 space-y-3" style={{ background: "rgba(10,20,35,0.7)" }}>
+        <div className="px-5 pb-5 pt-4" style={{ background: "rgba(10,20,35,0.7)" }}>
           <div className="rounded-xl p-4 space-y-3" style={{ border: "1px solid rgba(251,191,36,0.2)", background: "rgba(15,37,53,0.5)" }}>
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-0.5 min-w-0">
@@ -509,7 +618,10 @@ function ConsensusMapBlock({ map }: { map: CreatorStance[] }) {
 
 // ── Actionable intelligence ───────────────────────────────────────────────────
 
-function ActionableIntelligence({ actions, implications }: { actions: ResearchAction[]; implications: { statement: string; basedOnFindings: string }[] }) {
+function ActionableIntelligence({ actions, implications }: {
+  actions: ResearchAction[];
+  implications: { statement: string; basedOnFindings: string }[];
+}) {
   if (!actions.length && !implications.length) return null;
 
   const grouped = {
@@ -523,7 +635,6 @@ function ActionableIntelligence({ actions, implications }: { actions: ResearchAc
     <div className="rounded-2xl p-5 space-y-5" style={{ background: "rgba(15,37,53,0.65)", border: "1px solid #1e2d45" }}>
       <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Actionable Intelligence</p>
 
-      {/* Implications */}
       {implications.length > 0 && (
         <div className="space-y-2.5">
           {implications.map((imp, i) => (
@@ -538,16 +649,13 @@ function ActionableIntelligence({ actions, implications }: { actions: ResearchAc
         </div>
       )}
 
-      {/* Actions grouped by category */}
       {(["decision", "task", "experiment", "content_opportunity"] as const).map(cat => {
         const items = grouped[cat];
         if (!items.length) return null;
         const meta = ACTION_CATEGORY_META[cat];
         return (
           <div key={cat} className="space-y-2">
-            <p className="text-xs font-mono font-black uppercase tracking-wider" style={{ color: meta.color }}>
-              {meta.label}s
-            </p>
+            <p className="text-xs font-mono font-black uppercase tracking-wider" style={{ color: meta.color }}>{meta.label}s</p>
             <div className="space-y-2">
               {items.map((a, i) => (
                 <div key={i} className="rounded-xl p-4 space-y-1.5"
@@ -573,7 +681,7 @@ function ActionableIntelligence({ actions, implications }: { actions: ResearchAc
 export function ResearchMode() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loadingStage, setLoadingStage] = useState<"framework" | "synthesis" | null>(null);
+  const [loadingStage, setLoadingStage] = useState<"framework" | "testing" | "synthesis" | null>(null);
   const [report, setReport] = useState<ResearchReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reindexing, setReindexing] = useState(false);
@@ -603,8 +711,8 @@ export function ResearchMode() {
     setError(null);
     setReport(null);
 
-    // Brief delay to show "framework" stage before switching to "synthesis"
-    const stageTimer = setTimeout(() => setLoadingStage("synthesis"), 2500);
+    const t1 = setTimeout(() => setLoadingStage("testing"), 2500);
+    const t2 = setTimeout(() => setLoadingStage("synthesis"), 6000);
 
     try {
       const res = await fetch("/api/research/search", {
@@ -621,11 +729,18 @@ export function ResearchMode() {
     } catch {
       setError("Network error — please try again");
     } finally {
-      clearTimeout(stageTimer);
+      clearTimeout(t1);
+      clearTimeout(t2);
       setLoading(false);
       setLoadingStage(null);
     }
   }
+
+  const STAGE_LABEL = {
+    framework: "Building research design + generating hypotheses...",
+    testing:   "Testing hypotheses against evidence...",
+    synthesis: "Generating conclusions from supported hypotheses...",
+  };
 
   const qualityMeta = report ? (QUALITY_META[report.evidenceQuality] ?? QUALITY_META.Moderate) : null;
 
@@ -637,7 +752,7 @@ export function ResearchMode() {
       <div className="space-y-1">
         <p className="text-base font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Mode</p>
         <p className="text-sm text-slate-400 font-mono">
-          Intelligence discovery across {report?.totalIndexed ? `${report.totalIndexed} indexed data points` : "your analyzed video library"}.
+          Hypothesis-driven intelligence across {report?.totalIndexed ? `${report.totalIndexed} indexed data points` : "your analyzed video library"}.
         </p>
       </div>
 
@@ -659,7 +774,7 @@ export function ResearchMode() {
         </button>
       </form>
 
-      {/* Suggested queries */}
+      {/* Suggested topics */}
       {!report && !loading && (
         <div className="space-y-3">
           <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Research topics</p>
@@ -700,11 +815,11 @@ export function ResearchMode() {
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-1.5 rounded-full bg-[#38bdf8] animate-pulse" />
             <p className="text-sm font-mono text-[#38bdf8]">
-              {loadingStage === "framework" ? "Building research framework..." : "Analyzing evidence..."}
+              {loadingStage ? STAGE_LABEL[loadingStage] : "Initializing..."}
             </p>
           </div>
           <div className="space-y-4 animate-pulse">
-            {[20, 40, 12, 56, 48, 36].map((h, i) => (
+            {[20, 16, 40, 56, 56, 36].map((h, i) => (
               <div key={i} className="rounded-2xl" style={{ height: `${h * 4}px`, background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
             ))}
           </div>
@@ -718,7 +833,7 @@ export function ResearchMode() {
           {/* 1. Research Objective */}
           <ResearchObjectiveCard objective={report.researchObjective} query={report.query} />
 
-          {/* 2. Research Framework (subtopics + questions) */}
+          {/* 2. Research Framework */}
           {(report.subtopics?.length > 0 || report.researchQuestions?.length > 0) && (
             <ResearchFrameworkPanel subtopics={report.subtopics ?? []} questions={report.researchQuestions ?? []} />
           )}
@@ -726,22 +841,33 @@ export function ResearchMode() {
           {/* 3. Evidence Overview */}
           <EvidenceOverview report={report} qualityMeta={qualityMeta} />
 
-          {/* 4. Key Findings grouped by question */}
+          {/* 4. Hypothesis Testing */}
+          {report.hypotheses?.length > 0 && (
+            <HypothesisTestingPanel hypotheses={report.hypotheses} findings={report.findings} />
+          )}
+
+          {/* 5. Key Findings (grouped by supporting hypothesis) */}
           {report.findings.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">
-                {report.findings.length} {report.findings.length === 1 ? "Finding" : "Findings"} — each with cited evidence
+                {report.findings.length} {report.findings.length === 1 ? "Finding" : "Findings"} from supported hypotheses
               </p>
-              <GroupedFindings findings={report.findings} questions={report.researchQuestions ?? []} />
+              <FindingsByHypothesis findings={report.findings} hypotheses={report.hypotheses ?? []} />
             </div>
           )}
 
-          {/* 5. Patterns */}
-          {(report.patterns?.length > 0) && (
-            <PatternsPanel patterns={report.patterns} />
+          {report.findings.length === 0 && report.hypotheses?.length > 0 && (
+            <div className="rounded-xl px-5 py-4 space-y-1"
+              style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(251,191,36,0.2)" }}>
+              <p className="text-sm font-mono font-black text-amber-500">No hypotheses passed testing</p>
+              <p className="text-sm text-slate-500">All hypotheses were rejected or inconclusive against the current evidence pool. See Research Gaps below.</p>
+            </div>
           )}
 
-          {/* 6. Contrarian / Contradictions */}
+          {/* 6. Patterns */}
+          {report.patterns?.length > 0 && <PatternsPanel patterns={report.patterns} />}
+
+          {/* 7. Contradictions */}
           {report.contrarian ? (
             <div className="space-y-3">
               <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Contradictions</p>
@@ -756,16 +882,16 @@ export function ResearchMode() {
             </div>
           )}
 
-          {/* 7. Creator Consensus Map */}
+          {/* 8. Creator Consensus Map */}
           {report.consensusMap.length > 0 && <ConsensusMapBlock map={report.consensusMap} />}
 
-          {/* 8. Conclusions */}
+          {/* 9. Conclusions */}
           <ConclusionsCard conclusions={report.conclusions} confidenceScore={report.confidenceScore} />
 
-          {/* 9. Actionable Intelligence */}
+          {/* 10. Actionable Intelligence */}
           <ActionableIntelligence actions={report.actions} implications={report.implications} />
 
-          {/* 10. Research Gaps */}
+          {/* 11. Research Gaps */}
           {report.evidenceGaps && (
             <div className="rounded-xl px-4 py-3 flex gap-3 items-start"
               style={{ background: "rgba(15,37,53,0.5)", border: "1px solid #1e2d45" }}>
@@ -777,10 +903,9 @@ export function ResearchMode() {
           {/* Footer */}
           <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "#1e2d45" }}>
             <p className="text-xs font-mono text-slate-700">
-              {report.totalIndexed} data points searched · Evidence validated before citation
+              {report.totalIndexed} data points searched · Findings only from supported hypotheses
             </p>
-            <button
-              onClick={() => { setReport(null); setError(null); setQuery(""); setTimeout(() => inputRef.current?.focus(), 50); }}
+            <button onClick={() => { setReport(null); setError(null); setQuery(""); setTimeout(() => inputRef.current?.focus(), 50); }}
               className="text-sm font-mono text-[#38bdf8] hover:text-white transition-colors">
               New research →
             </button>
