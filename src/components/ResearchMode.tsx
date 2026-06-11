@@ -37,14 +37,14 @@ const THEME_COLORS = [
 ];
 
 const SUGGESTED = [
-  "AI agents",
-  "pricing strategy",
-  "founder market fit",
-  "distribution channels",
-  "customer acquisition",
-  "retention",
-  "product launches",
   "fundraising",
+  "founder market fit",
+  "hiring and team building",
+  "customer acquisition",
+  "product-market fit",
+  "building in public",
+  "B2B sales",
+  "AI agents",
 ];
 
 // ── Quote card ────────────────────────────────────────────────────────────────
@@ -516,7 +516,7 @@ export function ResearchMode() {
             <div className="rounded-xl px-5 py-4 space-y-1.5"
               style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(185,28,28,0.3)" }}>
               <p className="text-sm font-mono font-black text-red-400/70 uppercase tracking-widest">Insufficient Evidence</p>
-              <p className="text-sm text-slate-500">No directly relevant evidence found for this topic. The indexed content may not cover it well, or try a more specific query.</p>
+              <p className="text-sm text-slate-500">No creators in your library explicitly discuss this topic. Analyze more videos on this subject, or try a broader query like &ldquo;fundraising&rdquo; or &ldquo;customer acquisition&rdquo;.</p>
             </div>
           )}
 
