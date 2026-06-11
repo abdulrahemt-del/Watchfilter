@@ -576,9 +576,9 @@ export function ResearchMode() {
           onClick={() => setDebugMode(v => !v)}
           className="text-[10px] font-mono font-black px-2 py-1 rounded shrink-0 transition-colors"
           style={{
-            color: debugMode ? "#a78bfa" : "#334155",
-            background: debugMode ? "rgba(167,139,250,0.1)" : "transparent",
-            border: `1px solid ${debugMode ? "rgba(167,139,250,0.3)" : "#1e2d45"}`,
+            color: debugMode ? "#a78bfa" : "#64748b",
+            background: debugMode ? "rgba(167,139,250,0.1)" : "rgba(255,255,255,0.05)",
+            border: `1px solid ${debugMode ? "rgba(167,139,250,0.4)" : "rgba(100,116,139,0.4)"}`,
           }}>
           {debugMode ? "● DEBUG ON" : "DEBUG"}
         </button>
