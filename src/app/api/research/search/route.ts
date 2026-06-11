@@ -308,8 +308,10 @@ export async function POST(req: Request) {
 
   const body = await req.json() as {
     query?: string;
+    debug?: boolean;
     filters?: { channel?: string; signalStrength?: string };
   };
+  const debugMode = body.debug === true;
 
   const query = sanitizeText((body.query ?? "").trim());
   if (!query) return NextResponse.json({ error: "query required" }, { status: 400 });
@@ -402,6 +404,11 @@ export async function POST(req: Request) {
     };
   }
 
+  // ── Debug: track GPT-included indices before building themes ──────────────────
+
+  const gptInThemeIdx   = new Set<number>((raw.themes ?? []).flatMap(t => (t.sourceRefs ?? []).map(r => r.idx)));
+  const gptInSignalIdx  = new Set<number>((raw.relatedSignals ?? []).flatMap(s => (s.sourceRefs ?? []).map(r => r.idx)));
+
   // ── Build themes ───────────────────────────────────────────────────────────────
 
   const allThemes: ResearchTheme[] = (raw.themes ?? []).map(t => {
@@ -455,10 +462,7 @@ export async function POST(req: Request) {
   const videoIds = new Set([...allSources.map(s => s.videoId), ...topRows.map(r => r.video_id)]);
   const creatorsInPool = new Set(topRows.map(r => r.channel_name).filter(Boolean));
 
-  // ── Intelligence layer secondary search ────────────────────────────────────────
-  // When direct transcript evidence is absent, check the user's synthesized
-  // intelligence snapshot (executive briefs, alerts, consensus themes).
-  // This layer has no timestamps or direct quotes — it is surfaced with that caveat.
+  // ── Intelligence layer + debug ─────────────────────────────────────────────────
 
   function queryRelevant(text: string): boolean {
     if (!text) return false;
@@ -471,7 +475,68 @@ export async function POST(req: Request) {
     return matched.length >= Math.ceil(tokens.length * 0.6);
   }
 
+  // Per-row disposition for debug mode
+  const debugRows = debugMode ? topRows.map((row, i) => {
+    const inTheme  = gptInThemeIdx.has(i);
+    const inSignal = gptInSignalIdx.has(i);
+    const inKeyTheme = inTheme && keyThemes.some(t => t.sources.some(s => s.creator === (row.channel_name ?? "Unknown") && s.quote.startsWith((row.quote ?? "").slice(0, 40))));
+
+    let disposition: string;
+    let rejectionReason: string | null = null;
+
+    if (inKeyTheme) {
+      disposition = "ACCEPTED — key theme";
+    } else if (inTheme && !inKeyTheme) {
+      disposition = "REJECTED — server threshold";
+      rejectionReason = "GPT included in a theme but that theme failed the key theme threshold (requires ≥2 unique creators OR ≥3 quotes)";
+    } else if (inSignal) {
+      disposition = "RELATED SIGNAL";
+      rejectionReason = "GPT scored as adjacent (score 1) — not directly on-topic, moved to Related Signals";
+    } else {
+      disposition = "REJECTED — GPT scored 0";
+      rejectionReason = "GPT determined this quote does not explicitly address the query topic (score 0 / out of scope)";
+    }
+
+    return {
+      idx: i,
+      embeddingScore: `${(topScores[i] * 100).toFixed(1)}%`,
+      creator: row.channel_name ?? "Unknown",
+      video: row.video_title ?? "Unknown",
+      type: row.type,
+      quote: (row.quote ?? row.insight ?? "").slice(0, 200),
+      disposition,
+      rejectionReason,
+    };
+  }) : null;
+
+  const debugThemeEval = debugMode ? allThemes.map(t => ({
+    title: t.title,
+    sourceCount: t.quoteCount,
+    uniqueCreators: t.creators,
+    uniqueVideos: t.videoCount,
+    isKeyTheme: t.isKeyTheme,
+    rejectionReason: t.isKeyTheme ? null
+      : `${t.creatorCount} unique creator(s), ${t.quoteCount} quote(s) — threshold: ≥2 creators OR ≥3 quotes`,
+  })) : null;
+
+  // Intelligence layer search
   let intelligenceSignals: IntelligenceSignal[] = [];
+  let debugIntelligence: {
+    snapshotFound: boolean;
+    pipelineCacheFound: boolean;
+    briefCount: number;
+    alertCount: number;
+    consensusThemeCount: number;
+    matched: Array<{ source: string; text: string; matchedBy: string }>;
+  } | null = debugMode ? {
+    snapshotFound: false,
+    pipelineCacheFound: false,
+    briefCount: 0,
+    alertCount: 0,
+    consensusThemeCount: 0,
+    matched: [],
+  } : null;
+
   const userId = session.user?.email;
 
   if (keyThemes.length === 0 && userId) {
@@ -481,15 +546,28 @@ export async function POST(req: Request) {
         getUserPipelineCache(userId),
       ]);
 
+      if (debugIntelligence) {
+        debugIntelligence.snapshotFound = snap !== null;
+        debugIntelligence.pipelineCacheFound = pipelineCache !== null;
+        if (snap) {
+          debugIntelligence.briefCount = (snap.brief ?? []).length;
+          debugIntelligence.alertCount = (snap.alerts ?? []).length;
+        }
+      }
+
       if (snap) {
         for (const text of (snap.brief ?? [])) {
-          if (queryRelevant(text))
-            intelligenceSignals.push({ text: sanitizeText(text), source: "brief" });
+          const matched = queryRelevant(text);
+          if (debugIntelligence && matched) debugIntelligence.matched.push({ source: "brief", text: text.slice(0, 150), matchedBy: text.toLowerCase().includes(query.toLowerCase()) ? "exact phrase" : "token overlap" });
+          if (matched) intelligenceSignals.push({ text: sanitizeText(text), source: "brief" });
         }
         for (const alert of (snap.alerts ?? [])) {
           const label = (alert.label as string) ?? "";
           const why   = (alert.whyItMatters as string) ?? "";
-          if (queryRelevant(label + " " + why)) {
+          const searchText = label + " " + why;
+          const matched = queryRelevant(searchText);
+          if (debugIntelligence && matched) debugIntelligence.matched.push({ source: "alert", text: (why || label).slice(0, 150), matchedBy: searchText.toLowerCase().includes(query.toLowerCase()) ? "exact phrase" : "token overlap" });
+          if (matched) {
             intelligenceSignals.push({
               text:     sanitizeText(why || label),
               source:   "alert",
@@ -505,8 +583,12 @@ export async function POST(req: Request) {
         const consensus = pipelineCache.consensusData as {
           themes?: Array<{ topic: string; consensus: string; whyItMatters: string; confidence?: number }>;
         };
+        if (debugIntelligence) debugIntelligence.consensusThemeCount = (consensus.themes ?? []).length;
         for (const theme of (consensus.themes ?? [])) {
-          if (queryRelevant([theme.topic, theme.whyItMatters, theme.consensus].join(" "))) {
+          const searchText = [theme.topic, theme.whyItMatters, theme.consensus].join(" ");
+          const matched = queryRelevant(searchText);
+          if (debugIntelligence && matched) debugIntelligence.matched.push({ source: "consensus", text: (theme.whyItMatters || theme.topic).slice(0, 150), matchedBy: searchText.toLowerCase().includes(query.toLowerCase()) ? "exact phrase" : "token overlap" });
+          if (matched) {
             intelligenceSignals.push({
               text:       sanitizeText(theme.whyItMatters || theme.consensus),
               source:     "consensus",
@@ -517,12 +599,11 @@ export async function POST(req: Request) {
         }
       }
 
-      // Deduplicate by text, cap at 5
       const seen = new Set<string>();
       intelligenceSignals = intelligenceSignals
         .filter(s => { if (seen.has(s.text)) return false; seen.add(s.text); return true; })
         .slice(0, 5);
-    } catch { /* intelligence layer is best-effort — never fail the request */ }
+    } catch { /* best-effort */ }
   }
 
   const report: ResearchReport = {
@@ -539,6 +620,33 @@ export async function POST(req: Request) {
     intelligenceSignals,
     totalIndexed: stats.withEmbeddings,
   };
+
+  if (debugMode) {
+    return NextResponse.json({
+      ...report,
+      _debug: {
+        summary: {
+          retrieved: topRows.length,
+          gptIncludedInTheme: gptInThemeIdx.size,
+          gptIncludedInSignal: gptInSignalIdx.size,
+          gptExcluded: topRows.length - gptInThemeIdx.size - gptInSignalIdx.size,
+          themesBuiltByGpt: allThemes.length,
+          themesPassedThreshold: keyThemes.length,
+          themesRejectedByThreshold: allThemes.filter(t => !t.isKeyTheme).length,
+          intelligenceSignalsFound: intelligenceSignals.length,
+        },
+        retrieval: debugRows,
+        gptRawThemes: (raw.themes ?? []).map(t => ({
+          title: t.title,
+          sourceRefCount: (t.sourceRefs ?? []).length,
+          sourceRefIndices: (t.sourceRefs ?? []).map(r => r.idx),
+          quoteSnippets: (t.sourceRefs ?? []).map(r => ({ idx: r.idx, quote: r.quote.slice(0, 120) })),
+        })),
+        themeEvaluation: debugThemeEval,
+        intelligenceLayer: debugIntelligence,
+      },
+    });
+  }
 
   return NextResponse.json(report);
 }

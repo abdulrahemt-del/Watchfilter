@@ -377,15 +377,140 @@ function SynthesisPanel({ synthesis }: { synthesis: string }) {
   );
 }
 
+// ── Debug panel ───────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function DebugPanel({ data }: { data: any }) {
+  const [open, setOpen] = useState(false);
+  if (!data) return null;
+  const d = data._debug;
+  if (!d) return null;
+
+  const dispositionColor = (s: string) =>
+    s.startsWith("ACCEPTED") ? "#10b981"
+    : s.startsWith("RELATED") ? "#fbbf24"
+    : "#f87171";
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(99,102,241,0.3)" }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-5 py-3 text-left"
+        style={{ background: "rgba(30,20,60,0.7)" }}>
+        <span className="text-xs font-mono font-black text-indigo-400 uppercase tracking-widest">
+          Pipeline Debug · {open ? "▲" : "▼"}
+        </span>
+        <span className="text-xs font-mono text-indigo-600">
+          {d.summary.retrieved} retrieved · {d.summary.gptIncludedInTheme} in theme · {d.summary.themesPassedThreshold} accepted
+        </span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-5" style={{ background: "rgba(10,5,30,0.9)" }}>
+
+          {/* Summary */}
+          <div className="pt-4 grid grid-cols-2 gap-x-8 gap-y-1 text-xs font-mono">
+            {[
+              ["Retrieved from index", d.summary.retrieved],
+              ["GPT included in theme", d.summary.gptIncludedInTheme],
+              ["GPT placed in signal", d.summary.gptIncludedInSignal],
+              ["GPT scored out of scope", d.summary.gptExcluded],
+              ["GPT themes built", d.summary.themesBuiltByGpt],
+              ["Passed server threshold", d.summary.themesPassedThreshold],
+              ["Rejected by threshold", d.summary.themesRejectedByThreshold],
+              ["Intelligence signals", d.summary.intelligenceSignalsFound],
+            ].map(([k, v]) => (
+              <div key={String(k)} className="flex justify-between border-b py-0.5" style={{ borderColor: "#1e2d45" }}>
+                <span className="text-slate-500">{k}</span>
+                <span className="text-white font-black">{v}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Intelligence layer */}
+          {d.intelligenceLayer && (
+            <div className="space-y-2">
+              <p className="text-xs font-mono font-black text-amber-400/70 uppercase tracking-widest">Intelligence Layer</p>
+              <div className="text-xs font-mono space-y-0.5 text-slate-500">
+                <p>Snapshot found: <span className={d.intelligenceLayer.snapshotFound ? "text-emerald-400" : "text-red-400"}>{String(d.intelligenceLayer.snapshotFound)}</span></p>
+                <p>Pipeline cache found: <span className={d.intelligenceLayer.pipelineCacheFound ? "text-emerald-400" : "text-red-400"}>{String(d.intelligenceLayer.pipelineCacheFound)}</span></p>
+                <p>Brief items: {d.intelligenceLayer.briefCount} · Alerts: {d.intelligenceLayer.alertCount} · Consensus themes: {d.intelligenceLayer.consensusThemeCount}</p>
+                <p>Matched: {d.intelligenceLayer.matched.length}</p>
+              </div>
+              {d.intelligenceLayer.matched.length > 0 && (
+                <div className="space-y-1">
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {d.intelligenceLayer.matched.map((m: any, i: number) => (
+                    <div key={i} className="rounded px-2 py-1.5" style={{ background: "rgba(251,191,36,0.05)", border: "1px solid rgba(251,191,36,0.15)" }}>
+                      <p className="text-[10px] font-mono text-amber-500 uppercase">{m.source} · {m.matchedBy}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{m.text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* GPT raw themes */}
+          {d.gptRawThemes.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-mono font-black text-sky-400/70 uppercase tracking-widest">GPT Raw Themes ({d.gptRawThemes.length})</p>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {d.gptRawThemes.map((t: any, i: number) => (
+                <div key={i} className="rounded px-3 py-2 space-y-1" style={{ background: "rgba(56,189,248,0.04)", border: "1px solid rgba(56,189,248,0.15)" }}>
+                  <p className="text-xs font-mono font-black text-sky-300">{t.title}</p>
+                  <p className="text-[10px] font-mono text-slate-600">{t.sourceRefCount} refs · indices: [{t.sourceRefIndices.join(", ")}]</p>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {t.quoteSnippets.map((q: any, j: number) => (
+                    <p key={j} className="text-[10px] text-slate-500 pl-2 border-l" style={{ borderColor: "#2d3f52" }}>
+                      [E{q.idx}] {q.quote}
+                    </p>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          {d.gptRawThemes.length === 0 && (
+            <p className="text-xs font-mono text-red-400">GPT returned 0 themes — all evidence scored out of scope</p>
+          )}
+
+          {/* Per-row disposition */}
+          <div className="space-y-2">
+            <p className="text-xs font-mono font-black text-slate-500 uppercase tracking-widest">Per-Row Disposition</p>
+            <div className="space-y-1">
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {d.retrieval.map((row: any) => (
+                <div key={row.idx} className="rounded px-3 py-2 space-y-0.5" style={{ background: "rgba(8,16,28,0.6)", border: "1px solid #1e2d45" }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-mono font-black text-slate-400">[E{row.idx}] {row.creator} · {row.embeddingScore}</span>
+                    <span className="text-[10px] font-mono font-black" style={{ color: dispositionColor(row.disposition) }}>{row.disposition}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-600 truncate">{row.quote || "(no quote)"}</p>
+                  {row.rejectionReason && (
+                    <p className="text-[10px] text-slate-700 italic">{row.rejectionReason}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ResearchMode() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ResearchReport | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [debugData, setDebugData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [reindexing, setReindexing] = useState(false);
   const [reindexMsg, setReindexMsg] = useState<string | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleReindexAll() {
@@ -409,17 +534,20 @@ export function ResearchMode() {
     setLoading(true);
     setError(null);
     setReport(null);
+    setDebugData(null);
     try {
       const res = await fetch("/api/research/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmed }),
+        body: JSON.stringify({ query: trimmed, debug: debugMode }),
       });
-      const data = await res.json() as ResearchReport & { error?: string };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await res.json() as ResearchReport & { error?: string; _debug?: any };
       if (!res.ok || data.error) {
         setError(data.error ?? "Research failed");
       } else {
         setReport(data);
+        if (data._debug) setDebugData(data);
       }
     } catch {
       setError("Network error — please try again");
@@ -435,12 +563,25 @@ export function ResearchMode() {
       style={{ background: "linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)" }}>
 
       {/* Header */}
-      <div className="space-y-1">
-        <p className="text-base font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Mode</p>
-        <p className="text-sm text-slate-400 font-mono">
-          What are creators saying about this topic?
-          {report?.totalIndexed ? ` Searching ${report.totalIndexed} indexed data points.` : ""}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <p className="text-base font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Mode</p>
+          <p className="text-sm text-slate-400 font-mono">
+            What are creators saying about this topic?
+            {report?.totalIndexed ? ` Searching ${report.totalIndexed} indexed data points.` : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setDebugMode(v => !v)}
+          className="text-[10px] font-mono font-black px-2 py-1 rounded shrink-0 transition-colors"
+          style={{
+            color: debugMode ? "#a78bfa" : "#334155",
+            background: debugMode ? "rgba(167,139,250,0.1)" : "transparent",
+            border: `1px solid ${debugMode ? "rgba(167,139,250,0.3)" : "#1e2d45"}`,
+          }}>
+          {debugMode ? "● DEBUG ON" : "DEBUG"}
+        </button>
       </div>
 
       {/* Search */}
@@ -612,13 +753,16 @@ export function ResearchMode() {
           {/* What the Evidence Suggests */}
           <SynthesisPanel synthesis={report.synthesis} />
 
+          {/* Debug panel */}
+          {debugData && <DebugPanel data={debugData} />}
+
           {/* Footer */}
           <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "#1e2d45" }}>
             <p className="text-xs font-mono text-slate-700">
               {report.totalIndexed} data points · Quotes from real creator content
             </p>
             <button
-              onClick={() => { setReport(null); setError(null); setQuery(""); setTimeout(() => inputRef.current?.focus(), 50); }}
+              onClick={() => { setReport(null); setDebugData(null); setError(null); setQuery(""); setTimeout(() => inputRef.current?.focus(), 50); }}
               className="text-sm font-mono text-[#38bdf8] hover:text-white transition-colors">
               New search →
             </button>
