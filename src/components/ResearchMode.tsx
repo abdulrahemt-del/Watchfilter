@@ -120,7 +120,7 @@ function IntelligenceSignalCard({ signal }: { signal: IntelligenceSignal }) {
 
 // ── Theme card ────────────────────────────────────────────────────────────────
 
-function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
+function ThemeCard({ theme, index, limited = false }: { theme: ResearchTheme; index: number; limited?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [showConsensus, setShowConsensus] = useState(false);
   const color = THEME_COLORS[index % THEME_COLORS.length];
@@ -154,9 +154,15 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
             <div className="min-w-0 space-y-1.5">
               <h3 className="text-base font-black text-white leading-snug">{theme.title}</h3>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-mono font-black uppercase tracking-widest text-emerald-500">
-                  ● Key Theme
-                </span>
+                {limited ? (
+                  <span className="text-[10px] font-mono font-black uppercase tracking-widest text-amber-500/80">
+                    ◐ Weak Signal
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono font-black uppercase tracking-widest text-emerald-500">
+                    ● Key Theme
+                  </span>
+                )}
                 <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded"
                   style={{ color: confidenceColor, background: `${confidenceColor}12`, border: `1px solid ${confidenceColor}28` }}>
                   {theme.confidence}% · {theme.consensusStrength}
@@ -691,47 +697,45 @@ export function ResearchMode() {
             </div>
           )}
 
-          {/* Zero-evidence state */}
-          {keyThemes.length === 0 && (
-            <div className="space-y-3">
+          {/* ── No key themes: three-state fallback ─────────────────────────── */}
+          {keyThemes.length === 0 && (() => {
+            const hasLimited    = report.limitedThemes.length > 0;
+            const hasIntel      = report.intelligenceSignals.length > 0;
+            const hasSuggestions = report.suggestions.length > 0;
 
-              {/* Intelligence layer signals — shown when synthesized data exists but no direct quotes */}
-              {report.intelligenceSignals.length > 0 ? (
-                <div className="rounded-xl px-5 py-4 space-y-4"
-                  style={{ background: "rgba(30,25,5,0.6)", border: "1px solid rgba(251,191,36,0.3)" }}>
-                  <div className="space-y-1">
-                    <p className="text-sm font-mono font-black text-amber-400/80 uppercase tracking-widest">Intelligence Layer Signals</p>
-                    <p className="text-sm text-slate-500 leading-relaxed">Evidence exists in synthesized intelligence but direct quote coverage is limited. Analyze specific videos on this topic to generate direct quotes and timestamps.</p>
-                  </div>
-                  <div className="space-y-3">
-                    {report.intelligenceSignals.map((sig, i) => (
-                      <IntelligenceSignalCard key={i} signal={sig} />
-                    ))}
-                  </div>
-                  {report.suggestions.length > 0 && (
-                    <div className="pt-1 space-y-2">
-                      <p className="text-xs font-mono text-slate-600">Or search a topic with direct transcript coverage:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {report.suggestions.map(s => (
-                          <button key={s} onClick={() => void runSearch(s)}
-                            className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
-                            style={{ border: "1px solid rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}>
-                            {s} →
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+            // STATE 1 — Limited Evidence: GPT found themes but none passed the consensus threshold
+            if (hasLimited) return (
+              <div className="space-y-4">
+                <div className="rounded-xl px-5 py-4 space-y-1.5"
+                  style={{ background: "rgba(30,20,5,0.5)", border: "1px solid rgba(251,191,36,0.25)" }}>
+                  <p className="text-sm font-mono font-black text-amber-400/80 uppercase tracking-widest">Limited Evidence</p>
+                  <p className="text-sm text-slate-500 leading-relaxed">
+                    Relevant references found, but not enough independent creator agreement to establish strong consensus.
+                    {" "}Each finding below comes from a single source — treat as a signal, not a conclusion.
+                  </p>
                 </div>
-              ) : (
-                /* Hard insufficient evidence — nothing in any layer */
-                <div className="rounded-xl px-5 py-4 space-y-3"
-                  style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(185,28,28,0.3)" }}>
-                  <div className="space-y-1">
-                    <p className="text-sm font-mono font-black text-red-400/70 uppercase tracking-widest">Insufficient Evidence</p>
-                    <p className="text-sm text-slate-500">No creators in your library explicitly discuss this topic. Analyze more videos on this subject, or try one of these topics that are present in your library:</p>
-                  </div>
-                  {report.suggestions.length > 0 && (
+                {report.limitedThemes.map((theme, i) => (
+                  <ThemeCard key={i} theme={theme} index={i} limited />
+                ))}
+              </div>
+            );
+
+            // STATE 2 — Intelligence layer signals: no direct transcript evidence but synthesized data exists
+            if (hasIntel) return (
+              <div className="rounded-xl px-5 py-4 space-y-4"
+                style={{ background: "rgba(30,25,5,0.6)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                <div className="space-y-1">
+                  <p className="text-sm font-mono font-black text-amber-400/80 uppercase tracking-widest">Intelligence Layer Signals</p>
+                  <p className="text-sm text-slate-500 leading-relaxed">Evidence exists in synthesized intelligence but direct quote coverage is limited. Analyze specific videos on this topic to generate direct quotes and timestamps.</p>
+                </div>
+                <div className="space-y-3">
+                  {report.intelligenceSignals.map((sig, i) => (
+                    <IntelligenceSignalCard key={i} signal={sig} />
+                  ))}
+                </div>
+                {hasSuggestions && (
+                  <div className="pt-1 space-y-2">
+                    <p className="text-xs font-mono text-slate-600">Or search a topic with direct transcript coverage:</p>
                     <div className="flex flex-wrap gap-2">
                       {report.suggestions.map(s => (
                         <button key={s} onClick={() => void runSearch(s)}
@@ -741,11 +745,38 @@ export function ResearchMode() {
                         </button>
                       ))}
                     </div>
-                  )}
+                  </div>
+                )}
+              </div>
+            );
+
+            // STATE 3 — Insufficient Evidence: nothing in any layer
+            return (
+              <div className="rounded-xl px-5 py-4 space-y-3"
+                style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(185,28,28,0.3)" }}>
+                <div className="space-y-1">
+                  <p className="text-sm font-mono font-black text-red-400/70 uppercase tracking-widest">Insufficient Evidence</p>
+                  <p className="text-sm text-slate-500">
+                    {report.videosMatched > 0
+                      ? "Evidence exists but consensus is weak. Analyze more videos specifically about this topic to strengthen the signal."
+                      : "No creators in your library explicitly discuss this topic. Analyze more videos on this subject."}
+                    {hasSuggestions ? " Try one of these topics that are present in your library:" : ""}
+                  </p>
                 </div>
-              )}
-            </div>
-          )}
+                {hasSuggestions && (
+                  <div className="flex flex-wrap gap-2">
+                    {report.suggestions.map(s => (
+                      <button key={s} onClick={() => void runSearch(s)}
+                        className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
+                        style={{ border: "1px solid rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}>
+                        {s} →
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Related Signals */}
           <RelatedSignalsPanel signals={report.relatedSignals} />

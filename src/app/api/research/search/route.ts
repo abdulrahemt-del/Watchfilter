@@ -83,6 +83,7 @@ export interface ResearchReport {
   creatorsMatched: number;
   quotesMatched: number;
   themes: ResearchTheme[];
+  limitedThemes: ResearchTheme[];
   relatedSignals: RelatedSignal[];
   synthesis: string;
   suggestions: string[];
@@ -452,6 +453,10 @@ export async function POST(req: Request) {
     .filter(t => t.isKeyTheme)
     .sort((a, b) => b.creatorCount - a.creatorCount);
 
+  const limitedThemes = allThemes
+    .filter(t => !t.isKeyTheme)
+    .sort((a, b) => b.quoteCount - a.quoteCount);
+
   const relatedSignals: RelatedSignal[] = (raw.relatedSignals ?? []).map(s => ({
     title: sanitizeText(s.title ?? ""),
     description: sanitizeText(s.description ?? ""),
@@ -614,6 +619,7 @@ export async function POST(req: Request) {
     creatorsMatched: creatorsInPool.size,
     quotesMatched: allSources.length,
     themes: keyThemes,
+    limitedThemes,
     relatedSignals,
     synthesis: keyThemes.length > 0 ? sanitizeText(raw.synthesis ?? "") : "",
     suggestions: (raw.suggestions ?? []).map(s => sanitizeText(s)).filter(Boolean).slice(0, 2),
