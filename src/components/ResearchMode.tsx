@@ -197,6 +197,24 @@ function ThemeCard({ theme, index, limited = false }: { theme: ResearchTheme; in
           </p>
         )}
 
+        {/* Operator Playbook — gated tactical recommendation */}
+        {theme.operatorPlaybook && (() => {
+          const withheld = theme.operatorPlaybook.startsWith("Recommendation withheld");
+          return (
+            <div className="rounded-lg px-3 py-2"
+              style={withheld
+                ? { background: "rgba(100,116,139,0.06)", border: "1px solid rgba(100,116,139,0.18)" }
+                : { background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.22)" }}>
+              <p className={`text-[10px] font-mono font-black uppercase tracking-widest mb-0.5 ${withheld ? "text-slate-500" : "text-emerald-400"}`}>
+                {withheld ? "◌ Playbook Withheld" : "▶ Operator Playbook"}
+              </p>
+              <p className={`text-sm leading-relaxed ${withheld ? "text-slate-500 font-mono italic" : "text-emerald-100"}`}>
+                {theme.operatorPlaybook}
+              </p>
+            </div>
+          );
+        })()}
+
         {/* Contrarians */}
         {theme.contrarians.length > 0 && (
           <div className="rounded-xl p-4 space-y-3"
