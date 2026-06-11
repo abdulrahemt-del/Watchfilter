@@ -76,6 +76,7 @@ export interface ResearchReport {
   themes: ResearchTheme[];
   relatedSignals: RelatedSignal[];
   synthesis: string;
+  suggestions: string[];
   totalIndexed: number;
 }
 
@@ -109,6 +110,7 @@ interface RawSynthesis {
   themes: RawTheme[];
   relatedSignals: RawRelatedSignal[];
   synthesis: string;
+  suggestions: string[];
 }
 
 // ── Confidence scoring ─────────────────────────────────────────────────────────
@@ -221,7 +223,17 @@ If no contrarians found across all themes, note: "No direct contradictory eviden
 
 Group score-1 evidence only. If a score-1 item is generic with no real connection to the topic: re-score 0 and discard. Related Signals must never appear in themes or synthesis.
 
-═══ STEP 7: SYNTHESIS ═══
+═══ STEP 7: ZERO-DATA FALLBACK PROTOCOL ═══
+
+If Pass 1 yields 0 direct quotes for the target topic (themes array would be empty):
+- Set themes: []
+- Set synthesis: ""
+- Set suggestions: exactly 2 topic labels that ARE well-represented in the evidence pool (derive these from the actual creator names, video titles, and content visible in [E0]-[E19] — do not invent)
+- Still populate relatedSignals with any score-1 items found
+
+Do not fabricate themes. Do not produce a synthesis. Only output the fallback suggestions and any genuine related signals.
+
+═══ STEP 8: SYNTHESIS ═══
 
 3-5 sentences directly answering what the evidence says about the query. Draw ONLY from Key Themes.
 
@@ -259,6 +271,7 @@ ${JSON.stringify({
     },
   ],
   synthesis: "Cold, clinical 3-5 sentence answer. Use weak/fragmented/insufficient language where warranted. Never fabricate certainty.",
+  suggestions: ["Topic actually found in evidence pool", "Second topic actually found in evidence pool"],
 }, null, 2)}`;
 
 // ── Evidence block ─────────────────────────────────────────────────────────────
@@ -442,6 +455,7 @@ export async function POST(req: Request) {
     themes: keyThemes,
     relatedSignals,
     synthesis: keyThemes.length > 0 ? sanitizeText(raw.synthesis ?? "") : "",
+    suggestions: (raw.suggestions ?? []).map(s => sanitizeText(s)).filter(Boolean).slice(0, 2),
     totalIndexed: stats.withEmbeddings,
   };
 

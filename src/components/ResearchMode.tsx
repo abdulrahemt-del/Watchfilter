@@ -522,10 +522,23 @@ export function ResearchMode() {
 
           {/* Insufficient evidence */}
           {keyThemes.length === 0 && (
-            <div className="rounded-xl px-5 py-4 space-y-1.5"
+            <div className="rounded-xl px-5 py-4 space-y-3"
               style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(185,28,28,0.3)" }}>
-              <p className="text-sm font-mono font-black text-red-400/70 uppercase tracking-widest">Insufficient Evidence</p>
-              <p className="text-sm text-slate-500">No creators in your library explicitly discuss this topic. Analyze more videos on this subject, or try a broader query like &ldquo;fundraising&rdquo; or &ldquo;customer acquisition&rdquo;.</p>
+              <div className="space-y-1">
+                <p className="text-sm font-mono font-black text-red-400/70 uppercase tracking-widest">Insufficient Evidence</p>
+                <p className="text-sm text-slate-500">No creators in your library explicitly discuss this topic. Analyze more videos on this subject, or try one of these topics that are present in your library:</p>
+              </div>
+              {report.suggestions.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {report.suggestions.map(s => (
+                    <button key={s} onClick={() => void runSearch(s)}
+                      className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
+                      style={{ border: "1px solid rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}>
+                      {s} →
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
