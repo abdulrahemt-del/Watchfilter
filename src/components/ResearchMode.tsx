@@ -784,24 +784,39 @@ export function ResearchMode() {
             </div>
           )}
 
-          {/* ── Partial match warning — shown above themes when some constraints unsatisfied ── */}
-          {report.constraintValidation?.matchType === "PARTIAL" &&
-           report.constraintValidation.failedConstraints.length > 0 &&
-           keyThemes.length > 0 && (
-            <div className="rounded-lg px-4 py-3"
+          {/* ── Partial match warning — bridge inference or incomplete direct coverage ── */}
+          {report.constraintValidation?.matchType === "PARTIAL" && keyThemes.length > 0 && (
+            <div className="rounded-lg px-4 py-3 space-y-2"
               style={{ background: "rgba(30,20,5,0.5)", border: "1px solid rgba(251,191,36,0.3)" }}>
-              <p className="text-[10px] font-mono font-black text-amber-400/80 uppercase tracking-widest mb-1">
-                ⚠ Partial Evidence Coverage
-              </p>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                Evidence found, but not all query constraints are satisfied.
-                Findings below reflect what the library covers — they may not answer every dimension of your query.
-              </p>
-              <ul className="mt-2 space-y-0.5">
-                {report.constraintValidation.failedConstraints.map((fc, i) => (
-                  <li key={i} className="text-xs font-mono text-amber-500/60">↳ {fc}</li>
-                ))}
-              </ul>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-mono font-black text-amber-400/80 uppercase tracking-widest">
+                  ⚠ Partial Evidence Coverage
+                </p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[10px] font-mono text-slate-500">
+                    Direct: <span className="text-amber-500/70">{report.constraintValidation.directCoverage}</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    Bridge: <span className="text-amber-500/70">{Math.round(report.constraintValidation.bridgeScore * 100)}%</span>
+                  </span>
+                </div>
+              </div>
+
+              {report.constraintValidation.bridgeCoveredComponents.length > 0 && (
+                <p className="text-xs text-slate-500">
+                  Structural alignment found via conceptual bridge
+                  {" "}({report.constraintValidation.bridgeCoveredComponents.join(", ")} components).
+                  Findings may include indirect evidence — claims are labeled accordingly.
+                </p>
+              )}
+
+              {report.constraintValidation.failedConstraints.length > 0 && (
+                <ul className="space-y-0.5 pt-0.5">
+                  {report.constraintValidation.failedConstraints.map((fc, i) => (
+                    <li key={i} className="text-xs font-mono text-amber-500/60">↳ {fc}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 

@@ -91,6 +91,9 @@ export interface ConstraintResult {
 
 export interface ConstraintValidation {
   matchType: ConstraintMatch;
+  directCoverage: "LOW" | "MEDIUM" | "HIGH";
+  bridgeScore: number;
+  bridgeCoveredComponents: string[];
   constraints: ConstraintResult[];
   failedConstraints: string[];
   adjacentTopics: string[];
@@ -234,47 +237,113 @@ interface RawConstraintCheck {
   satisfied: boolean;
   passageIndices: number[];
 }
+interface RawBridgeCandidate {
+  passageIndex: number;
+  component: "signal" | "mechanism" | "outcome";
+  bridgeReasoning: string;
+}
 interface RawConstraintValidation {
+  directCoverage: "LOW" | "MEDIUM" | "HIGH";
+  directCandidateIndices: number[];
+  queryMechanism: {
+    behavioralSignals: string[];
+    mechanisms: string[];
+    outcomes: string[];
+  };
+  bridgeCandidates: RawBridgeCandidate[];
+  bridgeScore: number;
   constraints: RawConstraintCheck[];
-  matchType: "FULL" | "PARTIAL" | "NO_MATCH";
   failedConstraints: string[];
   adjacentTopics: string[];
 }
 
-const CONSTRAINT_VALIDATION_SYSTEM = `You are a strict evidence constraint validator for a research engine. Your ONLY job is to determine whether retrieved passages satisfy the specific constraints of a research query. You do NOT synthesize. You do NOT answer. You ONLY validate.
+const CONSTRAINT_VALIDATION_SYSTEM = `You are a retrieval constraint validator and bridge inference engine for WatchFilter.
+You do NOT synthesize. You do NOT answer. You evaluate retrieved passages using two complementary axes:
+  1. Direct relevance to the query
+  2. Conceptual bridge inference — evidence that supports the mechanisms behind the query even when phrasing differs
 
-STEP 1 — EXTRACT REQUIRED CONSTRAINTS
-From the query and intent, identify the high-precision modifiers that define what the query is specifically about. These are NOT the broad topic nouns — they are the precision modifiers that narrow the query's meaning.
+═══ STAGE 1 — DIRECT RETRIEVAL ANALYSIS ═══
 
-Example:
-  Query: "Open-Source AI Competitive Advantages"
-  Constraints:
-    - open_source_specificity: passages must discuss open-source/open-weight models, self-hosted AI, downloadable weights, local model deployment, Llama/Mistral/Falcon, HuggingFace, avoiding API dependency
-    - competitive_differentiation: passages must discuss market differentiation, defensible moats, vendor lock-in avoidance, competitive advantage SPECIFICALLY enabled by open-source AI
+Evaluate each passage [P0]-[P19] for explicit or near-explicit alignment with the query.
+Use semantic understanding, not keyword matching.
+  - A creator saying "run the model on your own servers" is direct evidence for "self-hosted AI"
+  - A statistic about "79% use free AI tools" is NOT direct evidence for "open-source AI"
 
-  NOT satisfied by: generic AI productivity stats, free-tier API tools, broad AI adoption trends, market opportunity surveys
+directCoverage:
+  HIGH   — ≥4 passages clearly and directly address the query topic
+  MEDIUM — 1-3 passages clearly and directly address the query topic
+  LOW    — 0 passages directly address the query topic
 
-STEP 2 — EVALUATE EACH PASSAGE [P0]-[P19]
-For each passage, use SEMANTIC meaning (not keyword matching) to determine whether it satisfies each constraint.
-  - A creator saying "run the model on your own servers" satisfies open_source_specificity even without the word "open-source"
-  - A creator quoting a "79% use free AI tools" statistic does NOT satisfy open_source_specificity — free ≠ open-source
-  - A creator discussing market opportunity in general does NOT satisfy competitive_differentiation unless it specifically addresses open-source as the mechanism
+Output: directCoverage (HIGH/MEDIUM/LOW), directCandidateIndices (list of passage indices)
 
-STEP 3 — DETERMINE MATCH TYPE
-  FULL    — every required constraint is satisfied by ≥1 passage
-  PARTIAL — some constraints satisfied, at least one is not
-  NO_MATCH — at least one required constraint has zero supporting passages
+═══ STAGE 2 — BRIDGE INFERENCE LAYER ═══
 
-STEP 4 — IDENTIFY ADJACENT TOPICS
-What topics DO the passages actually cover? Express as 2-4 short labels (e.g. "general AI adoption", "AI productivity tools", "AI market statistics"). This is shown to the user when there is a mismatch.
+Extract the conceptual mechanism of the query by breaking it into three components:
+  - behavioralSignals: observable inputs, metrics, activities, behaviors that relate to the query
+  - mechanisms: processes, decisions, causal connections, frameworks
+  - outcomes: results, impacts, business consequences
 
-Return ONLY valid JSON:
+Example — Query: "user engagement patterns improve product launches"
+  behavioralSignals: user activity data, engagement metrics, interaction patterns, retention signals
+  mechanisms: signals informing product decisions, feedback loops, iteration processes
+  outcomes: improved adoption, product-market fit, reduced churn
+
+Now find BRIDGE CANDIDATES — passages that support ANY component of the mechanism,
+even if terminology differs. A passage about "D7 retention curves" bridges to
+"behavioral signals" for an engagement query. A passage about "product iteration based
+on user feedback" bridges to "mechanisms."
+
+For each bridge candidate:
+  passageIndex: index of the passage
+  component: which part of the mechanism it supports ("signal", "mechanism", or "outcome")
+  bridgeReasoning: 1 sentence explaining the structural connection
+
+bridgeScore (0.0–1.0):
+  0.8–1.0: clear causal/structural alignment — multiple components covered by multiple passages
+  0.5–0.7: mechanism partially present — some components covered but chain incomplete
+  0.2–0.4: weak structural overlap — isolated signal or outcome fragments only
+  0.0–0.1: no meaningful structural overlap
+
+CRITICAL: A passage about AI in general with no structural connection to the query mechanism
+scores 0.0 regardless of topic proximity. Adjacent does NOT mean bridged.
+
+═══ STAGE 3 — CONSTRAINT EXTRACTION ═══
+
+Extract the high-precision modifiers from the query (NOT the broad topic nouns).
+Evaluate whether the direct candidates AND bridge candidates together satisfy each constraint.
+
+STRICT EXCLUSION RULE: A constraint is satisfied ONLY if at least one passage explicitly or
+structurally speaks to that constraint's domain. Generic adjacency is not satisfaction.
+
+═══ OUTPUT ═══
+
+Return ONLY valid JSON — do NOT include a matchType field (the server computes this):
 {
-  "constraints": [{ "name": "constraint_label", "satisfied": true/false, "passageIndices": [0, 3, 7] }],
-  "matchType": "FULL" | "PARTIAL" | "NO_MATCH",
-  "failedConstraints": ["label — reason why no passage satisfies it"],
-  "adjacentTopics": ["what the evidence actually covers"]
+  "directCoverage": "LOW" | "MEDIUM" | "HIGH",
+  "directCandidateIndices": [0, 3, 7],
+  "queryMechanism": {
+    "behavioralSignals": ["metric1", "behavior2"],
+    "mechanisms": ["process1", "decision2"],
+    "outcomes": ["result1", "impact2"]
+  },
+  "bridgeCandidates": [
+    { "passageIndex": 2, "component": "signal", "bridgeReasoning": "Discusses retention rates which are a behavioral signal of engagement" }
+  ],
+  "bridgeScore": 0.65,
+  "constraints": [{ "name": "constraint_label", "satisfied": true/false, "passageIndices": [0, 3] }],
+  "failedConstraints": ["label — reason no passage satisfies it"],
+  "adjacentTopics": ["what the evidence actually covers — 2-4 labels"]
 }`;
+
+// Server-side decision rules from the spec — prevents GPT from determining its own gate
+function computeMatchType(directCoverage: "LOW" | "MEDIUM" | "HIGH", bridgeScore: number): ConstraintMatch {
+  // NO_MATCH only when BOTH axes fail — strict and rare
+  if (directCoverage === "LOW" && bridgeScore < 0.3) return "NO_MATCH";
+  // FULL when either axis is strong
+  if (directCoverage === "MEDIUM" || directCoverage === "HIGH" || bridgeScore >= 0.7) return "FULL";
+  // PARTIAL for bridge scores 0.3–0.69 with low direct coverage
+  return "PARTIAL";
+}
 
 async function validateConstraints(
   query: string,
@@ -297,6 +366,16 @@ async function validateConstraints(
     passageBlock,
   ].filter(Boolean).join("\n");
 
+  const fallback: ConstraintValidation = {
+    matchType: "PARTIAL",
+    directCoverage: "LOW",
+    bridgeScore: 0.5,
+    bridgeCoveredComponents: [],
+    constraints: [],
+    failedConstraints: [],
+    adjacentTopics: [],
+  };
+
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -306,16 +385,31 @@ async function validateConstraints(
       ],
       response_format: { type: "json_object" },
       temperature: 0,
-      max_tokens: 1200,
+      max_tokens: 1800,
     });
 
     const raw = JSON.parse(completion.choices[0].message.content ?? "{}") as Partial<RawConstraintValidation>;
-    const matchType = (["FULL", "PARTIAL", "NO_MATCH"] as const).includes(raw.matchType as ConstraintMatch)
-      ? (raw.matchType as ConstraintMatch)
-      : "PARTIAL";
+
+    const directCoverage = (["LOW", "MEDIUM", "HIGH"] as const).includes(raw.directCoverage as "LOW" | "MEDIUM" | "HIGH")
+      ? (raw.directCoverage as "LOW" | "MEDIUM" | "HIGH")
+      : "LOW";
+    const bridgeScore = typeof raw.bridgeScore === "number"
+      ? Math.min(1, Math.max(0, raw.bridgeScore))
+      : 0;
+
+    // Deduplicate bridge component labels for UI display
+    const bridgeCoveredComponents = [...new Set(
+      (raw.bridgeCandidates ?? []).map(b => sanitizeText(b.component ?? ""))
+    )].filter(Boolean);
+
+    // matchType is computed deterministically from raw values — GPT never controls the gate
+    const matchType = computeMatchType(directCoverage, bridgeScore);
 
     return {
       matchType,
+      directCoverage,
+      bridgeScore,
+      bridgeCoveredComponents,
       constraints: (raw.constraints ?? []).map(c => ({
         name: sanitizeText(c.name ?? ""),
         satisfied: Boolean(c.satisfied),
@@ -324,8 +418,7 @@ async function validateConstraints(
       adjacentTopics:    (raw.adjacentTopics    ?? []).slice(0, 4).map(s => sanitizeText(s)),
     };
   } catch {
-    // Validation failure is non-fatal — default to PARTIAL so synthesis still runs
-    return { matchType: "PARTIAL", constraints: [], failedConstraints: [], adjacentTopics: [] };
+    return fallback;
   }
 }
 
@@ -671,9 +764,19 @@ export async function POST(req: Request) {
     return NextResponse.json(mismatchReport);
   }
 
-  // PARTIAL: inject constraint context so synthesis does not fabricate missing coverage
-  const constraintContext = constraintValidation.matchType === "PARTIAL" && constraintValidation.failedConstraints.length > 0
-    ? `\nConstraint validation: PARTIAL MATCH — the following constraints are NOT satisfied by the evidence: ${constraintValidation.failedConstraints.join("; ")}. Do NOT generalize from adjacent evidence to fill these gaps. Do NOT infer missing constraints from world knowledge.`
+  // Inject validation context — synthesis model is told exactly what evidence it has and what it doesn't
+  const bridgeDesc = constraintValidation.bridgeCoveredComponents.length > 0
+    ? ` Bridge inference covers: ${constraintValidation.bridgeCoveredComponents.join(", ")} components of the query mechanism.`
+    : "";
+  const constraintContext = constraintValidation.matchType === "PARTIAL"
+    ? [
+        `\nEvidence coverage: PARTIAL MATCH (direct: ${constraintValidation.directCoverage}, bridge score: ${constraintValidation.bridgeScore.toFixed(2)}).${bridgeDesc}`,
+        constraintValidation.failedConstraints.length > 0
+          ? `Unsatisfied constraints: ${constraintValidation.failedConstraints.join("; ")}.`
+          : "",
+        `You may reference bridge evidence but MUST label such claims as indirect structural alignment.`,
+        `You MUST NOT overstate bridge evidence as direct confirmation. You MUST NOT infer missing constraints from world knowledge.`,
+      ].filter(Boolean).join(" ")
     : "";
 
   const userMessage = [
