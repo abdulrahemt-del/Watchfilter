@@ -448,7 +448,7 @@ export async function POST(req: Request) {
     quotesMatched: allSources.length,
     themes: keyThemes,
     relatedSignals,
-    synthesis: sanitizeText(raw.synthesis ?? ""),
+    synthesis: keyThemes.length > 0 ? sanitizeText(raw.synthesis ?? "") : "",
     totalIndexed: stats.withEmbeddings,
   };
 
