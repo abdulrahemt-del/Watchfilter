@@ -42,12 +42,18 @@ export interface Contrarian {
   reason: string;
 }
 
+export interface OperatorPlaybook {
+  withheld: boolean;
+  strategicStep: string;
+  implementationMetric: string;
+}
+
 export interface ResearchTheme {
   title: string;
   marketSignal: string;
   description: string;
   relevanceReason: string;
-  operatorPlaybook: string;
+  operatorPlaybook: OperatorPlaybook;
   isKeyTheme: boolean;
   creators: string[];
   creatorCount: number;
@@ -102,7 +108,7 @@ interface RawTheme {
   marketSignal: string;
   description: string;
   relevanceReason: string;
-  operatorPlaybook: string;
+  operatorPlaybook: { strategicStep: string; implementationMetric: string };
   sourceRefs: RawRef[];
   representativeRefIdx: number;
   creatorConsensus: {
@@ -137,11 +143,24 @@ function calcConfidence(creatorCount: number, quoteCount: number): number {
   return Math.min(base + Math.floor(quoteCount / 6), 95);
 }
 
-function consensusLabel(confidence: number): string {
-  return confidence >= 88 ? "High Consensus"
-       : confidence >= 78 ? "Strong Evidence"
-       : confidence >= 68 ? "Moderate Evidence"
-       : "Limited Evidence";
+// Spec §5 consensus vocabulary — derived from the agree/disagree split, not confidence alone
+function consensusStrength(agreeCount: number, disagreeCount: number, creatorCount: number): string {
+  if (creatorCount <= 1) return "Weak Signal";
+  if (agreeCount > 0 && disagreeCount > 0) {
+    return disagreeCount >= agreeCount ? "Polarized" : "Fragmented";
+  }
+  if (disagreeCount > 0 && agreeCount === 0) return "Polarized";
+  if (agreeCount >= 3) return "Unanimous";
+  if (agreeCount === 2) return "Strong Majority";
+  return "Weak Signal";
+}
+
+// Clean-text guardrail (spec) — collapse nested/duplicate quote marks and strip a wrapping pair
+function cleanQuote(s: string): string {
+  let q = sanitizeText(s ?? "").trim();
+  q = q.replace(/[“”]{2,}/g, "“").replace(/"{2,}/g, '"').replace(/'{2,}/g, "'");
+  q = q.replace(/^[\s"'“”‘’]+/, "").replace(/[\s"'“”‘’]+$/, "");
+  return q.trim();
 }
 
 // ── Query intent expansion ─────────────────────────────────────────────────────
@@ -204,6 +223,7 @@ TONE CONTRACT — STRICTLY ENFORCED
 - NEVER use: "revolutionary," "game-changing," "unlock," "supercharge," "powerful," "leverage" (as a verb), "in today's fast-paced world," "the key takeaway is."
 - NEVER address the reader ("you should"). State findings, not encouragement.
 - Every sentence must be traceable to a quote in the pool. If you cannot cite it, you MUST NOT write it.
+- CLEAN TEXT: NEVER nest quotation marks. When emitting a verbatim quote, do NOT wrap it in extra quotation marks — return the raw sentence with no surrounding quotes and no doubled punctuation (never output ""text"" or '"text"'). The UI supplies the quotation styling.
 
 ═══════════════════════════════════════════════════════════
 PROTOCOL 1 — TWO-PASS EXECUTION LOOP (ANTI-LAZINESS)
@@ -301,24 +321,32 @@ If no contradictions exist anywhere → emit in synthesis the exact string:
 "No direct contradictory evidence found across analyzed sources."
 
 ═══════════════════════════════════════════════════════════
-PROTOCOL 5 — OPERATOR PLAYBOOK MECHANICS (GATED)
+PROTOCOL 5 — RECOMMENDED ACTIONS (OPERATOR PLAYBOOK, GATED)
 ═══════════════════════════════════════════════════════════
-operatorPlaybook is a single tactical recommendation, emitted ONLY when BOTH
-hold:
-  (a) Consensus is > 70% (agreeing creators dominate AND >=2 independent
-      creators back it), AND
-  (b) The transcript explicitly states the EXECUTION MECHANISM — the literal
-      how, not the what.
+operatorPlaybook is a structured object that translates a theme into execution
+steps for a startup founder or operator:
 
-If both hold → 1-2 imperative, mechanism-specific sentences citing the behavior
-the evidence describes.
+  {
+    "strategicStep": "1-2 sentences — a highly actionable execution strategy
+                      derived DIRECTLY from the creators' shared frameworks.",
+    "implementationMetric": "The EXACT target baseline or benchmark stated in the
+                      transcripts, e.g. 'keep team sizes under 10' or 'maintain a
+                      40%+ gross margin'. Empty string if no explicit number/benchmark
+                      is stated."
+  }
 
-If consensus is weak (< 60%) OR the mechanism is absent, you MUST set
-operatorPlaybook to this exact string and nothing else:
-  "Recommendation withheld. Baseline data consists of an isolated, unvalidated signal."
+Emit a populated strategicStep ONLY when BOTH hold:
+  (a) Consensus is strong (agreeing creators dominate AND >=2 independent creators
+      back the theme), AND
+  (b) The transcript explicitly states the EXECUTION MECHANISM — the literal how,
+      not the what.
 
-Never fabricate a mechanism to satisfy the gate. An ungated playbook is a
-critical failure.
+If consensus is weak or the mechanism is absent, set strategicStep to "" and
+implementationMetric to "". The system will render the withheld warning. Never
+fabricate a mechanism or a benchmark to satisfy the gate — an ungated playbook is
+a critical failure. Note: the server independently re-checks consensus strength and
+will suppress any playbook that does not clear the >70% confidence gate, so do not
+attempt to force one through.
 
 ═══════════════════════════════════════════════════════════
 PROTOCOL 6 — ZERO-DATA FALLBACK
@@ -359,8 +387,11 @@ ${JSON.stringify({
       marketSignal: "1-sentence analytical verdict — what this implies for operators or market participants",
       description: "What creators specifically say. 2-3 sentences grounded in evidence only.",
       relevanceReason: "This answers the query because...",
-      operatorPlaybook: "Gated tactical recommendation (mechanism-specific) OR the exact withheld string",
-      sourceRefs: [{ idx: 0, quote: "Verbatim quote — only if it passes the 90% confidence gate for this theme" }],
+      operatorPlaybook: {
+        strategicStep: "1-2 sentence actionable execution strategy from the creators' shared frameworks — empty string if consensus is weak or no mechanism is stated",
+        implementationMetric: "Exact benchmark from transcripts, e.g. 'team sizes under 10' or '40%+ margin' — empty string if no explicit number is stated",
+      },
+      sourceRefs: [{ idx: 0, quote: "Verbatim quote — raw sentence, NO surrounding quotation marks — only if it passes the 90% confidence gate for this theme" }],
       representativeRefIdx: 0,
       creatorConsensus: {
         agree:    [{ creator: "Exact creator name from evidence pool", reason: "1-sentence mechanical reason" }],
@@ -497,7 +528,7 @@ export async function POST(req: Request) {
   function enrichRef(ref: RawRef): ThemeSource {
     const row = topRows[ref.idx] ?? topRows[0];
     return {
-      quote: sanitizeText(ref.quote ?? row.quote ?? ""),
+      quote: cleanQuote(ref.quote ?? row.quote ?? ""),
       creator: row.channel_name ?? "Unknown",
       videoTitle: row.video_title ?? "Unknown video",
       videoId: row.video_id,
@@ -512,7 +543,7 @@ export async function POST(req: Request) {
       creator: row.channel_name ?? "Unknown",
       videoTitle: row.video_title ?? "Unknown video",
       videoId: row.video_id,
-      quote: sanitizeText(c.quote ?? row.quote ?? ""),
+      quote: cleanQuote(c.quote ?? row.quote ?? ""),
       timestampStr: row.timestamp_str ?? null,
       reason: sanitizeText(c.reason ?? ""),
     };
@@ -543,19 +574,32 @@ export async function POST(req: Request) {
       disagree: (rawConsensus.disagree ?? []).map(e => ({ creator: sanitizeText(e.creator ?? ""), reason: sanitizeText(e.reason ?? "") })),
     };
 
+    // Operator Playbook gate is enforced server-side on the calculated confidence —
+    // GPT's recommendation only survives when consensus is genuinely strong (≥70%)
+    const rawPlaybook = t.operatorPlaybook ?? { strategicStep: "", implementationMetric: "" };
+    const strategicStep = sanitizeText(rawPlaybook.strategicStep ?? "");
+    const playbookWithheld = confidence < 70 || !strategicStep;
+    const operatorPlaybook: OperatorPlaybook = playbookWithheld
+      ? { withheld: true, strategicStep: "", implementationMetric: "" }
+      : {
+          withheld: false,
+          strategicStep,
+          implementationMetric: sanitizeText(rawPlaybook.implementationMetric ?? ""),
+        };
+
     return {
       title: sanitizeText(t.title ?? ""),
       marketSignal: sanitizeText(t.marketSignal ?? ""),
       description: sanitizeText(t.description ?? ""),
       relevanceReason: sanitizeText(t.relevanceReason ?? ""),
-      operatorPlaybook: sanitizeText(t.operatorPlaybook ?? ""),
+      operatorPlaybook,
       isKeyTheme,
       creators: uniqueCreators,
       creatorCount: uniqueCreators.length,
       quoteCount: sources.length,
       videoCount: uniqueVideos.length,
       confidence,
-      consensusStrength: consensusLabel(confidence),
+      consensusStrength: consensusStrength(creatorConsensus.agree.length, creatorConsensus.disagree.length, uniqueCreators.length),
       creatorConsensus,
       contrarians: (t.contrarians ?? []).map(enrichContrarian),
       representativeQuote,
@@ -577,8 +621,10 @@ export async function POST(req: Request) {
     sources: (s.sourceRefs ?? []).map(enrichRef),
   }));
 
-  const allSources = keyThemes.flatMap(t => t.sources);
-  const videoIds = new Set([...allSources.map(s => s.videoId), ...topRows.map(r => r.video_id)]);
+  // Footprint must count EVERY quote displayed in the report body (key + limited),
+  // never 0 while quotes are on screen (spec §5 global-count integrity rule)
+  const displayedSources = [...keyThemes, ...limitedThemes].flatMap(t => t.sources);
+  const videoIds = new Set([...displayedSources.map(s => s.videoId), ...topRows.map(r => r.video_id)]);
   const creatorsInPool = new Set(topRows.map(r => r.channel_name).filter(Boolean));
 
   // ── Intelligence layer + debug ─────────────────────────────────────────────────
@@ -731,7 +777,7 @@ export async function POST(req: Request) {
     topicIntent: sanitizeText(raw.topicIntent ?? expansion.intent),
     videosMatched: videoIds.size,
     creatorsMatched: creatorsInPool.size,
-    quotesMatched: allSources.length,
+    quotesMatched: displayedSources.length,
     themes: keyThemes,
     limitedThemes,
     relatedSignals,

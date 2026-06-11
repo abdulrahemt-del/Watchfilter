@@ -197,23 +197,35 @@ function ThemeCard({ theme, index, limited = false }: { theme: ResearchTheme; in
           </p>
         )}
 
-        {/* Operator Playbook — gated tactical recommendation */}
-        {theme.operatorPlaybook && (() => {
-          const withheld = theme.operatorPlaybook.startsWith("Recommendation withheld");
-          return (
-            <div className="rounded-lg px-3 py-2"
-              style={withheld
-                ? { background: "rgba(100,116,139,0.06)", border: "1px solid rgba(100,116,139,0.18)" }
-                : { background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.22)" }}>
-              <p className={`text-[10px] font-mono font-black uppercase tracking-widest mb-0.5 ${withheld ? "text-slate-500" : "text-emerald-400"}`}>
-                {withheld ? "◌ Playbook Withheld" : "▶ Operator Playbook"}
-              </p>
-              <p className={`text-sm leading-relaxed ${withheld ? "text-slate-500 font-mono italic" : "text-emerald-100"}`}>
-                {theme.operatorPlaybook}
-              </p>
+        {/* Recommended Actions — gated operator playbook */}
+        {theme.operatorPlaybook.withheld ? (
+          <div className="rounded-lg px-3 py-2"
+            style={{ background: "rgba(100,116,139,0.06)", border: "1px solid rgba(100,116,139,0.18)" }}>
+            <p className="text-[10px] font-mono font-black uppercase tracking-widest mb-0.5 text-slate-500">
+              ◌ Recommended Actions
+            </p>
+            <p className="text-sm leading-relaxed text-slate-500 font-mono italic">
+              <span className="text-amber-500/80">⚠ Recommendation withheld.</span> Baseline data consists of an isolated, unvalidated signal. Further cross-channel research is required before executing a definitive strategic playbook on this vector.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg px-3 py-2.5 space-y-2"
+            style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.22)" }}>
+            <p className="text-[10px] font-mono font-black uppercase tracking-widest text-emerald-400">
+              ▶ Recommended Actions
+            </p>
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-mono font-black text-emerald-500/70 uppercase tracking-wider">Strategic Step</p>
+              <p className="text-sm leading-relaxed text-emerald-100">{theme.operatorPlaybook.strategicStep}</p>
             </div>
-          );
-        })()}
+            {theme.operatorPlaybook.implementationMetric && (
+              <div className="space-y-0.5">
+                <p className="text-[10px] font-mono font-black text-emerald-500/70 uppercase tracking-wider">Implementation Metric</p>
+                <p className="text-sm font-mono text-emerald-200/90">{theme.operatorPlaybook.implementationMetric}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Contrarians */}
         {theme.contrarians.length > 0 && (
