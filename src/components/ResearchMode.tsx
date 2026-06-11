@@ -727,8 +727,86 @@ export function ResearchMode() {
             </div>
           )}
 
+          {/* ── Topic Mismatch: evidence found but for the wrong topic ─────── */}
+          {report.constraintValidation?.matchType === "NO_MATCH" && (
+            <div className="rounded-xl px-5 py-4 space-y-4"
+              style={{ background: "rgba(30,10,10,0.55)", border: "1px solid rgba(185,28,28,0.35)" }}>
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-mono font-black text-red-400 uppercase tracking-widest">⊘ Topic Mismatch — Evidence Gap Detected</p>
+                <p className="text-sm text-slate-400 leading-relaxed">
+                  Your library contains content, but no creators explicitly discuss the specific topic you searched.
+                  The retrieved evidence does not satisfy the required constraints for this query.
+                </p>
+              </div>
+
+              {report.constraintValidation.failedConstraints.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-mono font-black text-red-400/70 uppercase tracking-widest">Missing Constraints</p>
+                  <ul className="space-y-1">
+                    {report.constraintValidation.failedConstraints.map((fc, i) => (
+                      <li key={i} className="text-sm font-mono text-red-300/70 pl-3 border-l-2"
+                        style={{ borderColor: "rgba(185,28,28,0.4)" }}>
+                        {fc}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {report.constraintValidation.adjacentTopics.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-mono font-black text-slate-500 uppercase tracking-widest">What Your Library Does Cover</p>
+                  <div className="flex flex-wrap gap-2">
+                    {report.constraintValidation.adjacentTopics.map(t => (
+                      <span key={t} className="text-xs font-mono px-2.5 py-1 rounded-md text-slate-400"
+                        style={{ background: "rgba(100,116,139,0.12)", border: "1px solid rgba(100,116,139,0.2)" }}>
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {report.suggestions.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-mono font-black text-slate-500 uppercase tracking-widest">Try a query your library can answer</p>
+                  <div className="flex flex-wrap gap-2">
+                    {report.suggestions.map(s => (
+                      <button key={s} onClick={() => void runSearch(s)}
+                        className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
+                        style={{ border: "1px solid rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}>
+                        {s} →
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Partial match warning — shown above themes when some constraints unsatisfied ── */}
+          {report.constraintValidation?.matchType === "PARTIAL" &&
+           report.constraintValidation.failedConstraints.length > 0 &&
+           keyThemes.length > 0 && (
+            <div className="rounded-lg px-4 py-3"
+              style={{ background: "rgba(30,20,5,0.5)", border: "1px solid rgba(251,191,36,0.3)" }}>
+              <p className="text-[10px] font-mono font-black text-amber-400/80 uppercase tracking-widest mb-1">
+                ⚠ Partial Evidence Coverage
+              </p>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                Evidence found, but not all query constraints are satisfied.
+                Findings below reflect what the library covers — they may not answer every dimension of your query.
+              </p>
+              <ul className="mt-2 space-y-0.5">
+                {report.constraintValidation.failedConstraints.map((fc, i) => (
+                  <li key={i} className="text-xs font-mono text-amber-500/60">↳ {fc}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* ── No key themes: three-state fallback ─────────────────────────── */}
-          {keyThemes.length === 0 && (() => {
+          {report.constraintValidation?.matchType !== "NO_MATCH" && keyThemes.length === 0 && (() => {
             const hasLimited    = report.limitedThemes.length > 0;
             const hasIntel      = report.intelligenceSignals.length > 0;
             const hasSuggestions = report.suggestions.length > 0;

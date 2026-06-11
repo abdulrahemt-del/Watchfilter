@@ -82,6 +82,20 @@ export interface IntelligenceSignal {
   confidence?: number;
 }
 
+export type ConstraintMatch = "FULL" | "PARTIAL" | "NO_MATCH";
+
+export interface ConstraintResult {
+  name: string;
+  satisfied: boolean;
+}
+
+export interface ConstraintValidation {
+  matchType: ConstraintMatch;
+  constraints: ConstraintResult[];
+  failedConstraints: string[];
+  adjacentTopics: string[];
+}
+
 export interface ResearchReport {
   query: string;
   topic: string;
@@ -96,6 +110,7 @@ export interface ResearchReport {
   suggestions: string[];
   intelligenceSignals: IntelligenceSignal[];
   totalIndexed: number;
+  constraintValidation: ConstraintValidation;
 }
 
 // ── GPT raw types ──────────────────────────────────────────────────────────────
@@ -209,6 +224,108 @@ Query: "user engagement"
     };
   } catch {
     return { intent: query, concepts: [] };
+  }
+}
+
+// ── Constraint validation ──────────────────────────────────────────────────────
+
+interface RawConstraintCheck {
+  name: string;
+  satisfied: boolean;
+  passageIndices: number[];
+}
+interface RawConstraintValidation {
+  constraints: RawConstraintCheck[];
+  matchType: "FULL" | "PARTIAL" | "NO_MATCH";
+  failedConstraints: string[];
+  adjacentTopics: string[];
+}
+
+const CONSTRAINT_VALIDATION_SYSTEM = `You are a strict evidence constraint validator for a research engine. Your ONLY job is to determine whether retrieved passages satisfy the specific constraints of a research query. You do NOT synthesize. You do NOT answer. You ONLY validate.
+
+STEP 1 — EXTRACT REQUIRED CONSTRAINTS
+From the query and intent, identify the high-precision modifiers that define what the query is specifically about. These are NOT the broad topic nouns — they are the precision modifiers that narrow the query's meaning.
+
+Example:
+  Query: "Open-Source AI Competitive Advantages"
+  Constraints:
+    - open_source_specificity: passages must discuss open-source/open-weight models, self-hosted AI, downloadable weights, local model deployment, Llama/Mistral/Falcon, HuggingFace, avoiding API dependency
+    - competitive_differentiation: passages must discuss market differentiation, defensible moats, vendor lock-in avoidance, competitive advantage SPECIFICALLY enabled by open-source AI
+
+  NOT satisfied by: generic AI productivity stats, free-tier API tools, broad AI adoption trends, market opportunity surveys
+
+STEP 2 — EVALUATE EACH PASSAGE [P0]-[P19]
+For each passage, use SEMANTIC meaning (not keyword matching) to determine whether it satisfies each constraint.
+  - A creator saying "run the model on your own servers" satisfies open_source_specificity even without the word "open-source"
+  - A creator quoting a "79% use free AI tools" statistic does NOT satisfy open_source_specificity — free ≠ open-source
+  - A creator discussing market opportunity in general does NOT satisfy competitive_differentiation unless it specifically addresses open-source as the mechanism
+
+STEP 3 — DETERMINE MATCH TYPE
+  FULL    — every required constraint is satisfied by ≥1 passage
+  PARTIAL — some constraints satisfied, at least one is not
+  NO_MATCH — at least one required constraint has zero supporting passages
+
+STEP 4 — IDENTIFY ADJACENT TOPICS
+What topics DO the passages actually cover? Express as 2-4 short labels (e.g. "general AI adoption", "AI productivity tools", "AI market statistics"). This is shown to the user when there is a mismatch.
+
+Return ONLY valid JSON:
+{
+  "constraints": [{ "name": "constraint_label", "satisfied": true/false, "passageIndices": [0, 3, 7] }],
+  "matchType": "FULL" | "PARTIAL" | "NO_MATCH",
+  "failedConstraints": ["label — reason why no passage satisfies it"],
+  "adjacentTopics": ["what the evidence actually covers"]
+}`;
+
+async function validateConstraints(
+  query: string,
+  expansion: QueryExpansion,
+  rows: ResearchRow[],
+  scores: number[],
+): Promise<ConstraintValidation> {
+  const passageBlock = rows.slice(0, 20).map((r, i) => [
+    `[P${i}] Score: ${(scores[i] * 100).toFixed(0)}%`,
+    `Creator: ${r.channel_name ?? "Unknown"}`,
+    r.quote   ? `Quote: ${r.quote.slice(0, 200)}`   : null,
+    r.insight ? `Insight: ${r.insight.slice(0, 200)}` : null,
+  ].filter(Boolean).join("\n")).join("\n\n");
+
+  const msg = [
+    `Query: "${query}"`,
+    `Research intent: ${expansion.intent}`,
+    expansion.concepts.length > 0 ? `Expanded concepts: ${expansion.concepts.join(", ")}` : null,
+    "",
+    passageBlock,
+  ].filter(Boolean).join("\n");
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: CONSTRAINT_VALIDATION_SYSTEM },
+        { role: "user",   content: msg },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0,
+      max_tokens: 1200,
+    });
+
+    const raw = JSON.parse(completion.choices[0].message.content ?? "{}") as Partial<RawConstraintValidation>;
+    const matchType = (["FULL", "PARTIAL", "NO_MATCH"] as const).includes(raw.matchType as ConstraintMatch)
+      ? (raw.matchType as ConstraintMatch)
+      : "PARTIAL";
+
+    return {
+      matchType,
+      constraints: (raw.constraints ?? []).map(c => ({
+        name: sanitizeText(c.name ?? ""),
+        satisfied: Boolean(c.satisfied),
+      })),
+      failedConstraints: (raw.failedConstraints ?? []).map(s => sanitizeText(s)),
+      adjacentTopics:    (raw.adjacentTopics    ?? []).slice(0, 4).map(s => sanitizeText(s)),
+    };
+  } catch {
+    // Validation failure is non-fatal — default to PARTIAL so synthesis still runs
+    return { matchType: "PARTIAL", constraints: [], failedConstraints: [], adjacentTopics: [] };
   }
 }
 
@@ -494,12 +611,43 @@ export async function POST(req: Request) {
   const uniqueCreatorsInPool = [...new Set(topRows.map(r => r.channel_name).filter(Boolean))] as string[];
   const evidenceBlock = buildEvidenceBlock(topRows, topScores);
 
+  // ── Stage 1: Constraint validation (independent GPT call — validates before synthesizing) ──
+
+  const constraintValidation = await validateConstraints(query, expansion, topRows, topScores);
+
+  // NO_MATCH: evidence exists but for the wrong topic — skip synthesis entirely
+  if (constraintValidation.matchType === "NO_MATCH") {
+    const mismatchReport: ResearchReport = {
+      query,
+      topic:       sanitizeText(query),
+      topicIntent: sanitizeText(expansion.intent),
+      videosMatched:   0,
+      creatorsMatched: 0,
+      quotesMatched:   0,
+      themes:            [],
+      limitedThemes:     [],
+      relatedSignals:    [],
+      synthesis:         "",
+      suggestions:       constraintValidation.adjacentTopics.slice(0, 2),
+      intelligenceSignals: [],
+      totalIndexed:      stats.withEmbeddings,
+      constraintValidation,
+    };
+    return NextResponse.json(mismatchReport);
+  }
+
+  // PARTIAL: inject constraint context so synthesis does not fabricate missing coverage
+  const constraintContext = constraintValidation.matchType === "PARTIAL" && constraintValidation.failedConstraints.length > 0
+    ? `\nConstraint validation: PARTIAL MATCH — the following constraints are NOT satisfied by the evidence: ${constraintValidation.failedConstraints.join("; ")}. Do NOT generalize from adjacent evidence to fill these gaps. Do NOT infer missing constraints from world knowledge.`
+    : "";
+
   const userMessage = [
     `Query: "${query}"`,
     `Research intent: ${expansion.intent}`,
     expansion.concepts.length > 0
       ? `Related concepts searched: ${expansion.concepts.join(", ")}`
       : null,
+    constraintContext || null,
     `Evidence pool: ${topRows.length} items from ${uniqueCreatorsInPool.length} creators`,
     "",
     evidenceBlock,
@@ -785,6 +933,7 @@ export async function POST(req: Request) {
     suggestions: (raw.suggestions ?? []).map(s => sanitizeText(s)).filter(Boolean).slice(0, 2),
     intelligenceSignals,
     totalIndexed: stats.withEmbeddings,
+    constraintValidation,
   };
 
   if (debugMode) {
