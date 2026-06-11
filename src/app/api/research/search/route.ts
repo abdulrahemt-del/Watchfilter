@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import OpenAI from "openai";
-import { loadResearchIndex, getResearchIndexStats, type ResearchRow } from "@/lib/db";
+import { loadResearchIndex, getResearchIndexStats, getIntelligenceSnapshot, getUserPipelineCache, type ResearchRow } from "@/lib/db";
 import { embedText, cosineSim } from "@/lib/research/embed";
 import { sanitizeText } from "@/lib/utils/sanitize";
 
@@ -66,6 +66,15 @@ export interface RelatedSignal {
   sources: ThemeSource[];
 }
 
+export interface IntelligenceSignal {
+  text: string;
+  source: "brief" | "alert" | "consensus";
+  topic?: string;
+  creators?: number;
+  videos?: number;
+  confidence?: number;
+}
+
 export interface ResearchReport {
   query: string;
   topic: string;
@@ -77,6 +86,7 @@ export interface ResearchReport {
   relatedSignals: RelatedSignal[];
   synthesis: string;
   suggestions: string[];
+  intelligenceSignals: IntelligenceSignal[];
   totalIndexed: number;
 }
 
@@ -445,6 +455,76 @@ export async function POST(req: Request) {
   const videoIds = new Set([...allSources.map(s => s.videoId), ...topRows.map(r => r.video_id)]);
   const creatorsInPool = new Set(topRows.map(r => r.channel_name).filter(Boolean));
 
+  // ── Intelligence layer secondary search ────────────────────────────────────────
+  // When direct transcript evidence is absent, check the user's synthesized
+  // intelligence snapshot (executive briefs, alerts, consensus themes).
+  // This layer has no timestamps or direct quotes — it is surfaced with that caveat.
+
+  function queryRelevant(text: string): boolean {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    const q = query.toLowerCase();
+    if (lower.includes(q)) return true;
+    const tokens = q.split(/\s+/).filter(t => t.length >= 3);
+    if (!tokens.length) return false;
+    const matched = tokens.filter(t => lower.includes(t));
+    return matched.length >= Math.ceil(tokens.length * 0.6);
+  }
+
+  let intelligenceSignals: IntelligenceSignal[] = [];
+  const userId = session.user?.email;
+
+  if (keyThemes.length === 0 && userId) {
+    try {
+      const [snap, pipelineCache] = await Promise.all([
+        getIntelligenceSnapshot(userId),
+        getUserPipelineCache(userId),
+      ]);
+
+      if (snap) {
+        for (const text of (snap.brief ?? [])) {
+          if (queryRelevant(text))
+            intelligenceSignals.push({ text: sanitizeText(text), source: "brief" });
+        }
+        for (const alert of (snap.alerts ?? [])) {
+          const label = (alert.label as string) ?? "";
+          const why   = (alert.whyItMatters as string) ?? "";
+          if (queryRelevant(label + " " + why)) {
+            intelligenceSignals.push({
+              text:     sanitizeText(why || label),
+              source:   "alert",
+              topic:    sanitizeText(label),
+              creators: typeof alert.creators === "number" ? alert.creators : undefined,
+              videos:   typeof alert.videos   === "number" ? alert.videos   : undefined,
+            });
+          }
+        }
+      }
+
+      if (pipelineCache?.consensusData) {
+        const consensus = pipelineCache.consensusData as {
+          themes?: Array<{ topic: string; consensus: string; whyItMatters: string; confidence?: number }>;
+        };
+        for (const theme of (consensus.themes ?? [])) {
+          if (queryRelevant([theme.topic, theme.whyItMatters, theme.consensus].join(" "))) {
+            intelligenceSignals.push({
+              text:       sanitizeText(theme.whyItMatters || theme.consensus),
+              source:     "consensus",
+              topic:      sanitizeText(theme.topic),
+              confidence: typeof theme.confidence === "number" ? theme.confidence : undefined,
+            });
+          }
+        }
+      }
+
+      // Deduplicate by text, cap at 5
+      const seen = new Set<string>();
+      intelligenceSignals = intelligenceSignals
+        .filter(s => { if (seen.has(s.text)) return false; seen.add(s.text); return true; })
+        .slice(0, 5);
+    } catch { /* intelligence layer is best-effort — never fail the request */ }
+  }
+
   const report: ResearchReport = {
     query,
     topic: sanitizeText(raw.topic ?? query),
@@ -456,6 +536,7 @@ export async function POST(req: Request) {
     relatedSignals,
     synthesis: keyThemes.length > 0 ? sanitizeText(raw.synthesis ?? "") : "",
     suggestions: (raw.suggestions ?? []).map(s => sanitizeText(s)).filter(Boolean).slice(0, 2),
+    intelligenceSignals,
     totalIndexed: stats.withEmbeddings,
   };
 

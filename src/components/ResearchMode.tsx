@@ -6,6 +6,7 @@ import type {
   ResearchTheme,
   RelatedSignal,
   ThemeSource,
+  IntelligenceSignal,
 } from "@/app/api/research/search/route";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -84,6 +85,35 @@ function QuoteCard({ source, accent }: { source: ThemeSource; accent: string }) 
           </p>
         </blockquote>
       )}
+    </div>
+  );
+}
+
+// ── Intelligence signal card ──────────────────────────────────────────────────
+
+const SOURCE_LABEL: Record<IntelligenceSignal["source"], string> = {
+  brief:     "Executive Brief",
+  alert:     "Intelligence Alert",
+  consensus: "Consensus Signal",
+};
+
+function IntelligenceSignalCard({ signal }: { signal: IntelligenceSignal }) {
+  return (
+    <div className="rounded-lg px-4 py-3 space-y-1.5"
+      style={{ background: "rgba(251,191,36,0.04)", border: "1px solid rgba(251,191,36,0.15)" }}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-[10px] font-mono font-black text-amber-500/70 uppercase tracking-widest">
+          {SOURCE_LABEL[signal.source]}
+          {signal.topic && signal.topic !== signal.text ? ` · ${signal.topic}` : ""}
+        </p>
+        <div className="flex items-center gap-3 text-[10px] font-mono text-slate-600">
+          {signal.creators !== undefined && <span>{signal.creators} creators</span>}
+          {signal.videos   !== undefined && <span>{signal.videos} videos</span>}
+          {signal.confidence !== undefined && <span>{signal.confidence}% confidence</span>}
+        </div>
+      </div>
+      <p className="text-sm text-slate-300 leading-relaxed">{signal.text}</p>
+      <p className="text-[10px] font-mono text-slate-700 italic">No direct quotes available — derived from subscription feed intelligence</p>
     </div>
   );
 }
@@ -520,23 +550,57 @@ export function ResearchMode() {
             </div>
           )}
 
-          {/* Insufficient evidence */}
+          {/* Zero-evidence state */}
           {keyThemes.length === 0 && (
-            <div className="rounded-xl px-5 py-4 space-y-3"
-              style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(185,28,28,0.3)" }}>
-              <div className="space-y-1">
-                <p className="text-sm font-mono font-black text-red-400/70 uppercase tracking-widest">Insufficient Evidence</p>
-                <p className="text-sm text-slate-500">No creators in your library explicitly discuss this topic. Analyze more videos on this subject, or try one of these topics that are present in your library:</p>
-              </div>
-              {report.suggestions.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {report.suggestions.map(s => (
-                    <button key={s} onClick={() => void runSearch(s)}
-                      className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
-                      style={{ border: "1px solid rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}>
-                      {s} →
-                    </button>
-                  ))}
+            <div className="space-y-3">
+
+              {/* Intelligence layer signals — shown when synthesized data exists but no direct quotes */}
+              {report.intelligenceSignals.length > 0 ? (
+                <div className="rounded-xl px-5 py-4 space-y-4"
+                  style={{ background: "rgba(30,25,5,0.6)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                  <div className="space-y-1">
+                    <p className="text-sm font-mono font-black text-amber-400/80 uppercase tracking-widest">Intelligence Layer Signals</p>
+                    <p className="text-sm text-slate-500 leading-relaxed">Evidence exists in synthesized intelligence but direct quote coverage is limited. Analyze specific videos on this topic to generate direct quotes and timestamps.</p>
+                  </div>
+                  <div className="space-y-3">
+                    {report.intelligenceSignals.map((sig, i) => (
+                      <IntelligenceSignalCard key={i} signal={sig} />
+                    ))}
+                  </div>
+                  {report.suggestions.length > 0 && (
+                    <div className="pt-1 space-y-2">
+                      <p className="text-xs font-mono text-slate-600">Or search a topic with direct transcript coverage:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {report.suggestions.map(s => (
+                          <button key={s} onClick={() => void runSearch(s)}
+                            className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
+                            style={{ border: "1px solid rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}>
+                            {s} →
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Hard insufficient evidence — nothing in any layer */
+                <div className="rounded-xl px-5 py-4 space-y-3"
+                  style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(185,28,28,0.3)" }}>
+                  <div className="space-y-1">
+                    <p className="text-sm font-mono font-black text-red-400/70 uppercase tracking-widest">Insufficient Evidence</p>
+                    <p className="text-sm text-slate-500">No creators in your library explicitly discuss this topic. Analyze more videos on this subject, or try one of these topics that are present in your library:</p>
+                  </div>
+                  {report.suggestions.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {report.suggestions.map(s => (
+                        <button key={s} onClick={() => void runSearch(s)}
+                          className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
+                          style={{ border: "1px solid rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}>
+                          {s} →
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
