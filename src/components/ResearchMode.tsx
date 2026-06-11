@@ -141,13 +141,22 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
           </div>
         </div>
 
+        {/* Market signal — analyst verdict */}
+        {theme.marketSignal && (
+          <div className="rounded-lg px-3 py-2"
+            style={{ background: `${color.accent}0d`, border: `1px solid ${color.accent}22` }}>
+            <p className="text-xs font-mono font-black text-slate-400 uppercase tracking-widest mb-0.5">Analyst Verdict</p>
+            <p className="text-sm font-mono text-slate-200 leading-relaxed">{theme.marketSignal}</p>
+          </div>
+        )}
+
         {/* Description */}
-        <p className="text-base text-slate-300 leading-relaxed">{theme.description}</p>
+        <p className="text-sm text-slate-400 leading-relaxed">{theme.description}</p>
 
         {/* Relevance reason */}
         {theme.relevanceReason && (
-          <p className="text-xs font-mono text-slate-500 italic pl-3 border-l-2"
-            style={{ borderColor: `${color.accent}30` }}>
+          <p className="text-xs font-mono text-slate-600 italic pl-3 border-l-2"
+            style={{ borderColor: `${color.accent}22` }}>
             {theme.relevanceReason}
           </p>
         )}
@@ -332,7 +341,7 @@ function SynthesisPanel({ synthesis }: { synthesis: string }) {
   return (
     <div className="rounded-2xl p-5 space-y-3"
       style={{ background: "rgba(15,37,53,0.65)", border: "1px solid rgba(16,185,129,0.25)" }}>
-      <p className="text-xs font-mono font-black text-emerald-700 uppercase tracking-widest">What the Evidence Suggests</p>
+      <p className="text-xs font-mono font-black text-emerald-700 uppercase tracking-widest">Research Synthesis</p>
       <p className="text-base text-slate-200 leading-relaxed">{synthesis}</p>
     </div>
   );
