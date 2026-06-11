@@ -92,8 +92,20 @@ function QuoteCard({ source, accent }: { source: ThemeSource; accent: string }) 
 
 function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
   const [expanded, setExpanded] = useState(false);
+  const [showConsensus, setShowConsensus] = useState(false);
   const color = THEME_COLORS[index % THEME_COLORS.length];
   const otherSources = theme.sources.filter(s => s !== theme.representativeQuote);
+
+  const confidenceColor =
+    theme.confidence >= 85 ? "#10b981"
+    : theme.confidence >= 70 ? "#38bdf8"
+    : theme.confidence >= 55 ? "#fbbf24"
+    : "#ef4444";
+
+  const hasConsensusData =
+    theme.creatorConsensus.agree.length > 0 ||
+    theme.creatorConsensus.neutral.length > 0 ||
+    theme.creatorConsensus.disagree.length > 0;
 
   return (
     <div className="rounded-2xl overflow-hidden"
@@ -109,16 +121,23 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
               style={{ color: color.accent, background: color.bg, border: `1px solid ${color.border}` }}>
               T{index + 1}
             </span>
-            <div className="min-w-0 space-y-1">
+            <div className="min-w-0 space-y-1.5">
               <h3 className="text-base font-black text-white leading-snug">{theme.title}</h3>
-              <span className="text-[10px] font-mono font-black uppercase tracking-widest text-emerald-500">
-                ● Key Theme
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-mono font-black uppercase tracking-widest text-emerald-500">
+                  ● Key Theme
+                </span>
+                <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded"
+                  style={{ color: confidenceColor, background: `${confidenceColor}12`, border: `1px solid ${confidenceColor}28` }}>
+                  {theme.confidence}% · {theme.consensusStrength}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0 text-xs font-mono text-slate-500">
-            <span><span className="text-white font-black">{theme.creatorCount}</span> {theme.creatorCount === 1 ? "creator" : "creators"}</span>
-            <span><span className="text-white font-black">{theme.quoteCount}</span> {theme.quoteCount === 1 ? "quote" : "quotes"}</span>
+          <div className="flex flex-col items-end gap-0.5 shrink-0 text-xs font-mono text-slate-500">
+            <span><span className="text-white font-black">{theme.creatorCount}</span> creators</span>
+            <span><span className="text-white font-black">{theme.videoCount}</span> videos</span>
+            <span><span className="text-white font-black">{theme.quoteCount}</span> quotes</span>
           </div>
         </div>
 
@@ -131,6 +150,79 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
             style={{ borderColor: `${color.accent}30` }}>
             {theme.relevanceReason}
           </p>
+        )}
+
+        {/* Contrarians */}
+        {theme.contrarians.length > 0 && (
+          <div className="rounded-xl p-4 space-y-3"
+            style={{ background: "rgba(251,191,36,0.05)", border: "1px solid rgba(251,191,36,0.18)" }}>
+            <p className="text-[10px] font-mono font-black text-amber-500 uppercase tracking-widest">⚠ Contrarian View</p>
+            {theme.contrarians.map((c, i) => (
+              <div key={i} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-mono font-black text-amber-400">{c.creator}</p>
+                  {c.timestampStr && (
+                    <a href={ytUrl(c.videoId, c.timestampStr)} target="_blank" rel="noopener noreferrer"
+                      className="text-[10px] font-mono text-amber-500/60 shrink-0 hover:text-amber-400 transition-colors">
+                      @{c.timestampStr} ↗
+                    </a>
+                  )}
+                </div>
+                {c.quote && (
+                  <blockquote className="text-xs text-amber-200/60 italic border-l-2 pl-2"
+                    style={{ borderColor: "rgba(251,191,36,0.25)" }}>
+                    &ldquo;{c.quote}&rdquo;
+                  </blockquote>
+                )}
+                {c.reason && (
+                  <p className="text-[10px] font-mono text-slate-600">{c.reason}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Creator Consensus Map */}
+        {hasConsensusData && (
+          <div>
+            <button
+              onClick={() => setShowConsensus(v => !v)}
+              className="flex items-center gap-2 text-xs font-mono text-slate-600 hover:text-slate-400 transition-colors">
+              <span>Creator Positions</span>
+              <span>{showConsensus ? "▲" : "▼"}</span>
+            </button>
+            {showConsensus && (
+              <div className="mt-3 rounded-xl overflow-hidden"
+                style={{ border: "1px solid #1e2d45", background: "rgba(8,16,28,0.4)" }}>
+                <div className="grid grid-cols-3 divide-x" style={{ borderColor: "#1e2d45" }}>
+                  {[
+                    { label: "Agree",    entries: theme.creatorConsensus.agree,    color: "#10b981" },
+                    { label: "Neutral",  entries: theme.creatorConsensus.neutral,  color: "#64748b" },
+                    { label: "Disagree", entries: theme.creatorConsensus.disagree, color: "#f87171" },
+                  ].map(col => (
+                    <div key={col.label} className="p-3 space-y-2" style={{ borderColor: "#1e2d45" }}>
+                      <p className="text-[10px] font-mono font-black uppercase tracking-widest"
+                        style={{ color: col.color }}>
+                        {col.label} ({col.entries.length})
+                      </p>
+                      {col.entries.length === 0 ? (
+                        <p className="text-[10px] font-mono text-slate-700">—</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {col.entries.map((e, i) => (
+                            <div key={i} className="space-y-0.5">
+                              <p className="text-xs font-mono font-black text-slate-400 leading-tight">{e.creator}</p>
+                              <p className="text-[10px] text-slate-600 leading-relaxed">{e.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Creator pills */}
@@ -173,7 +265,7 @@ function ThemeCard({ theme, index }: { theme: ResearchTheme; index: number }) {
         )}
       </div>
 
-      {/* Expand */}
+      {/* Expand to show all quotes */}
       {otherSources.length > 0 && (
         <div style={{ background: "rgba(8,16,28,0.4)" }}>
           <button
@@ -368,8 +460,8 @@ export function ResearchMode() {
       {/* Loading skeleton */}
       {loading && (
         <div className="space-y-4 animate-pulse">
-          <div className="rounded-xl h-12" style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
-          {[180, 220, 200, 180].map((h, i) => (
+          <div className="rounded-xl h-16" style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
+          {[220, 260, 200].map((h, i) => (
             <div key={i} className="rounded-2xl" style={{ height: `${h}px`, background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
           ))}
         </div>
@@ -419,12 +511,12 @@ export function ResearchMode() {
             </div>
           )}
 
-          {/* Empty state */}
+          {/* Insufficient evidence */}
           {keyThemes.length === 0 && (
             <div className="rounded-xl px-5 py-4 space-y-1.5"
               style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(185,28,28,0.3)" }}>
               <p className="text-sm font-mono font-black text-red-400/70 uppercase tracking-widest">Insufficient Evidence</p>
-              <p className="text-sm text-slate-500">No directly relevant evidence found for this topic. The indexed content may not cover it, or try a more specific query.</p>
+              <p className="text-sm text-slate-500">No directly relevant evidence found for this topic. The indexed content may not cover it well, or try a more specific query.</p>
             </div>
           )}
 

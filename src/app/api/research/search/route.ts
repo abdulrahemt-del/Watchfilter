@@ -22,6 +22,26 @@ export interface ThemeSource {
   signalStrength: string | null;
 }
 
+export interface ConsensusEntry {
+  creator: string;
+  reason: string;
+}
+
+export interface CreatorConsensus {
+  agree: ConsensusEntry[];
+  neutral: ConsensusEntry[];
+  disagree: ConsensusEntry[];
+}
+
+export interface Contrarian {
+  creator: string;
+  videoTitle: string;
+  videoId: string;
+  quote: string;
+  timestampStr: string | null;
+  reason: string;
+}
+
 export interface ResearchTheme {
   title: string;
   description: string;
@@ -30,6 +50,11 @@ export interface ResearchTheme {
   creators: string[];
   creatorCount: number;
   quoteCount: number;
+  videoCount: number;
+  confidence: number;
+  consensusStrength: string;
+  creatorConsensus: CreatorConsensus;
+  contrarians: Contrarian[];
   representativeQuote: ThemeSource;
   sources: ThemeSource[];
 }
@@ -56,12 +81,20 @@ export interface ResearchReport {
 // ── GPT raw types ──────────────────────────────────────────────────────────────
 
 interface RawRef { idx: number; quote: string; }
+interface RawConsensusEntry { creator: string; reason: string; }
+interface RawContrarian { idx: number; quote: string; reason: string; }
 interface RawTheme {
   title: string;
   description: string;
   relevanceReason: string;
   sourceRefs: RawRef[];
   representativeRefIdx: number;
+  creatorConsensus: {
+    agree: RawConsensusEntry[];
+    neutral: RawConsensusEntry[];
+    disagree: RawConsensusEntry[];
+  };
+  contrarians: RawContrarian[];
 }
 interface RawRelatedSignal {
   title: string;
@@ -76,111 +109,164 @@ interface RawSynthesis {
   synthesis: string;
 }
 
+// ── Confidence scoring ─────────────────────────────────────────────────────────
+
+function calcConfidence(creatorCount: number, quoteCount: number): number {
+  const base = creatorCount >= 7 ? 90
+             : creatorCount >= 5 ? 82
+             : creatorCount >= 3 ? 73
+             : creatorCount >= 2 ? 63
+             : 52;
+  return Math.min(base + Math.floor(quoteCount / 6), 95);
+}
+
+function consensusLabel(confidence: number): string {
+  return confidence >= 88 ? "High Consensus"
+       : confidence >= 78 ? "Strong Evidence"
+       : confidence >= 68 ? "Moderate Evidence"
+       : "Limited Evidence";
+}
+
 // ── System prompt ──────────────────────────────────────────────────────────────
 
-const SYNTHESIS_SYSTEM = `You are a founder intelligence analyst. Your job is to answer the user's specific question using ONLY evidence that explicitly addresses the topic — not loosely related business content.
+const SYNTHESIS_SYSTEM = `You are a founder intelligence analyst. Identify what the evidence actually says about the query — not what sounds plausible.
 
 ═══ STEP 1: DEFINE SCOPE ═══
 
 Before reading evidence, define what IS and IS NOT about this topic.
 
 For "pricing strategy":
-  IN SCOPE: how prices are set, pricing models (premium/freemium/usage-based), price positioning, willingness to pay, price psychology, discounting, value-based pricing
-  OUT OF SCOPE: revenue growth stories, marketing ROI, acquisition costs, general business advice, mentorship, partnerships
+  IN SCOPE: how prices are set, pricing models, willingness to pay, price psychology, discounting, value-based pricing
+  OUT OF SCOPE: revenue growth stories, marketing ROI, general business advice, mentorship
 
 For "founder market fit":
-  IN SCOPE: domain expertise, customer intimacy, problem familiarity, unfair founder advantages, who should build what, learning speed
-  OUT OF SCOPE: general success stories, revenue milestones, marketing tactics, referrals, partnerships
+  IN SCOPE: domain expertise, customer intimacy, problem familiarity, unfair founder advantages, learning speed
+  OUT OF SCOPE: general success stories, revenue milestones, marketing tactics, referrals
 
-For any other query, apply the same logic: define what explicitly IS the topic vs. what is only adjacent.
-
+For any other query, apply the same logic.
 Write topicIntent: 2-3 sentences explaining what IS in scope and what would be rejected as out of scope.
 
 ═══ STEP 2: STRICT RELEVANCE TEST ═══
 
-For every evidence item [E0]-[E19], ask ONE question:
+For every evidence item [E0]-[E19], ask:
 "Does this quote explicitly describe or explain [TOPIC] itself?"
-
-NOT: "Is this useful business advice?"
-NOT: "Is this loosely connected to the topic area?"
-ONLY: "Does this quote explicitly and directly address [TOPIC]?"
 
 Score 2 → Explicitly addresses the topic → eligible for Key Themes
 Score 1 → Mentions topic in passing or is genuinely adjacent → Related Signals only
 Score 0 → Does not address the topic → DISCARD
 
-AUTOMATICALLY score 0 (discard without exception):
+AUTOMATICALLY score 0:
 - General revenue or growth stories (unless revenue IS the query)
-- Marketing performance data (unless marketing IS the query)
 - Generic entrepreneurship or success advice
-- Mentorship, partnerships, referrals — unless the query is specifically about these
+- Mentorship, partnerships, referrals (unless that IS the query)
 - Any quote that remains generic business advice if you remove the topic word
 
-═══ STEP 3: KEY THEMES ═══
+═══ STEP 3: EVIDENCE QUALITY RULE ═══
 
-Build themes using ONLY score-2 evidence.
+Before attaching a quote to a theme, ask:
+"Does this quote explicitly support THIS specific theme's finding?"
 
-Good titles — must explicitly reference the topic concept:
+If the answer is "only loosely" — exclude it even if it scored 2 for the overall topic.
+One strong, directly-supporting quote is better than five vague ones.
+Every quote in sourceRefs must clearly and explicitly support the theme's specific claim.
+
+═══ STEP 4: KEY THEMES ═══
+
+Build themes using ONLY score-2 evidence that explicitly supports the theme.
+
+Good titles (explicit to THIS topic):
   "Value-Based Pricing Over Cost-Plus" (pricing strategy)
-  "Freemium as Market Entry Tactic" (pricing strategy)
   "Domain Expertise Reduces Founder Learning Curve" (founder market fit)
 
-Bad titles — rejected automatically:
-  "Mentorship" / "Partnerships" / "Business Growth" / "Success Factors" / "Challenges"
+Bad titles (too generic):
+  "Mentorship" / "Business Growth" / "Success Factors" / "Challenges"
 
 Each theme:
 - title: 3-6 words, explicit to THIS topic
 - description: What do creators specifically say? 2-3 sentences grounded in evidence.
 - relevanceReason: "This answers the query because [specific reason tied to the topic]"
-- sourceRefs: ALL score-2 items for this theme (verbatim quotes)
-- representativeRefIdx: index into sourceRefs (clearest, most on-topic)
+- sourceRefs: ONLY quotes that explicitly support this theme's specific claim
+- representativeRefIdx: index into sourceRefs (clearest, most directly on-point quote)
 
-If score-2 evidence is thin (1 creator, 1-2 quotes), still include the theme — the server decides if it qualifies as a Key Theme. Your job is accurate scoring, not suppression.
+═══ STEP 5: CREATOR CONSENSUS MAP ═══
 
-═══ STEP 4: RELATED SIGNALS ═══
+For each theme, classify the relevant creators from the evidence pool:
 
-Group score-1 evidence only. These are observations that mention the topic in passing.
-If score-1 evidence is generic business advice with no real connection to the topic, re-score it 0 and discard.
+creatorConsensus:
+  agree: creators whose evidence directly supports this theme's finding
+  neutral: creators who mention the topic area but don't take a clear position
+  disagree: creators whose evidence explicitly contradicts this theme
 
-Each signal:
-- title: What adjacent topic is this?
-- description: How does it relate to (but not directly answer) the query? 1-2 sentences.
-- sourceRefs: Supporting items
+Rules:
+- Use only creator names that appear in the evidence pool — never invent names
+- Only classify creators who have evidence relevant to this specific theme
+- Keep each reason to 1 sentence maximum
 
-═══ STEP 5: SYNTHESIS ═══
+═══ STEP 6: CONTRARIAN VIEWS ═══
+
+contrarians: ONLY include if a creator's evidence EXPLICITLY contradicts this theme.
+
+NEVER include:
+- Hypothetical objections ("some might argue...")
+- Invented disagreements
+- Caveats or nuances that don't actually contradict
+- General skepticism not tied to specific evidence
+
+ONLY include when a creator:
+- Explicitly advocates the opposite position
+- Has a quote that directly contradicts this theme's finding
+
+For each contrarian:
+- idx: evidence item index [E0]-[E19] containing the contradicting view
+- quote: verbatim from that evidence
+- reason: "This contradicts because..."
+
+If no real contradictions exist: contrarians: []
+
+═══ STEP 7: RELATED SIGNALS ═══
+
+Group score-1 evidence only.
+If a score-1 item is generic advice with no real connection to the topic: re-score it 0 and discard.
+Related Signals must never appear in themes or synthesis.
+
+═══ STEP 8: SYNTHESIS ═══
 
 3-5 sentences directly answering: "What does the evidence say about [TOPIC]?"
-Draw ONLY from Key Themes. Never reference Related Signals.
-If themes is empty, write: "The indexed content does not contain sufficient direct evidence about [topic]. Try indexing more videos on this subject."
+Draw ONLY from Key Themes.
 
-═══ CRITICAL RULES ═══
-
-Never invent statistics, percentages, or causal claims.
-Never include evidence just because it sounds topically adjacent.
-The test is always: "Does this EXPLICITLY address [TOPIC]?" — not "Is this somewhat related?"
-One well-supported Key Theme is better than five weak themes.
+Honest language rules:
+- If evidence is limited: say "Limited evidence suggests..."
+- If findings are mixed: say "Evidence is mixed — some creators argue X while others argue Y"
+- If insufficient: "The indexed content does not contain sufficient direct evidence about [topic]"
+- Never fabricate certainty. Never invent stronger conclusions than the evidence supports.
 
 Return ONLY valid JSON:
 ${JSON.stringify({
-  topic: "2-4 word topic label",
-  topicIntent: "What IS in scope for this query + what would be rejected as out of scope. 2-3 sentences.",
+  topic: "2-4 word label",
+  topicIntent: "What IS in scope + what would be rejected. 2-3 sentences.",
   themes: [
     {
-      title: "Explicit topic-specific theme title",
+      title: "Explicit topic-specific title",
       description: "What creators specifically say. 2-3 sentences.",
       relevanceReason: "This answers the query because...",
-      sourceRefs: [{ idx: 0, quote: "Verbatim quote from [E0]" }],
+      sourceRefs: [{ idx: 0, quote: "Verbatim quote — only if it explicitly supports this theme" }],
       representativeRefIdx: 0,
+      creatorConsensus: {
+        agree:    [{ creator: "Exact creator name from evidence pool", reason: "1-sentence reason" }],
+        neutral:  [{ creator: "Exact creator name", reason: "1-sentence reason" }],
+        disagree: [],
+      },
+      contrarians: [],
     },
   ],
   relatedSignals: [
     {
-      title: "Adjacent topic that mentions the subject in passing",
-      description: "How this is related to but does not directly answer the query.",
+      title: "Adjacent topic",
+      description: "How this relates to but doesn't answer the query.",
       sourceRefs: [{ idx: 5, quote: "Verbatim quote from [E5]" }],
     },
   ],
-  synthesis: "3-5 sentences directly answering the user's question using Key Theme evidence only. Or the no-evidence message if themes is empty.",
+  synthesis: "Honest 3-5 sentence answer using Key Theme evidence. Use limited/mixed/insufficient language if warranted.",
 }, null, 2)}`;
 
 // ── Evidence block ─────────────────────────────────────────────────────────────
@@ -265,7 +351,7 @@ export async function POST(req: Request) {
     ],
     response_format: { type: "json_object" },
     temperature: 0.15,
-    max_tokens: 4000,
+    max_tokens: 5000,
   });
 
   let raw: RawSynthesis;
@@ -275,7 +361,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Synthesis failed" }, { status: 500 });
   }
 
-  // ── Enrich refs from indexed rows — GPT cannot fabricate source metadata ──────
+  // ── Enrich helpers — GPT cannot fabricate source metadata ─────────────────────
+
   function enrichRef(ref: RawRef): ThemeSource {
     const row = topRows[ref.idx] ?? topRows[0];
     return {
@@ -288,16 +375,37 @@ export async function POST(req: Request) {
     };
   }
 
-  // ── Build themes — server enforces Key Theme threshold ────────────────────────
-  const themes: ResearchTheme[] = (raw.themes ?? []).map(t => {
+  function enrichContrarian(c: RawContrarian): Contrarian {
+    const row = topRows[c.idx] ?? topRows[0];
+    return {
+      creator: row.channel_name ?? "Unknown",
+      videoTitle: row.video_title ?? "Unknown video",
+      videoId: row.video_id,
+      quote: sanitizeText(c.quote ?? row.quote ?? ""),
+      timestampStr: row.timestamp_str ?? null,
+      reason: sanitizeText(c.reason ?? ""),
+    };
+  }
+
+  // ── Build themes ───────────────────────────────────────────────────────────────
+
+  const allThemes: ResearchTheme[] = (raw.themes ?? []).map(t => {
     const sources = (t.sourceRefs ?? []).map(enrichRef);
     const repIdx = typeof t.representativeRefIdx === "number"
       ? Math.min(t.representativeRefIdx, sources.length - 1)
       : 0;
     const representativeQuote = sources[repIdx] ?? sources[0];
     const uniqueCreators = [...new Set(sources.map(s => s.creator))];
-    // Key Theme requires ≥2 creators OR ≥3 quotes; otherwise Emerging Signal
+    const uniqueVideos = [...new Set(sources.map(s => s.videoId))];
     const isKeyTheme = uniqueCreators.length >= 2 || sources.length >= 3;
+    const confidence = calcConfidence(uniqueCreators.length, sources.length);
+
+    const rawConsensus = t.creatorConsensus ?? { agree: [], neutral: [], disagree: [] };
+    const creatorConsensus: CreatorConsensus = {
+      agree:    (rawConsensus.agree    ?? []).map(e => ({ creator: sanitizeText(e.creator ?? ""), reason: sanitizeText(e.reason ?? "") })),
+      neutral:  (rawConsensus.neutral  ?? []).map(e => ({ creator: sanitizeText(e.creator ?? ""), reason: sanitizeText(e.reason ?? "") })),
+      disagree: (rawConsensus.disagree ?? []).map(e => ({ creator: sanitizeText(e.creator ?? ""), reason: sanitizeText(e.reason ?? "") })),
+    };
 
     return {
       title: sanitizeText(t.title ?? ""),
@@ -307,13 +415,17 @@ export async function POST(req: Request) {
       creators: uniqueCreators,
       creatorCount: uniqueCreators.length,
       quoteCount: sources.length,
+      videoCount: uniqueVideos.length,
+      confidence,
+      consensusStrength: consensusLabel(confidence),
+      creatorConsensus,
+      contrarians: (t.contrarians ?? []).map(enrichContrarian),
       representativeQuote,
       sources,
     };
   });
 
-  // Only Key Themes in the response — below-threshold themes are discarded
-  const keyThemes = themes
+  const keyThemes = allThemes
     .filter(t => t.isKeyTheme)
     .sort((a, b) => b.creatorCount - a.creatorCount);
 
