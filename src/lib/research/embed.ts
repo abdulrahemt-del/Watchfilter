@@ -6,10 +6,20 @@ const openai = new OpenAI();
 export async function embedText(text: string): Promise<number[]> {
   const res = await openai.embeddings.create({
     model: "text-embedding-3-small",
-    input: text.slice(0, 8000), // stay within token limit
+    input: text.slice(0, 8000),
     dimensions: 256,
   });
   return res.data[0].embedding;
+}
+
+// Batch multiple texts in a single API call — returns embeddings in same order as input
+export async function embedBatch(texts: string[]): Promise<number[][]> {
+  const res = await openai.embeddings.create({
+    model: "text-embedding-3-small",
+    input: texts.map(t => t.slice(0, 8000)),
+    dimensions: 256,
+  });
+  return res.data.sort((a, b) => a.index - b.index).map(d => d.embedding);
 }
 
 export function cosineSim(a: number[], b: number[]): number {

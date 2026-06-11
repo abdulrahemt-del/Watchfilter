@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import OpenAI from "openai";
 import { loadResearchIndex, getResearchIndexStats, getIntelligenceSnapshot, getUserPipelineCache, type ResearchRow } from "@/lib/db";
-import { embedText, cosineSim } from "@/lib/research/embed";
+import { embedBatch, cosineSim } from "@/lib/research/embed";
 import { sanitizeText } from "@/lib/utils/sanitize";
 
 export const runtime = "nodejs";
@@ -142,6 +142,55 @@ function consensusLabel(confidence: number): string {
        : "Limited Evidence";
 }
 
+// ── Query intent expansion ─────────────────────────────────────────────────────
+
+interface QueryExpansion {
+  intent: string;
+  concepts: string[];
+}
+
+async function expandQueryIntent(query: string): Promise<QueryExpansion> {
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `You expand research queries into the related concepts a founder or operator actually wants to learn about.
+
+Return JSON: { "intent": "1-sentence description of the learning objective", "concepts": ["8-12 specific related concepts"] }
+
+Rules:
+- Concepts must be concrete enough to retrieve specific evidence (not generic)
+- Think from the learner's perspective: what else would answer my real question?
+- Include behavioral patterns, outcome metrics, mechanisms, and adjacent strategies
+- Never repeat the original query words as a concept
+- Focus on product/business context, not academic or HR context
+
+Example:
+Query: "user engagement"
+{
+  "intent": "What strategies help products get users to return, stay active, and emotionally connect — and what behavioral or metric signals indicate healthy engagement?",
+  "concepts": ["retention", "churn reduction", "user loyalty", "habit formation", "emotional connection to product", "stickiness", "repeat usage patterns", "customer satisfaction", "product adoption", "user feedback loops", "activation strategy", "daily active users"]
+}`,
+      },
+      { role: "user", content: `Query: "${query}"` },
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+    max_tokens: 400,
+  });
+
+  try {
+    const parsed = JSON.parse(completion.choices[0].message.content ?? "{}") as Partial<QueryExpansion>;
+    return {
+      intent:   parsed.intent   ?? query,
+      concepts: (parsed.concepts ?? []).slice(0, 12),
+    };
+  } catch {
+    return { intent: query, concepts: [] };
+  }
+}
+
 // ── System prompt ──────────────────────────────────────────────────────────────
 
 const SYNTHESIS_SYSTEM = `You are an elite B2B equity research analyst and forensic data engineer. Your objective is to map objective market evidence, identify systemic consensus, isolate real cross-channel friction, and provide a 100% auditable evidence trail. Maintain a cold, clinical, professional tone. Never use words like "revolutionary," "game-changing," "unlock," or "supercharge."
@@ -169,6 +218,8 @@ For "founder market fit":
   OUT OF SCOPE: general success stories, revenue milestones, marketing tactics, referrals
 
 Apply the same logic to any query. Write topicIntent: 2-3 sentences on what IS in scope and what is rejected.
+
+EXPANDED SCOPE RULE: The user message includes "Research intent" and "Related concepts searched." Treat ALL listed concepts as explicitly in scope — they represent what the researcher actually wants to learn. A quote about "customer retention" is fully in scope for "user engagement." A quote about "churn prevention" is fully in scope for "user engagement." Use the intent and concept list to calibrate your scope; do not discard evidence for using different terminology than the query itself.
 
 ═══ STEP 2: RELEVANCE SCORING + 90% CONFIDENCE GATE ═══
 
@@ -326,7 +377,12 @@ export async function POST(req: Request) {
     } as Partial<ResearchReport>, { status: 422 });
   }
 
-  const queryVec = await embedText(query);
+  // Expand query into learning intent + related concepts, then batch-embed everything
+  const expansion = await expandQueryIntent(query);
+  const conceptTexts = [query, ...expansion.concepts];
+  const allEmbeddings = await embedBatch(conceptTexts);
+  const queryVec = allEmbeddings[0];
+  const conceptVecs = allEmbeddings.slice(1);
 
   let filtered = allRows;
   if (body.filters?.channel) filtered = filtered.filter(r => r.channel_name === body.filters!.channel);
@@ -336,9 +392,17 @@ export async function POST(req: Request) {
     );
   }
 
+  // Score each row as max across all concept embeddings — rows about "retention" or
+  // "habit formation" will surface even if they never mention "user engagement" directly
   const scored = filtered
     .filter(r => r.embedding)
-    .map(r => ({ row: r, score: cosineSim(queryVec, r.embedding!) }))
+    .map(r => {
+      const origScore = cosineSim(queryVec, r.embedding!);
+      const conceptMax = conceptVecs.length > 0
+        ? Math.max(...conceptVecs.map(cv => cosineSim(cv, r.embedding!)))
+        : 0;
+      return { row: r, score: Math.max(origScore, conceptMax) };
+    })
     .sort((a, b) => b.score - a.score);
 
   const topRows = scored.slice(0, 20).map(s => s.row);
@@ -356,10 +420,14 @@ export async function POST(req: Request) {
 
   const userMessage = [
     `Query: "${query}"`,
+    `Research intent: ${expansion.intent}`,
+    expansion.concepts.length > 0
+      ? `Related concepts searched: ${expansion.concepts.join(", ")}`
+      : null,
     `Evidence pool: ${topRows.length} items from ${uniqueCreatorsInPool.length} creators`,
     "",
     evidenceBlock,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -614,7 +682,7 @@ export async function POST(req: Request) {
   const report: ResearchReport = {
     query,
     topic: sanitizeText(raw.topic ?? query),
-    topicIntent: sanitizeText(raw.topicIntent ?? ""),
+    topicIntent: sanitizeText(raw.topicIntent ?? expansion.intent),
     videosMatched: videoIds.size,
     creatorsMatched: creatorsInPool.size,
     quotesMatched: allSources.length,
@@ -631,6 +699,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ...report,
       _debug: {
+        expansion: {
+          intent: expansion.intent,
+          concepts: expansion.concepts,
+        },
         summary: {
           retrieved: topRows.length,
           gptIncludedInTheme: gptInThemeIdx.size,
