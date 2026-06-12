@@ -76,8 +76,11 @@ Each cluster has: confidence, metrics (creator_count, video_count, quote_count),
 RESPONSE FORMAT — always follow this order
 ─────────────────────────────────────────
 
+### General Context
+Write a clear, direct overview of the topic using your general training knowledge — like a knowledgeable friend explaining the subject. 2-4 sentences. This is NOT based on the videos; label it implicitly by being general and accessible. Do not use evidence cards here.
+
 ### Consensus Snapshot
-Summarize the strongest patterns in the evidence in direct prose. Even low-confidence evidence produces a useful snapshot. Identify recurring ideas, creator viewpoints, notable observations. Do not list cluster names — synthesize across them.
+Summarize what the analyzed creators actually say about this topic. Identify recurring ideas, notable agreements, key viewpoints. Write in direct prose — do not list cluster names. Even low-confidence evidence should produce a useful snapshot.
 
 ### Confidence
 State: creator count, video count, quote count, agreement level, and any limitations. Use the language tier appropriate for the confidence level.

@@ -629,6 +629,63 @@ function DebugPanel({ data }: { data: any }) {
   );
 }
 
+// ── Markdown renderer ─────────────────────────────────────────────────────────
+
+function ChatMarkdown({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let key = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith("### ")) {
+      elements.push(
+        <p key={key++} className="text-[11px] font-mono font-black text-[#38bdf8] uppercase tracking-widest mt-3 mb-1 first:mt-0">
+          {line.slice(4)}
+        </p>
+      );
+    } else if (line.startsWith("## ")) {
+      elements.push(
+        <p key={key++} className="text-xs font-mono font-black text-slate-300 uppercase tracking-wider mt-3 mb-1 first:mt-0">
+          {line.slice(3)}
+        </p>
+      );
+    } else if (/^[•\-\*] /.test(line)) {
+      elements.push(
+        <div key={key++} className="flex items-start gap-2">
+          <span className="text-[#38bdf8] shrink-0 mt-0.5 text-xs">•</span>
+          <span className="text-sm text-slate-200 leading-relaxed">{line.replace(/^[•\-\*] /, "")}</span>
+        </div>
+      );
+    } else if (line.startsWith("Evidence Card")) {
+      elements.push(
+        <div key={key++} className="rounded-lg px-3 py-2 mt-1 mb-1 space-y-0.5"
+          style={{ background: "rgba(56,189,248,0.06)", border: "1px solid rgba(56,189,248,0.2)" }}>
+          <p className="text-[10px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">Evidence Card</p>
+        </div>
+      );
+    } else if (/^(Creator|Video|Timestamp|Quote|Relevance):/.test(line)) {
+      const colon = line.indexOf(":");
+      const label = line.slice(0, colon);
+      const value = line.slice(colon + 1).trim();
+      elements.push(
+        <div key={key++} className="flex gap-1.5 text-xs -mt-1 pl-3" style={{ marginTop: label === "Creator" ? "4px" : "-4px" }}>
+          <span className="font-mono font-black text-slate-500 shrink-0">{label}:</span>
+          <span className={`font-mono ${label === "Quote" ? "text-slate-300 italic" : "text-slate-400"}`}>{value}</span>
+        </div>
+      );
+    } else if (line.trim() === "") {
+      elements.push(<div key={key++} className="h-1" />);
+    } else {
+      elements.push(
+        <p key={key++} className="text-sm text-slate-200 leading-relaxed">{line}</p>
+      );
+    }
+  }
+
+  return <div className="space-y-0.5">{elements}</div>;
+}
+
 // ── Research Chat ─────────────────────────────────────────────────────────────
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -687,11 +744,13 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
           {messages.map((m, i) => (
             <div key={i} className={`flex gap-3 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               {m.role === "assistant" && <span className="text-[10px] font-mono font-black text-[#38bdf8] shrink-0 mt-1">AI</span>}
-              <div className="max-w-[85%] rounded-xl px-4 py-2.5"
+              <div className="max-w-[85%] rounded-xl px-4 py-3"
                 style={m.role === "user"
                   ? { background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.25)" }
                   : { background: "rgba(15,37,53,0.8)", border: "1px solid #1e2d45" }}>
-                <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                {m.role === "assistant"
+                  ? <ChatMarkdown content={m.content} />
+                  : <p className="text-sm text-slate-200 leading-relaxed">{m.content}</p>}
               </div>
               {m.role === "user" && <span className="text-[10px] font-mono font-black text-slate-600 shrink-0 mt-1">You</span>}
             </div>
