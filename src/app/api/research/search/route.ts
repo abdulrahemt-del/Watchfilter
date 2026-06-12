@@ -593,6 +593,37 @@ NEVER assign a creator to "agree" if their quote is only adjacent to the theme �
 agreement requires their evidence to DIRECTLY and mechanically support the claim.
 
 ═══════════════════════════════════════════════════════════
+PROTOCOL 3c — FINDING QUALITY GATE (EVIDENCE DENSITY OVER COUNT)
+═══════════════════════════════════════════════════════════
+Before emitting ANY theme, apply this test verbatim:
+
+  "Would a human researcher include this as a direct answer to the query?"
+
+  IF NO → move to relatedSignals or exclude entirely.
+
+EVIDENCE DENSITY RULE:
+  Prefer 2 strong findings over 5 weak findings.
+  Do not emit themes simply because evidence exists.
+  Emit themes only when evidence clearly and directly answers the query.
+
+CLUSTER PURITY RULE:
+  Each theme must represent ONE coherent idea.
+  Do NOT merge: adaptation, resilience, experimentation, demand generation,
+  mentorship, growth, branding, or revenue — unless creators EXPLICITLY
+  connect these concepts within the same quote or argument.
+  If evidence spans multiple distinct ideas → split into separate themes or
+  move the weaker portions to relatedSignals.
+
+CROSS-CREATOR VALIDATION:
+  Multiple quotes from ONE creator do NOT constitute consensus.
+  Cross-creator agreement — independent sources reaching the same conclusion
+  — is required for any theme to be classified above sparse signal.
+  A theme supported by only one creator MUST be treated as an isolated signal,
+  even if that creator makes multiple supporting statements.
+  Do NOT award "agree" in creatorConsensus to multiple creators unless each
+  has an independent quote that passes the 95% gate.
+
+═══════════════════════════════════════════════════════════
 PROTOCOL 4 — FORENSIC CONTRARIAN DETECTION
 ═══════════════════════════════════════════════════════════
 A contrarian entry is permitted ONLY when one condition is literally present in
