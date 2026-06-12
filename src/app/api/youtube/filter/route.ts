@@ -136,8 +136,8 @@ Good: "Reveals how solo operators are replacing 3-person sales teams with AI for
 Good: "Shows why cash-flow businesses are outperforming high-growth startups in the current rate environment."
 Good: "Breaks down how one founder hit $1M ARR in 8 months by targeting overlooked SMB verticals."
 
-If the episode is excluded (topicCategory: "excluded") → whyItMatters: "".
-Otherwise: whyItMatters is REQUIRED. Never return an empty string for non-excluded videos.
+If the episode is excluded (topicCategory: "excluded") → whyItMatters: ONE sentence describing what the episode actually covers (e.g., "Covers Graham Hancock's theories on ancient civilizations and Antarctica's prehistoric history." or "Features a Christianity expert discussing faith and belief."). Never leave it empty.
+Otherwise: whyItMatters is REQUIRED. Never return an empty string for any video.
 
 Return ALL videos. Never skip any.`;
 
@@ -275,10 +275,10 @@ export async function POST(req: Request) {
     const raw    = completion.choices[0].message.content ?? '{"results":[]}';
     const parsed = JSON.parse(raw) as { results?: AIScore[] };
 
-    // Guarantee whyItMatters is always populated for non-excluded videos.
+    // Guarantee whyItMatters is always populated for every video.
     // The LLM occasionally omits it despite the instruction — fall back to explanation.
     const normalized = (parsed.results ?? []).map((r) => {
-      if (r.topicCategory !== "excluded" && !r.whyItMatters) {
+      if (!r.whyItMatters) {
         r.whyItMatters = r.explanation ?? "";
       }
       return r;
