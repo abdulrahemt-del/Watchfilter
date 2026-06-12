@@ -425,15 +425,84 @@ function RelatedSignalsPanel({ signals }: { signals: RelatedSignal[] }) {
   );
 }
 
-// ── Synthesis panel ───────────────────────────────────────────────────────────
+// ── Consensus answer ──────────────────────────────────────────────────────────
 
-function SynthesisPanel({ synthesis }: { synthesis: string }) {
-  if (!synthesis) return null;
+function ConsensusAnswer({ report }: { report: ResearchReport }) {
+  if (!report.synthesis && report.themes.length === 0) return null;
+
+  const allConfs = report.themes.map(t => t.confidenceLabel ?? "Low");
+  const dominantConf: "Very High" | "High" | "Medium" | "Low" =
+    allConfs.includes("Very High") ? "Very High"
+    : allConfs.includes("High")     ? "High"
+    : allConfs.includes("Medium")   ? "Medium"
+    : "Low";
+  const confStyle = CONFIDENCE_STYLE[dominantConf];
+
+  const allCreators = [...new Set(report.themes.flatMap(t => t.creators))].slice(0, 8);
+  const agreements = report.themes.slice(0, 4).map(t => t.marketSignal || t.description).filter(Boolean);
+  const disagreements = report.themes
+    .filter(t => t.contrarians.length > 0)
+    .flatMap(t => t.contrarians.map(c => c.reason || `${c.creator} disputes this finding`))
+    .slice(0, 2);
+
   return (
-    <div className="rounded-2xl p-5 space-y-3"
-      style={{ background: "rgba(15,37,53,0.65)", border: "1px solid rgba(16,185,129,0.25)" }}>
-      <p className="text-xs font-mono font-black text-emerald-700 uppercase tracking-widest">Research Synthesis</p>
-      <p className="text-base text-slate-200 leading-relaxed">{synthesis}</p>
+    <div className="rounded-2xl p-5 space-y-4"
+      style={{ background: "rgba(15,37,53,0.8)", border: "1px solid rgba(16,185,129,0.3)", boxShadow: "inset 0 1px #ffffff08" }}>
+
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="space-y-0.5">
+          <p className="text-xs font-mono font-black text-emerald-500 uppercase tracking-widest">Consensus Answer</p>
+          <p className="text-[10px] font-mono text-slate-600">
+            Based on {report.videosMatched} videos from {report.creatorsMatched} creators
+          </p>
+        </div>
+        <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded shrink-0"
+          style={{ color: confStyle.color, background: confStyle.bg, border: `1px solid ${confStyle.border}` }}>
+          {confStyle.icon} {dominantConf} Confidence
+        </span>
+      </div>
+
+      {/* Main synthesis */}
+      {report.synthesis && (
+        <p className="text-base text-slate-200 leading-relaxed">{report.synthesis}</p>
+      )}
+
+      {/* Key agreements */}
+      {agreements.length > 0 && (
+        <ul className="space-y-1.5">
+          {agreements.map((a, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm text-slate-300 leading-relaxed">
+              <span className="text-emerald-400 shrink-0 mt-0.5">•</span>
+              <span>{a}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Notable disagreements */}
+      {disagreements.length > 0 && (
+        <div className="rounded-lg px-3 py-2 space-y-1"
+          style={{ background: "rgba(251,191,36,0.05)", border: "1px solid rgba(251,191,36,0.18)" }}>
+          <p className="text-[10px] font-mono font-black text-amber-500 uppercase tracking-widest">Notable Disagreements</p>
+          {disagreements.map((d, i) => (
+            <p key={i} className="text-xs text-slate-400 leading-relaxed">{d}</p>
+          ))}
+        </div>
+      )}
+
+      {/* Supporting creators */}
+      {allCreators.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-[10px] font-mono text-slate-600 shrink-0">Supporting creators:</p>
+          {allCreators.map((c, i) => (
+            <span key={i} className="text-xs font-mono px-2 py-0.5 rounded text-slate-400"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid #1e2d45" }}>
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -860,11 +929,14 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
             </div>
           </div>
 
+          {/* Consensus Answer — top-level synthesis before themes */}
+          {keyThemes.length > 0 && <ConsensusAnswer report={report} />}
+
           {/* Key Findings */}
           {keyThemes.length > 0 && (
             <div className="space-y-3">
               <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">
-                Key Findings — {keyThemes.length} {keyThemes.length === 1 ? "finding" : "findings"}
+                Evidence Themes — {keyThemes.length} {keyThemes.length === 1 ? "theme" : "themes"} · click a title to focus the analyst
               </p>
               {keyThemes.map((theme, i) => (
                 <ThemeCard key={i} theme={theme} index={i}
@@ -1050,9 +1122,6 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
 
           {/* Related Signals */}
           <RelatedSignalsPanel signals={report.relatedSignals} />
-
-          {/* What the Evidence Suggests */}
-          <SynthesisPanel synthesis={report.synthesis} />
 
           {/* Research Analyst Chat */}
           <ResearchChat report={report} activeFindingIndex={activeFindingIndex} />
