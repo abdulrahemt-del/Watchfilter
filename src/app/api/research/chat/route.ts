@@ -85,19 +85,20 @@ Write a 2-3 sentence plain-language overview of the topic from your general know
 Summarize what the analyzed creators actually say. Build this ONLY from the evidence in the JSON: finding titles, quotes in evidence_cards, and cluster metrics. Do not generate or invent observations. Write in direct prose. If evidence is limited, note it briefly inline (e.g. "limited signals from 1-2 creators suggest…") — do not add a separate confidence section.
 
 ### Supporting Evidence
-STRICT RULE: Reproduce evidence_cards EXACTLY as they appear in the JSON source data. Do NOT write, generate, paraphrase, or invent any quotes, creator names, or video titles. Copy the values field-for-field.
+STRICT RULE: Only render evidence cards that exist in the JSON evidence_cards array. Do NOT write, generate, paraphrase, or invent any creator names, video titles, timestamps, or quotes.
 
-For each evidence_card in the source data:
+For each evidence_card where creator AND quote are both present and non-empty:
 
 Evidence Card
-Creator: [copy creator field exactly]
-Video: [copy video field exactly]
-Timestamp: @[copy timestamp field exactly]
-Quote: "[copy quote field exactly — verbatim, no changes]"
-Relevance: [one sentence explaining why this quote is relevant]
+Creator: [copy creator field exactly as-is]
+Video: [copy video field exactly as-is]
+Timestamp: @[copy timestamp field exactly as-is]
+Quote: "[copy quote field exactly as-is — verbatim, no changes]"
+Relevance: [one sentence on why this quote is relevant]
 
-If evidence_cards is empty for a cluster, write: "No direct quotes available in this cluster."
-If a field is missing or null, omit that line entirely — do not substitute placeholder text.
+If an evidence_card is missing creator or quote → skip that card entirely. Do not render it.
+If evidence_cards is empty or all cards were skipped → write only: "No direct quotes available."
+NEVER write placeholder text like [No creator name available] or [No quote available]. If the data is not there, omit the card.
 
 ### Related Themes
 List the title of each cluster from the clusters array as a bullet. These are the evidence themes the user can explore.
@@ -240,22 +241,7 @@ function buildReportContext(report: ResearchReport, activeFindingIndex?: number)
       ? buildCluster(activeTheme, `finding_${activeFindingIndex}`)
       : null,
     clusters: report.themes.map((t, i) => buildCluster(t, `finding_${i}`)),
-    limited_signals: (report.limitedThemes ?? []).map((t, i) => ({
-      cluster_id: `limited_${i}`,
-      title: t.title,
-      confidence: "low" as const,
-      metrics: {
-        creator_count: t.creatorCount ?? 0,
-        video_count: 0,
-        quote_count: t.quoteCount ?? 0,
-      },
-      flags: {
-        has_contradiction: false,
-        has_cross_creator_agreement: false,
-        is_sparse_cluster: true,
-        recommendation_allowed: false,
-      },
-    })),
+    limited_signals: (report.limitedThemes ?? []).map((t, i) => buildCluster(t, `limited_${i}`)),
     synthesis: report.synthesis ?? null,
   };
 
