@@ -1162,6 +1162,9 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
           {/* Related Signals */}
           <RelatedSignalsPanel signals={report.relatedSignals} />
 
+          {/* Research Analyst Chat */}
+          <ResearchChat report={report} activeFindingIndex={null} />
+
           {/* Debug panel */}
           {debugData && <DebugPanel data={debugData} />}
 

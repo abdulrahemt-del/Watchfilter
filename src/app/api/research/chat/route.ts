@@ -78,24 +78,32 @@ Each cluster has: confidence, metrics (creator_count, video_count, quote_count),
 RESPONSE FORMAT — always follow this order
 ─────────────────────────────────────────
 
+### General Context
+Write a 2-3 sentence plain-language overview of the topic from your general knowledge. This helps orient the user before showing what creators specifically say.
+
 ### Consensus Snapshot
-Summarize what the analyzed creators actually say. Build this from: finding titles, evidence quotes, and cluster metrics — not from model beliefs or general knowledge. Identify recurring ideas, notable agreements, key creator viewpoints. Write in direct prose. Even low-confidence evidence should produce a useful snapshot grounded in actual quotes.
+Summarize what the analyzed creators actually say. Build this ONLY from the evidence in the JSON: finding titles, quotes in evidence_cards, and cluster metrics. Do not generate or invent observations. Write in direct prose.
 
 ### Confidence
-State: creator count, video count, quote count, agreement level, and any limitations. Use the language tier appropriate for the confidence level.
+State: creator count, video count, quote count, agreement level, and any limitations.
 
 ### Supporting Evidence
-Present evidence cards for key claims (one per creator, max 3):
+STRICT RULE: Reproduce evidence_cards EXACTLY as they appear in the JSON source data. Do NOT write, generate, paraphrase, or invent any quotes, creator names, or video titles. Copy the values field-for-field.
+
+For each evidence_card in the source data:
 
 Evidence Card
-Creator: [name]
-Video: [title]
-Timestamp: @[MM:SS]
-Quote: "[verbatim]"
-Relevance: [one sentence]
+Creator: [copy creator field exactly]
+Video: [copy video field exactly]
+Timestamp: @[copy timestamp field exactly]
+Quote: "[copy quote field exactly — verbatim, no changes]"
+Relevance: [one sentence explaining why this quote is relevant]
+
+If evidence_cards is empty for a cluster, write: "No direct quotes available in this cluster."
+If a field is missing or null, omit that line entirely — do not substitute placeholder text.
 
 ### Related Themes
-List the titles of all evidence clusters in the report as a bullet list. These are the themes users can click to explore deeper.
+List the title of each cluster from the clusters array as a bullet. These are the evidence themes the user can explore.
 
 ─────────────────────────────────────────
 OPERATING MODES
@@ -289,7 +297,7 @@ export async function POST(req: NextRequest) {
     model: "gpt-4o-mini",
     messages,
     temperature: 0.1,
-    max_tokens: 700,
+    max_tokens: 900,
   });
 
   const answer = completion.choices[0]?.message?.content ?? "No response generated.";
