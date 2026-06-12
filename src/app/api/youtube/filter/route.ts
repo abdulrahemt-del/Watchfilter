@@ -216,6 +216,15 @@ type VideoInput = {
   description: string;
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Derive a whyItMatters sentence from native video data — used when GPT omits the field.
+function descriptionFallback(v: VideoInput): string {
+  const first = v.description?.trim().split(/\.\s+/)[0]?.trim();
+  if (first && first.length > 20 && first.length <= 160) return first;
+  return v.title.slice(0, 140);
+}
+
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
@@ -235,7 +244,8 @@ export async function POST(req: Request) {
       if (isObviouslyExcluded(v.title, v.channelTitle)) {
         preExcluded.push({
           videoId: v.videoId, score: 0, topicCategory: "excluded", topicScore: 0,
-          contentType: "Other", categories: [], explanation: "", whyItMatters: "",
+          contentType: "Other", categories: [], explanation: "",
+          whyItMatters: descriptionFallback(v),
           subScores: { businessRelevance: 0, educationalValue: 0, actionability: 0, informationDensity: 0 },
         });
       } else {
@@ -244,6 +254,9 @@ export async function POST(req: Request) {
     }
 
     if (!toScore.length) return NextResponse.json({ results: preExcluded });
+
+    // Build lookup so we can fall back to title/description if GPT omits whyItMatters.
+    const videoMap = new Map(toScore.map(v => [v.videoId, v]));
 
     const list = toScore
       .map((v, i) =>
@@ -275,11 +288,12 @@ export async function POST(req: Request) {
     const raw    = completion.choices[0].message.content ?? '{"results":[]}';
     const parsed = JSON.parse(raw) as { results?: AIScore[] };
 
-    // Guarantee whyItMatters is always populated for every video.
-    // The LLM occasionally omits it despite the instruction — fall back to explanation.
+    // Guarantee whyItMatters is always populated — GPT reliably omits it for excluded videos.
+    // Fall back: explanation → title/description derived sentence.
     const normalized = (parsed.results ?? []).map((r) => {
       if (!r.whyItMatters) {
-        r.whyItMatters = r.explanation ?? "";
+        const v = videoMap.get(r.videoId);
+        r.whyItMatters = r.explanation || (v ? descriptionFallback(v) : "");
       }
       return r;
     });
