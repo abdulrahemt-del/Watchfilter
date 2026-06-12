@@ -82,28 +82,47 @@ RESPONSE FORMAT — always follow this order
 2-3 sentences. What is this topic about and why does it matter? Use general knowledge here — this is the only section where you may do so. Keep it tight and factual. Do not repeat what the evidence says.
 
 ### Consensus Snapshot
-Build ONLY from: finding titles, evidence quotes, and cluster metrics in the JSON. Do NOT use general knowledge about the topic.
+Act as an executive research summary — not a restatement of finding titles.
 
+Build ONLY from: finding titles, evidence quotes, and cluster metrics in the JSON.
 Start with: "Based on the analyzed creators:"
-Then bullet the specific observations from the evidence.
+Generate 4–8 bullets when evidence allows. Include across findings:
+- Specific observations (what creators actually said or showed)
+- Cross-finding patterns (themes that appear in multiple clusters)
+- Notable absences (what the evidence lacks that one would expect — label clearly)
+- Implications visible in the data (label as "evidence suggests…" — not stated as fact)
 
 GOOD:
 Based on the analyzed creators:
-• Self-awareness was linked to selecting better partners and opportunities.
-• Adaptability appeared repeatedly in discussions of entrepreneurial success, particularly in response to feedback and market conditions.
+• Successful founders appear highly responsive to market feedback rather than rigidly attached to initial assumptions.
+• Customer problem-solving emerged as a stronger signal than branding or positioning.
+• The available evidence suggests founder-market fit may be developed through iteration rather than discovered immediately.
+• Creator discussions focused on understanding customer needs more than founder passion or vision.
+• Evidence currently emphasizes execution and responsiveness over innate founder traits.
 
 BAD:
-Founder market fit is the alignment between a founder's strengths and the market they are entering.
+• Adaptability matters
+• Customer problem-solving matters
 
-Do not expand creator statements into broader theories unless the evidence explicitly supports the expansion. If evidence is sparse, say so inline: "limited signals from 1-2 creators suggest…"
+If confidence is low, append after the bullets on its own line:
+Signal (Unverified) — [one sentence on the scope of the evidence base]
 
 ### Confidence
-Explain WHY confidence is at this level — not just the metrics.
+Write in this compact format:
 
-GOOD: Signal (Unverified) — This finding is supported by a single creator and lacks independent validation from additional creators.
+[Confidence label — e.g., Signal (Unverified), Low Confidence, Medium Confidence, High Confidence]
+
+Supported by:
+• [N] creators
+• [N] videos
+• [N] quotes
+
+[One sentence WHY — what drives the rating. Be specific, not generic.]
+
+GOOD: Signal (Unverified) — This finding comes from a single creator and lacks independent validation from additional sources.
 BAD: Creator count: 1. Video count: 0. Agreement level: Low.
 
-Use Signal (Unverified) for sparse clusters. For medium/high confidence, state what cross-creator patterns drove the rating.
+Keep this section under 5 lines. Never let it be longer than the evidence itself.
 
 ### Supporting Evidence
 STRICT RULE: Only render evidence cards that exist in the JSON evidence_cards array. Do NOT write, generate, paraphrase, or invent any creator names, video titles, timestamps, or quotes.
@@ -306,7 +325,7 @@ export async function POST(req: NextRequest) {
     model: "gpt-4o-mini",
     messages,
     temperature: 0.1,
-    max_tokens: 900,
+    max_tokens: 1200,
   });
 
   const answer = completion.choices[0]?.message?.content ?? "No response generated.";

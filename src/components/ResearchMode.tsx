@@ -629,61 +629,210 @@ function DebugPanel({ data }: { data: any }) {
   );
 }
 
+// ── Evidence card (compact + expandable) ─────────────────────────────────────
+
+type EvidenceCardData = {
+  creator: string;
+  video: string;
+  timestamp: string;
+  quote: string;
+  relevance: string;
+};
+
+function CompactEvidenceCard({ card }: { card: EvidenceCardData }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!card.creator && !card.quote) return null;
+  return (
+    <div className="rounded-lg p-3 space-y-2"
+      style={{ background: "rgba(56,189,248,0.04)", border: "1px solid rgba(56,189,248,0.18)" }}>
+      {card.quote && (
+        <blockquote className="text-sm text-slate-200 italic leading-relaxed border-l-2 pl-3"
+          style={{ borderColor: "rgba(56,189,248,0.4)" }}>
+          &ldquo;{card.quote}&rdquo;
+        </blockquote>
+      )}
+      {card.creator && (
+        <p className="text-[11px] font-mono font-black text-slate-400 uppercase tracking-wide">{card.creator}</p>
+      )}
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="text-[10px] font-mono text-slate-600 hover:text-slate-400 transition-colors">
+        {expanded ? "Hide Details ▲" : "Show Details ▼"}
+      </button>
+      {expanded && (
+        <div className="space-y-1 pt-1.5 border-t" style={{ borderColor: "#1e2d45" }}>
+          {card.video && (
+            <div className="flex gap-1.5 text-xs">
+              <span className="font-mono font-black text-slate-500 shrink-0">Video:</span>
+              <span className="font-mono text-slate-400">{card.video}</span>
+            </div>
+          )}
+          {card.timestamp && (
+            <div className="flex gap-1.5 text-xs">
+              <span className="font-mono font-black text-slate-500 shrink-0">Timestamp:</span>
+              <span className="font-mono text-slate-400">{card.timestamp}</span>
+            </div>
+          )}
+          {card.relevance && (
+            <div className="flex gap-1.5 text-xs">
+              <span className="font-mono font-black text-slate-500 shrink-0">Relevance:</span>
+              <span className="font-mono text-slate-400">{card.relevance}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EvidenceCardGroup({ cards }: { cards: EvidenceCardData[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? cards : cards.slice(0, 2);
+  const hiddenCount = cards.length - 2;
+  return (
+    <div className="space-y-2 my-1">
+      {visible.map((card, i) => <CompactEvidenceCard key={i} card={card} />)}
+      {!showAll && hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="text-[11px] font-mono text-slate-500 hover:text-[#38bdf8] transition-colors pl-1">
+          + Show {hiddenCount} more supporting {hiddenCount === 1 ? "quote" : "quotes"}
+        </button>
+      )}
+      {showAll && cards.length > 2 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(false)}
+          className="text-[11px] font-mono text-slate-500 hover:text-[#38bdf8] transition-colors pl-1">
+          Show less ▲
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
 function ChatMarkdown({ content }: { content: string }) {
-  const lines = content.split("\n");
-  const elements: React.ReactNode[] = [];
-  let key = 0;
+  type TextSeg = { type: "text"; lines: string[] };
+  type CardSeg = { type: "cards"; cards: EvidenceCardData[] };
+  type Seg = TextSeg | CardSeg;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.startsWith("### ")) {
-      elements.push(
-        <p key={key++} className="text-[11px] font-mono font-black text-[#38bdf8] uppercase tracking-widest mt-3 mb-1 first:mt-0">
-          {line.slice(4)}
-        </p>
-      );
-    } else if (line.startsWith("## ")) {
-      elements.push(
-        <p key={key++} className="text-xs font-mono font-black text-slate-300 uppercase tracking-wider mt-3 mb-1 first:mt-0">
-          {line.slice(3)}
-        </p>
-      );
-    } else if (/^[•\-\*] /.test(line)) {
-      elements.push(
-        <div key={key++} className="flex items-start gap-2">
-          <span className="text-[#38bdf8] shrink-0 mt-0.5 text-xs">•</span>
-          <span className="text-sm text-slate-200 leading-relaxed">{line.replace(/^[•\-\*] /, "")}</span>
-        </div>
-      );
-    } else if (line.startsWith("Evidence Card")) {
-      elements.push(
-        <div key={key++} className="rounded-lg px-3 py-2 mt-1 mb-1 space-y-0.5"
-          style={{ background: "rgba(56,189,248,0.06)", border: "1px solid rgba(56,189,248,0.2)" }}>
-          <p className="text-[10px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">Evidence Card</p>
-        </div>
-      );
-    } else if (/^(Creator|Video|Timestamp|Quote|Relevance):/.test(line)) {
-      const colon = line.indexOf(":");
-      const label = line.slice(0, colon);
-      const value = line.slice(colon + 1).trim();
-      elements.push(
-        <div key={key++} className="flex gap-1.5 text-xs -mt-1 pl-3" style={{ marginTop: label === "Creator" ? "4px" : "-4px" }}>
-          <span className="font-mono font-black text-slate-500 shrink-0">{label}:</span>
-          <span className={`font-mono ${label === "Quote" ? "text-slate-300 italic" : "text-slate-400"}`}>{value}</span>
-        </div>
-      );
-    } else if (line.trim() === "") {
-      elements.push(<div key={key++} className="h-1" />);
-    } else {
-      elements.push(
-        <p key={key++} className="text-sm text-slate-200 leading-relaxed">{line}</p>
-      );
+  const segments: Seg[] = [];
+  const lines = content.split("\n");
+  const CARD_FIELD = /^(Creator|Video|Timestamp|Quote|Relevance):/;
+
+  let textLines: string[] = [];
+  let cardGroup: EvidenceCardData[] = [];
+  let card: Partial<EvidenceCardData> | null = null;
+
+  const flushCard = () => {
+    if (card && (card.creator || card.quote)) {
+      cardGroup.push({
+        creator: card.creator ?? "",
+        video: card.video ?? "",
+        timestamp: card.timestamp ?? "",
+        quote: card.quote ?? "",
+        relevance: card.relevance ?? "",
+      });
     }
+    card = null;
+  };
+
+  const flushCardGroup = () => {
+    flushCard();
+    if (cardGroup.length > 0) {
+      segments.push({ type: "cards", cards: [...cardGroup] });
+      cardGroup = [];
+    }
+  };
+
+  const flushText = () => {
+    while (textLines.length > 0 && textLines[textLines.length - 1].trim() === "") textLines.pop();
+    if (textLines.length > 0) {
+      segments.push({ type: "text", lines: [...textLines] });
+      textLines = [];
+    }
+  };
+
+  for (const line of lines) {
+    if (line.startsWith("Evidence Card")) {
+      flushText();
+      flushCard();
+      card = {};
+      continue;
+    }
+
+    if (card !== null && CARD_FIELD.test(line)) {
+      const colon = line.indexOf(":");
+      const label = line.slice(0, colon).toLowerCase().trim();
+      let value = line.slice(colon + 1).trim();
+      if (label === "quote" && value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
+      switch (label) {
+        case "creator":   card.creator   = value; break;
+        case "video":     card.video     = value; break;
+        case "timestamp": card.timestamp = value; break;
+        case "quote":     card.quote     = value; break;
+        case "relevance": card.relevance = value; break;
+      }
+      continue;
+    }
+
+    if (card !== null && line.trim() === "") continue;
+
+    if (card !== null) flushCardGroup();
+
+    textLines.push(line);
   }
 
-  return <div className="space-y-0.5">{elements}</div>;
+  flushCardGroup();
+  flushText();
+
+  const renderText = (seg: TextSeg, si: number) => {
+    const elements: React.ReactNode[] = [];
+    let k = 0;
+    for (const line of seg.lines) {
+      if (line.startsWith("### ")) {
+        elements.push(
+          <p key={k++} className="text-[11px] font-mono font-black text-[#38bdf8] uppercase tracking-widest mt-3 mb-1 first:mt-0">
+            {line.slice(4)}
+          </p>
+        );
+      } else if (line.startsWith("## ")) {
+        elements.push(
+          <p key={k++} className="text-xs font-mono font-black text-slate-300 uppercase tracking-wider mt-3 mb-1 first:mt-0">
+            {line.slice(3)}
+          </p>
+        );
+      } else if (/^[•\-\*] /.test(line)) {
+        elements.push(
+          <div key={k++} className="flex items-start gap-2">
+            <span className="text-[#38bdf8] shrink-0 mt-0.5 text-xs">•</span>
+            <span className="text-sm text-slate-200 leading-relaxed">{line.replace(/^[•\-\*] /, "")}</span>
+          </div>
+        );
+      } else if (line.trim() === "") {
+        elements.push(<div key={k++} className="h-1" />);
+      } else {
+        elements.push(
+          <p key={k++} className="text-sm text-slate-200 leading-relaxed">{line}</p>
+        );
+      }
+    }
+    return <div key={si} className="space-y-0.5">{elements}</div>;
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {segments.map((seg, si) =>
+        seg.type === "cards"
+          ? <EvidenceCardGroup key={si} cards={seg.cards} />
+          : renderText(seg, si)
+      )}
+    </div>
+  );
 }
 
 // ── Research Chat ─────────────────────────────────────────────────────────────
