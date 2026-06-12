@@ -37,6 +37,21 @@ const THEME_COLORS = [
   { accent: "#e879f9", border: "rgba(232,121,249,0.28)", bg: "rgba(232,121,249,0.06)" },
 ];
 
+const CONFIDENCE_STYLE = {
+  "Very High": { color: "#6ee7b7", icon: "◆", border: "rgba(110,231,183,0.35)", bg: "rgba(110,231,183,0.1)"  },
+  High:        { color: "#10b981", icon: "●", border: "rgba(16,185,129,0.3)",   bg: "rgba(16,185,129,0.1)"  },
+  Medium:      { color: "#38bdf8", icon: "◐", border: "rgba(56,189,248,0.3)",   bg: "rgba(56,189,248,0.1)"  },
+  Low:         { color: "#fbbf24", icon: "◌", border: "rgba(251,191,36,0.25)",  bg: "rgba(251,191,36,0.08)" },
+};
+
+const CHAT_CATEGORIES = [
+  { label: "Understand", color: "#38bdf8", chips: ["What is the strongest finding?", "Explain the top finding simply.", "What surprised experts most?"] },
+  { label: "Verify",     color: "#10b981", chips: ["Show all supporting quotes.", "Which creators support this?", "Why is confidence rated this way?"] },
+  { label: "Challenge",  color: "#fbbf24", chips: ["Who disagrees?", "Show the weakest evidence.", "What assumptions are being made?"] },
+  { label: "Execute",    color: "#a78bfa", chips: ["Give me a 30-day action plan.", "Turn this into a checklist.", "What should I do first?"] },
+  { label: "Explore",    color: "#f97316", chips: ["Show startup examples.", "Find similar themes.", "What related topics appear?"] },
+];
+
 const SUGGESTED = [
   "fundraising",
   "founder market fit",
@@ -120,17 +135,16 @@ function IntelligenceSignalCard({ signal }: { signal: IntelligenceSignal }) {
 
 // ── Theme card ────────────────────────────────────────────────────────────────
 
-function ThemeCard({ theme, index, limited = false }: { theme: ResearchTheme; index: number; limited?: boolean }) {
+function ThemeCard({
+  theme, index, limited = false, isActive = false, onFocus,
+}: {
+  theme: ResearchTheme; index: number; limited?: boolean; isActive?: boolean; onFocus?: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [showConsensus, setShowConsensus] = useState(false);
   const color = THEME_COLORS[index % THEME_COLORS.length];
   const otherSources = theme.sources.filter(s => s !== theme.representativeQuote);
-
-  const confidenceColor =
-    theme.confidence >= 85 ? "#10b981"
-    : theme.confidence >= 70 ? "#38bdf8"
-    : theme.confidence >= 55 ? "#fbbf24"
-    : "#ef4444";
+  const confStyle = CONFIDENCE_STYLE[theme.confidenceLabel ?? "Low"] ?? CONFIDENCE_STYLE.Low;
 
   const hasConsensusData =
     theme.creatorConsensus.agree.length > 0 ||
@@ -138,43 +152,52 @@ function ThemeCard({ theme, index, limited = false }: { theme: ResearchTheme; in
     theme.creatorConsensus.disagree.length > 0;
 
   return (
-    <div className="rounded-2xl overflow-hidden"
-      style={{ border: `1px solid ${color.border}`, boxShadow: "0 4px 24px #00000025" }}>
+    <div className="rounded-2xl overflow-hidden transition-all"
+      style={{
+        border: isActive ? "1px solid rgba(56,189,248,0.6)" : `1px solid ${color.border}`,
+        boxShadow: isActive ? "0 0 0 1px rgba(56,189,248,0.2), 0 4px 24px #00000025" : "0 4px 24px #00000025",
+      }}>
 
       <div className="p-5 space-y-4"
         style={{ background: "linear-gradient(140deg,#0c1e30 0%,#0e2d4a 100%)" }}>
 
-        {/* Title row */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3 min-w-0">
-            <span className="text-xs font-mono font-black shrink-0 mt-1 px-1.5 py-0.5 rounded"
-              style={{ color: color.accent, background: color.bg, border: `1px solid ${color.border}` }}>
-              T{index + 1}
-            </span>
-            <div className="min-w-0 space-y-1.5">
+        {/* Title row + evidence bar */}
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0 cursor-pointer" onClick={onFocus}
+              role="button" tabIndex={0} onKeyDown={e => e.key === "Enter" && onFocus?.()}>
+              <span className="text-xs font-mono font-black shrink-0 mt-0.5 px-1.5 py-0.5 rounded"
+                style={{ color: color.accent, background: color.bg, border: `1px solid ${color.border}` }}>
+                #{index + 1}
+              </span>
               <h3 className="text-base font-black text-white leading-snug">{theme.title}</h3>
-              <div className="flex items-center gap-2 flex-wrap">
-                {limited ? (
-                  <span className="text-[10px] font-mono font-black uppercase tracking-widest text-amber-500/80">
-                    ◐ Weak Signal
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono font-black uppercase tracking-widest text-emerald-500">
-                    ● Key Theme
-                  </span>
-                )}
-                <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded"
-                  style={{ color: confidenceColor, background: `${confidenceColor}12`, border: `1px solid ${confidenceColor}28` }}>
-                  {theme.confidence}% · {theme.consensusStrength}
-                </span>
-              </div>
             </div>
+            {isActive && (
+              <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded shrink-0 mt-0.5 uppercase tracking-widest"
+                style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.3)" }}>
+                In focus
+              </span>
+            )}
           </div>
-          <div className="flex flex-col items-end gap-0.5 shrink-0 text-xs font-mono text-slate-500">
-            <span><span className="text-white font-black">{theme.creatorCount}</span> creators</span>
-            <span><span className="text-white font-black">{theme.videoCount}</span> videos</span>
-            <span><span className="text-white font-black">{theme.quoteCount}</span> quotes</span>
+
+          {/* Evidence bar */}
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4 text-xs font-mono">
+              <span><span className="text-white font-black">{theme.creatorCount}</span><span className="text-slate-600"> creators</span></span>
+              <span className="text-slate-700">·</span>
+              <span><span className="text-white font-black">{theme.videoCount}</span><span className="text-slate-600"> videos</span></span>
+              <span className="text-slate-700">·</span>
+              <span><span className="text-white font-black">{theme.quoteCount}</span><span className="text-slate-600"> quotes</span></span>
+            </div>
+            <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded uppercase tracking-wider shrink-0"
+              style={{ color: confStyle.color, background: confStyle.bg, border: `1px solid ${confStyle.border}` }}>
+              {confStyle.icon} {theme.confidenceLabel ?? "Low"} Confidence
+            </span>
           </div>
+
+          {theme.confidenceReasoning && (
+            <p className="text-[10px] font-mono text-slate-600 leading-relaxed">{theme.confidenceReasoning}</p>
+          )}
         </div>
 
         {/* Market signal — analyst verdict */}
@@ -227,12 +250,14 @@ function ThemeCard({ theme, index, limited = false }: { theme: ResearchTheme; in
           </div>
         )}
 
-        {/* Contrarians */}
-        {theme.contrarians.length > 0 && (
-          <div className="rounded-xl p-4 space-y-3"
-            style={{ background: "rgba(251,191,36,0.05)", border: "1px solid rgba(251,191,36,0.18)" }}>
-            <p className="text-[10px] font-mono font-black text-amber-500 uppercase tracking-widest">⚠ Contrarian View</p>
-            {theme.contrarians.map((c, i) => (
+        {/* Contrarians — always visible */}
+        <div className="rounded-xl p-4 space-y-3"
+          style={{ background: "rgba(251,191,36,0.05)", border: "1px solid rgba(251,191,36,0.18)" }}>
+          <p className="text-[10px] font-mono font-black text-amber-500 uppercase tracking-widest">⚠ Contrarian View</p>
+          {theme.contrarians.length === 0 ? (
+            <p className="text-xs font-mono text-slate-700">No significant creator disagreement found in current evidence pool.</p>
+          ) : (
+            theme.contrarians.map((c, i) => (
               <div key={i} className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-mono font-black text-amber-400">{c.creator}</p>
@@ -253,9 +278,9 @@ function ThemeCard({ theme, index, limited = false }: { theme: ResearchTheme; in
                   <p className="text-[10px] font-mono text-slate-600">{c.reason}</p>
                 )}
               </div>
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
 
         {/* Creator Consensus Map */}
         {hasConsensusData && (
@@ -535,6 +560,118 @@ function DebugPanel({ data }: { data: any }) {
   );
 }
 
+// ── Research Chat ─────────────────────────────────────────────────────────────
+
+type ChatMessage = { role: "user" | "assistant"; content: string };
+
+function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; activeFindingIndex: number | null }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const activeFinding = activeFindingIndex !== null ? (report.themes[activeFindingIndex] ?? null) : null;
+
+  async function sendMessage(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || chatLoading) return;
+    const userMsg: ChatMessage = { role: "user", content: trimmed };
+    const next = [...messages, userMsg];
+    setMessages(next);
+    setInput("");
+    setChatLoading(true);
+    try {
+      const res = await fetch("/api/research/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: trimmed, reportSnapshot: report, chatHistory: next, activeFindingIndex: activeFindingIndex ?? undefined }),
+      });
+      const data = await res.json() as { answer?: string; error?: string };
+      setMessages(prev => [...prev, { role: "assistant", content: data.answer ?? data.error ?? "Something went wrong." }]);
+    } catch {
+      setMessages(prev => [...prev, { role: "assistant", content: "Network error — please try again." }]);
+    } finally {
+      setChatLoading(false);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #1e2d45", background: "rgba(8,16,28,0.7)" }}>
+      {/* Header */}
+      <div className="px-5 py-3 space-y-1" style={{ borderBottom: "1px solid #1e2d45", background: "rgba(15,37,53,0.6)" }}>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Analyst</span>
+          <span className="text-[10px] font-mono text-slate-600">· evidence-grounded answers only</span>
+        </div>
+        {activeFinding
+          ? <p className="text-[10px] font-mono text-slate-500">Focused on: <span className="text-[#38bdf8]">{activeFinding.title}</span> <span className="text-slate-600">— click another finding to switch</span></p>
+          : <p className="text-[10px] font-mono text-slate-700">Click a finding title above to focus the analyst on it</p>
+        }
+      </div>
+
+      {/* Categorized prompt chips */}
+      {messages.length === 0 && (
+        <div className="px-5 py-4 space-y-3">
+          {CHAT_CATEGORIES.map(cat => (
+            <div key={cat.label} className="space-y-1.5">
+              <p className="text-[9px] font-mono font-black uppercase tracking-widest" style={{ color: cat.color }}>{cat.label}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {cat.chips.map(chip => (
+                  <button type="button" key={chip} onClick={() => void sendMessage(chip)}
+                    className="text-xs font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-400 hover:text-white"
+                    style={{ border: "1px solid #1e2d45", background: `${cat.color}06` }}>
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Chat thread */}
+      {messages.length > 0 && (
+        <div className="px-5 py-4 space-y-4 max-h-96 overflow-y-auto">
+          {messages.map((m, i) => (
+            <div key={i} className={`flex gap-3 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              {m.role === "assistant" && <span className="text-[10px] font-mono font-black text-[#38bdf8] shrink-0 mt-1">AI</span>}
+              <div className="max-w-[85%] rounded-xl px-4 py-2.5"
+                style={m.role === "user"
+                  ? { background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.25)" }
+                  : { background: "rgba(15,37,53,0.8)", border: "1px solid #1e2d45" }}>
+                <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{m.content}</p>
+              </div>
+              {m.role === "user" && <span className="text-[10px] font-mono font-black text-slate-600 shrink-0 mt-1">You</span>}
+            </div>
+          ))}
+          {chatLoading && (
+            <div className="flex gap-3 justify-start">
+              <span className="text-[10px] font-mono font-black text-[#38bdf8] shrink-0 mt-1">AI</span>
+              <div className="rounded-xl px-4 py-2.5" style={{ background: "rgba(15,37,53,0.8)", border: "1px solid #1e2d45" }}>
+                <p className="text-sm text-slate-600 font-mono animate-pulse">Searching evidence pool...</p>
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="px-5 py-3 flex gap-2" style={{ borderTop: "1px solid #1e2d45" }}>
+        <input type="text" value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(input); } }}
+          placeholder="Ask about the evidence..." disabled={chatLoading}
+          className="flex-1 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none font-mono"
+          style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
+        <button type="button" onClick={() => void sendMessage(input)} disabled={chatLoading || !input.trim()}
+          className="px-4 py-2 rounded-lg text-sm font-black text-[#0f2535] bg-[#38bdf8] hover:bg-[#7dd3fc] disabled:opacity-40 transition-colors shrink-0">
+          Ask
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ResearchMode() {
@@ -547,6 +684,7 @@ export function ResearchMode() {
   const [reindexing, setReindexing] = useState(false);
   const [reindexMsg, setReindexMsg] = useState<string | null>(null);
   const [debugMode, setDebugMode] = useState(false);
+  const [activeFindingIndex, setActiveFindingIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleReindexAll() {
@@ -571,6 +709,7 @@ export function ResearchMode() {
     setError(null);
     setReport(null);
     setDebugData(null);
+    setActiveFindingIndex(null);
     try {
       const res = await fetch("/api/research/search", {
         method: "POST",
@@ -715,14 +854,16 @@ export function ResearchMode() {
             </div>
           </div>
 
-          {/* Key Themes */}
+          {/* Key Findings */}
           {keyThemes.length > 0 && (
             <div className="space-y-3">
               <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">
-                Key Themes — {keyThemes.length} {keyThemes.length === 1 ? "theme" : "themes"}
+                Key Findings — {keyThemes.length} {keyThemes.length === 1 ? "finding" : "findings"}
               </p>
               {keyThemes.map((theme, i) => (
-                <ThemeCard key={i} theme={theme} index={i} />
+                <ThemeCard key={i} theme={theme} index={i}
+                  isActive={activeFindingIndex === i}
+                  onFocus={() => setActiveFindingIndex(i)} />
               ))}
             </div>
           )}
@@ -906,6 +1047,9 @@ export function ResearchMode() {
 
           {/* What the Evidence Suggests */}
           <SynthesisPanel synthesis={report.synthesis} />
+
+          {/* Research Analyst Chat */}
+          <ResearchChat report={report} activeFindingIndex={activeFindingIndex} />
 
           {/* Debug panel */}
           {debugData && <DebugPanel data={debugData} />}

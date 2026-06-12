@@ -60,6 +60,9 @@ export interface ResearchTheme {
   quoteCount: number;
   videoCount: number;
   confidence: number;
+  confidenceLabel: "Very High" | "High" | "Medium" | "Low";
+  confidenceReasoning: string;
+  rankScore: number;
   consensusStrength: string;
   creatorConsensus: CreatorConsensus;
   contrarians: Contrarian[];
@@ -171,6 +174,59 @@ function consensusStrength(agreeCount: number, disagreeCount: number, creatorCou
   if (agreeCount >= 3) return "Unanimous";
   if (agreeCount === 2) return "Strong Majority";
   return "Weak Signal";
+}
+
+// ── Evidence Density Score helpers ────────────────────────────────────────────
+
+const SIG_NUM: Record<string, number> = { "Very High": 4, "High": 3, "Medium": 2, "Low": 1 };
+
+function parseDateText(d: string | null): Date | null {
+  if (!d) return null;
+  if (/^\d{8}$/.test(d)) return new Date(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`);
+  const p = new Date(d);
+  return isNaN(p.getTime()) ? null : p;
+}
+
+function computeFreshnessWeight(uploadDate: string | null): number {
+  const date = parseDateText(uploadDate);
+  if (!date) return 0.75;
+  const ageDays = (Date.now() - date.getTime()) / 86_400_000;
+  return 0.5 + 0.5 * Math.exp(-ageDays / 365);
+}
+
+function computeEDS(
+  sources: ThemeSource[],
+  videoUploadMap: Map<string, string | null>,
+  quoteCount: number,
+  creatorCount: number,
+  videoCount: number,
+): number {
+  if (quoteCount === 0 || creatorCount === 0) return 0;
+  const avgSigNum = sources.reduce((sum, s) => sum + (SIG_NUM[s.signalStrength ?? ""] ?? 2), 0) / sources.length;
+  const avgAuthority = Math.log(avgSigNum + 1);
+  const freshnesses = sources.map(s => computeFreshnessWeight(videoUploadMap.get(s.videoId) ?? null));
+  const avgFreshness = freshnesses.reduce((a, b) => a + b, 0) / freshnesses.length;
+  return Math.log(quoteCount + 1) * avgAuthority * avgFreshness * Math.log(creatorCount + 1) * Math.log(videoCount + 1);
+}
+
+function computeConfidenceLabel(
+  creatorCount: number,
+  videoCount: number,
+  quoteCount: number,
+  hasContrarians: boolean,
+  isKey: boolean,
+): { label: ResearchTheme["confidenceLabel"]; reasoning: string } {
+  const evidenceLine =
+    `${creatorCount} creator${creatorCount !== 1 ? "s" : ""} across ${videoCount} video${videoCount !== 1 ? "s" : ""}, ` +
+    `${quoteCount} supporting quote${quoteCount !== 1 ? "s" : ""}.`;
+  if (!isKey) {
+    return { label: "Low", reasoning: "Emerging signal — insufficient independent creator agreement (need 3+ creators, 3+ quotes, 2+ videos)." };
+  }
+  const label: ResearchTheme["confidenceLabel"] =
+    creatorCount >= 10 && videoCount >= 8 && quoteCount >= 20 ? "Very High"
+    : creatorCount >= 6  && videoCount >= 5 && quoteCount >= 10 ? "High"
+    : "Medium";
+  return { label, reasoning: evidenceLine + (hasContrarians ? " Contrarian views exist — treat with nuance." : "") };
 }
 
 // Clean-text guardrail (spec) — collapse nested/duplicate quote marks and strip a wrapping pair
@@ -660,7 +716,7 @@ ${JSON.stringify({
 // ── Evidence block ─────────────────────────────────────────────────────────────
 
 function buildEvidenceBlock(rows: ResearchRow[], scores: number[]): string {
-  return rows.slice(0, 20).map((r, i) => [
+  return rows.slice(0, 25).map((r, i) => [
     `[E${i}] Relevance: ${(scores[i] * 100).toFixed(0)}%`,
     `Creator: ${r.channel_name ?? "Unknown"}`,
     `Video: ${r.video_title ?? "Unknown"}`,
@@ -842,6 +898,8 @@ export async function POST(req: Request) {
 
   // ── Build themes ───────────────────────────────────────────────────────────────
 
+  const videoUploadMap = new Map(topRows.map(r => [r.video_id, r.upload_date]));
+
   const allThemes: ResearchTheme[] = (raw.themes ?? []).map(t => {
     const sources = (t.sourceRefs ?? []).map(enrichRef);
     const repIdx = typeof t.representativeRefIdx === "number"
@@ -850,8 +908,13 @@ export async function POST(req: Request) {
     const representativeQuote = sources[repIdx] ?? sources[0];
     const uniqueCreators = [...new Set(sources.map(s => s.creator))];
     const uniqueVideos = [...new Set(sources.map(s => s.videoId))];
-    const isKeyTheme = uniqueCreators.length >= 2 || sources.length >= 3;
+    const isKeyTheme = uniqueCreators.length >= 3 && sources.length >= 3 && uniqueVideos.length >= 2;
     const confidence = calcConfidence(uniqueCreators.length, sources.length);
+    const hasContrarians = (t.contrarians ?? []).length > 0;
+    const { label: confidenceLabel, reasoning: confidenceReasoning } = computeConfidenceLabel(
+      uniqueCreators.length, uniqueVideos.length, sources.length, hasContrarians, isKeyTheme
+    );
+    const rankScore = computeEDS(sources, videoUploadMap, sources.length, uniqueCreators.length, uniqueVideos.length);
 
     const rawConsensus = t.creatorConsensus ?? { agree: [], neutral: [], disagree: [] };
     const creatorConsensus: CreatorConsensus = {
@@ -885,6 +948,9 @@ export async function POST(req: Request) {
       quoteCount: sources.length,
       videoCount: uniqueVideos.length,
       confidence,
+      confidenceLabel,
+      confidenceReasoning,
+      rankScore,
       consensusStrength: consensusStrength(creatorConsensus.agree.length, creatorConsensus.disagree.length, uniqueCreators.length),
       creatorConsensus,
       contrarians: (t.contrarians ?? []).map(enrichContrarian),
@@ -895,7 +961,7 @@ export async function POST(req: Request) {
 
   const keyThemes = allThemes
     .filter(t => t.isKeyTheme)
-    .sort((a, b) => b.creatorCount - a.creatorCount);
+    .sort((a, b) => b.rankScore - a.rankScore);
 
   const limitedThemes = allThemes
     .filter(t => !t.isKeyTheme)
