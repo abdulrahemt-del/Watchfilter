@@ -398,22 +398,22 @@ function RelatedSignalsPanel({ signals }: { signals: RelatedSignal[] }) {
     <div className="rounded-2xl p-5 space-y-4"
       style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(148,163,184,0.1)" }}>
       <div className="space-y-0.5">
-        <p className="text-xs font-mono font-black text-slate-600 uppercase tracking-widest">Related Signals</p>
-        <p className="text-xs font-mono text-slate-700">Adjacent observations — not central to your query</p>
+        <p className="text-xs font-mono font-black text-slate-400 uppercase tracking-widest">Related Signals</p>
+        <p className="text-xs font-mono text-slate-500">Adjacent observations — not central to your query</p>
       </div>
       <div className="space-y-0">
         {signals.map((sig, i) => (
           <div key={i}>
             {i > 0 && <div className="border-t my-4" style={{ borderColor: "#1e2d45" }} />}
             <div className="space-y-1.5">
-              <p className="text-sm font-black text-slate-500">{sig.title}</p>
-              <p className="text-sm text-slate-600 leading-relaxed">{sig.description}</p>
+              <p className="text-sm font-black text-white">{sig.title}</p>
+              <p className="text-sm text-slate-300 leading-relaxed">{sig.description}</p>
               {sig.sources[0]?.quote && (
-                <blockquote className="border-l-2 pl-3 text-xs text-slate-700 italic"
+                <blockquote className="border-l-2 pl-3 text-xs text-slate-300 italic"
                   style={{ borderColor: "#2d3f52" }}>
                   &ldquo;{sig.sources[0].quote}&rdquo;
                   {sig.sources[0].creator && (
-                    <span className="not-italic"> — {sig.sources[0].creator}</span>
+                    <span className="not-italic text-slate-400"> — {sig.sources[0].creator}</span>
                   )}
                 </blockquote>
               )}
