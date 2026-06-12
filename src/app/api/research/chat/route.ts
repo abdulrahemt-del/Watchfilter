@@ -83,7 +83,7 @@ Summarize the strongest patterns in the evidence in direct prose. Even low-confi
 State: creator count, video count, quote count, agreement level, and any limitations. Use the language tier appropriate for the confidence level.
 
 ### Supporting Evidence
-Present evidence cards for key claims:
+Present evidence cards for key claims (one per creator, max 3):
 
 Evidence Card
 Creator: [name]
@@ -91,6 +91,9 @@ Video: [title]
 Timestamp: @[MM:SS]
 Quote: "[verbatim]"
 Relevance: [one sentence]
+
+### Related Themes
+List the titles of all evidence clusters in the report as a bullet list. These are the themes users can click to explore deeper.
 
 ─────────────────────────────────────────
 OPERATING MODES

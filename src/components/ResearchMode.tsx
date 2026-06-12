@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import type {
   ResearchReport,
   ResearchTheme,
@@ -640,19 +640,19 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
   const bottomRef = useRef<HTMLDivElement>(null);
   const activeFinding = activeFindingIndex !== null ? (report.themes[activeFindingIndex] ?? null) : null;
 
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, hideUserBubble = false) {
     const trimmed = text.trim();
     if (!trimmed || chatLoading) return;
     const userMsg: ChatMessage = { role: "user", content: trimmed };
-    const next = [...messages, userMsg];
-    setMessages(next);
+    const next = hideUserBubble ? messages : [...messages, userMsg];
+    if (!hideUserBubble) setMessages(next);
     setInput("");
     setChatLoading(true);
     try {
       const res = await fetch("/api/research/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmed, reportSnapshot: report, chatHistory: next, activeFindingIndex: activeFindingIndex ?? undefined }),
+        body: JSON.stringify({ query: trimmed, reportSnapshot: report, chatHistory: [...next, userMsg], activeFindingIndex: activeFindingIndex ?? undefined }),
       });
       const data = await res.json() as { answer?: string; error?: string };
       setMessages(prev => [...prev, { role: "assistant", content: data.answer ?? data.error ?? "Something went wrong." }]);
@@ -663,6 +663,10 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
     }
   }
+
+  // Auto-fire opening analysis when component mounts with a fresh report
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void sendMessage(report.topic, true); }, []);
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #1e2d45", background: "rgba(8,16,28,0.7)" }}>
@@ -678,29 +682,8 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
         }
       </div>
 
-      {/* Categorized prompt chips */}
-      {messages.length === 0 && (
-        <div className="px-5 py-4 space-y-3">
-          {CHAT_CATEGORIES.map(cat => (
-            <div key={cat.label} className="space-y-1.5">
-              <p className="text-[9px] font-mono font-black uppercase tracking-widest" style={{ color: cat.color }}>{cat.label}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {cat.chips.map(chip => (
-                  <button type="button" key={chip} onClick={() => void sendMessage(chip)}
-                    className="text-xs font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-400 hover:text-white"
-                    style={{ border: "1px solid #1e2d45", background: `${cat.color}06` }}>
-                    {chip}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Chat thread */}
-      {messages.length > 0 && (
-        <div className="px-5 py-4 space-y-4 max-h-96 overflow-y-auto">
+      <div className="px-5 py-4 space-y-4 max-h-[600px] overflow-y-auto">
           {messages.map((m, i) => (
             <div key={i} className={`flex gap-3 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               {m.role === "assistant" && <span className="text-[10px] font-mono font-black text-[#38bdf8] shrink-0 mt-1">AI</span>}
@@ -723,7 +706,6 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
           )}
           <div ref={bottomRef} />
         </div>
-      )}
 
       {/* Input */}
       <div className="px-5 py-3 flex gap-2" style={{ borderTop: "1px solid #1e2d45" }}>
