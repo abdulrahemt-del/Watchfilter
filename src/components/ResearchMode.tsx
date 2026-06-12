@@ -977,12 +977,10 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
           {keyThemes.length > 0 && (
             <div className="space-y-3">
               <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">
-                Evidence Themes — {keyThemes.length} {keyThemes.length === 1 ? "theme" : "themes"} · click a title to focus the analyst
+                Evidence Themes — {keyThemes.length} {keyThemes.length === 1 ? "theme" : "themes"}
               </p>
               {keyThemes.map((theme, i) => (
-                <ThemeCard key={i} theme={theme} index={i}
-                  isActive={activeFindingIndex === i}
-                  onFocus={() => setActiveFindingIndex(i)} />
+                <ThemeCard key={i} theme={theme} index={i} />
               ))}
             </div>
           )}
@@ -1163,9 +1161,6 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
 
           {/* Related Signals */}
           <RelatedSignalsPanel signals={report.relatedSignals} />
-
-          {/* Research Analyst Chat */}
-          <ResearchChat report={report} activeFindingIndex={activeFindingIndex} />
 
           {/* Debug panel */}
           {debugData && <DebugPanel data={debugData} />}
