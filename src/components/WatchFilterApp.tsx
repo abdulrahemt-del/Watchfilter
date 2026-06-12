@@ -1331,7 +1331,7 @@ export function WatchFilterApp() {
         {/* ── Trends ── */}
         {activeNav === "trends" && <MarketIntelligencePulse onNavigate={setActiveNav} onAnalyze={(ytUrl) => void analyzeFromUrl(ytUrl)} />}
 
-        {activeNav === "research" && <ResearchMode />}
+        {activeNav === "research" && <ResearchMode onBack={() => setActiveNav("dashboard")} />}
 
         {/* ── Cross-Channel Consensus ── */}
         {activeNav === "consensus-page" && <CrossChannelConsensusView />}

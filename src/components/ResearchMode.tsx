@@ -674,7 +674,7 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ResearchMode() {
+export function ResearchMode({ onBack }: { onBack?: () => void }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ResearchReport | null>(null);
@@ -740,6 +740,12 @@ export function ResearchMode() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
+          {onBack && (
+            <button type="button" onClick={onBack}
+              className="flex items-center gap-1.5 text-xs font-mono text-slate-500 hover:text-[#38bdf8] transition-colors mb-1">
+              ← Back
+            </button>
+          )}
           <p className="text-base font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Mode</p>
           <p className="text-sm text-slate-400 font-mono">
             What are creators saying about this topic?
