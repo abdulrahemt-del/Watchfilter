@@ -78,6 +78,9 @@ Each cluster has: confidence, metrics (creator_count, video_count, quote_count),
 RESPONSE FORMAT — always follow this order
 ─────────────────────────────────────────
 
+### General Context
+2-3 sentences. What is this topic about and why does it matter? Use general knowledge here — this is the only section where you may do so. Keep it tight and factual. Do not repeat what the evidence says.
+
 ### Consensus Snapshot
 Build ONLY from: finding titles, evidence quotes, and cluster metrics in the JSON. Do NOT use general knowledge about the topic.
 
