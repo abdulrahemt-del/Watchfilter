@@ -186,7 +186,6 @@ function buildCluster(t: ResearchTheme, clusterId: string) {
       video: s.videoTitle,
       timestamp: s.timestampStr ?? "?",
       quote: s.quote,
-      relevance_score: s.similarity ?? null,
     })),
     contrarian_cards: (t.contrarians ?? []).map(c => ({
       creator: c.creator,
