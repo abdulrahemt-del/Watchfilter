@@ -763,6 +763,7 @@ function buildEvidenceBlock(rows: ResearchRow[], scores: number[]): string {
 // ── Route ──────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
+  try {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -1203,4 +1204,9 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json(report);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[research/search] unhandled error:", msg, err);
+    return NextResponse.json({ error: `Search failed: ${msg}` }, { status: 500 });
+  }
 }

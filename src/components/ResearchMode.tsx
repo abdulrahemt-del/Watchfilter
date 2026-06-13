@@ -713,58 +713,231 @@ function EvidenceCardGroup({ cards }: { cards: EvidenceCardData[] }) {
   );
 }
 
+// ── Inline text renderer ──────────────────────────────────────────────────────
+
+function InlineText({ text }: { text: string }) {
+  const parts: React.ReactNode[] = [];
+  const regex = /(\*\*[^*\n]+?\*\*|\*[^*\n]+?\*|`[^`\n]+`)/g;
+  let last = 0;
+  let i = 0;
+  let m = regex.exec(text);
+  while (m !== null) {
+    if (m.index > last) parts.push(<span key={i++}>{text.slice(last, m.index)}</span>);
+    const tok = m[0];
+    if (tok.startsWith("**"))
+      parts.push(<strong key={i++} className="text-white font-bold">{tok.slice(2, -2)}</strong>);
+    else if (tok.startsWith("*"))
+      parts.push(<em key={i++} className="italic text-slate-200">{tok.slice(1, -1)}</em>);
+    else
+      parts.push(<code key={i++} className="text-[#38bdf8] text-[0.85em] font-mono bg-[#38bdf8]/10 px-1 rounded">{tok.slice(1, -1)}</code>);
+    last = m.index + tok.length;
+    m = regex.exec(text);
+  }
+  if (last < text.length) parts.push(<span key={i++}>{text.slice(last)}</span>);
+  return <>{parts}</>;
+}
+
+// ── Markdown table ────────────────────────────────────────────────────────────
+
+function TableBlock({ rows }: { rows: string[][] }) {
+  if (rows.length < 2) return null;
+  const headers = rows[0];
+  const body = rows.slice(2);
+  return (
+    <div className="overflow-x-auto my-2 rounded-lg" style={{ border: "1px solid #1e2d45" }}>
+      <table className="w-full text-xs font-mono border-collapse">
+        <thead>
+          <tr style={{ borderBottom: "1px solid #1e2d45", background: "rgba(56,189,248,0.06)" }}>
+            {headers.map((h, ci) => (
+              <th key={ci} className="text-left py-2 px-3 text-[#38bdf8] font-black uppercase tracking-wide text-[10px]">
+                {h.trim()}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, ri) => (
+            <tr key={ri} style={{ borderBottom: ri < body.length - 1 ? "1px solid #0e1a28" : "none" }}>
+              {row.map((cell, ci) => (
+                <td key={ci} className="py-1.5 px-3 text-slate-400 align-top leading-relaxed">{cell.trim()}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Blockquote block (Verification Source) ────────────────────────────────────
+
+function BlockquoteBlock({ lines }: { lines: string[] }) {
+  return (
+    <div className="my-1 pl-3 border-l-2 space-y-1" style={{ borderColor: "rgba(56,189,248,0.4)" }}>
+      {lines.map((line, i) => {
+        const isBullet = /^\*\s/.test(line);
+        const text = isBullet ? line.replace(/^\*\s/, "") : line;
+        return (
+          <div key={i} className="flex items-start gap-1.5">
+            {isBullet && <span className="text-[#38bdf8] shrink-0 text-xs mt-0.5">•</span>}
+            <p className="text-sm text-slate-300 leading-relaxed font-mono">
+              <InlineText text={text} />
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Sequence block ────────────────────────────────────────────────────────────
+
+type SequenceStep = { subtitle: string; title: string; body: string };
+
+function SequenceBlock({ steps }: { steps: SequenceStep[] }) {
+  return (
+    <div className="my-2 space-y-2">
+      {steps.map((step, i) => (
+        <div key={i} className="rounded-lg p-3 space-y-1"
+          style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)" }}>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono font-black text-purple-400 uppercase tracking-widest">{step.subtitle}</span>
+            <span className="text-[10px] font-mono text-slate-600">·</span>
+            <span className="text-xs font-mono font-black text-white">{step.title}</span>
+          </div>
+          {step.body && (
+            <p className="text-sm text-slate-300 leading-relaxed"><InlineText text={step.body} /></p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Elicitations block ────────────────────────────────────────────────────────
+
+type ElicitationItem = { label: string; query: string };
+
+function ElicitationsBlock({
+  message, items, onQuery,
+}: { message: string; items: ElicitationItem[]; onQuery?: (q: string) => void }) {
+  return (
+    <div className="my-2 rounded-xl p-4 space-y-3"
+      style={{ background: "rgba(56,189,248,0.05)", border: "1px solid rgba(56,189,248,0.2)" }}>
+      {message && (
+        <p className="text-[10px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">{message}</p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {items.map((item, i) => (
+          <button key={i} type="button" onClick={() => onQuery?.(item.query)}
+            className="text-xs font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-white"
+            style={{ border: "1px solid rgba(56,189,248,0.3)", background: "rgba(56,189,248,0.08)" }}>
+            {item.label} →
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
-function ChatMarkdown({ content }: { content: string }) {
-  type TextSeg = { type: "text"; lines: string[] };
-  type CardSeg = { type: "cards"; cards: EvidenceCardData[] };
-  type Seg = TextSeg | CardSeg;
+function ChatMarkdown({ content, onQuery }: { content: string; onQuery?: (q: string) => void }) {
+  type TextSeg       = { type: "text"; lines: string[] };
+  type CardSeg       = { type: "cards"; cards: EvidenceCardData[] };
+  type TableSeg      = { type: "table"; rows: string[][] };
+  type BlockquoteSeg = { type: "blockquote"; lines: string[] };
+  type SequenceSeg   = { type: "sequence"; steps: SequenceStep[] };
+  type ElicitSeg     = { type: "elicitations"; message: string; items: ElicitationItem[] };
+  type Seg = TextSeg | CardSeg | TableSeg | BlockquoteSeg | SequenceSeg | ElicitSeg;
 
   const segments: Seg[] = [];
-  const lines = content.split("\n");
+  const rawLines = content.split("\n");
   const CARD_FIELD = /^(Creator|Video|Timestamp|Quote|Relevance):/;
 
   let textLines: string[] = [];
   let cardGroup: EvidenceCardData[] = [];
   let card: Partial<EvidenceCardData> | null = null;
+  let tableRows: string[][] = [];
+  let bqLines: string[] = [];
+  let xmlBuffer: string[] = [];
+  let inXml: "sequence" | "elicitations" | null = null;
 
   const flushCard = () => {
     if (card && (card.creator || card.quote)) {
-      cardGroup.push({
-        creator: card.creator ?? "",
-        video: card.video ?? "",
-        timestamp: card.timestamp ?? "",
-        quote: card.quote ?? "",
-        relevance: card.relevance ?? "",
-      });
+      cardGroup.push({ creator: card.creator ?? "", video: card.video ?? "", timestamp: card.timestamp ?? "", quote: card.quote ?? "", relevance: card.relevance ?? "" });
     }
     card = null;
   };
-
   const flushCardGroup = () => {
     flushCard();
-    if (cardGroup.length > 0) {
-      segments.push({ type: "cards", cards: [...cardGroup] });
-      cardGroup = [];
-    }
+    if (cardGroup.length > 0) { segments.push({ type: "cards", cards: [...cardGroup] }); cardGroup = []; }
   };
-
   const flushText = () => {
     while (textLines.length > 0 && textLines[textLines.length - 1].trim() === "") textLines.pop();
-    if (textLines.length > 0) {
-      segments.push({ type: "text", lines: [...textLines] });
-      textLines = [];
-    }
+    if (textLines.length > 0) { segments.push({ type: "text", lines: [...textLines] }); textLines = []; }
+  };
+  const flushTable = () => {
+    if (tableRows.length > 0) { segments.push({ type: "table", rows: [...tableRows] }); tableRows = []; }
+  };
+  const flushBlockquote = () => {
+    if (bqLines.length > 0) { segments.push({ type: "blockquote", lines: [...bqLines] }); bqLines = []; }
   };
 
-  for (const line of lines) {
-    if (line.startsWith("Evidence Card")) {
-      flushText();
-      flushCard();
-      card = {};
+  const parseSequence = (xmlStr: string): SequenceStep[] => {
+    const steps: SequenceStep[] = [];
+    const rx = /<Step\s+subtitle="([^"]*?)"\s+title="([^"]*?)"[^>]*>([\s\S]*?)<\/Step>/g;
+    let sm = rx.exec(xmlStr);
+    while (sm !== null) {
+      steps.push({ subtitle: sm[1], title: sm[2], body: sm[3].trim() });
+      sm = rx.exec(xmlStr);
+    }
+    return steps;
+  };
+
+  const parseElicitations = (xmlStr: string): { message: string; items: ElicitationItem[] } => {
+    const msgMatch = /message="([^"]*?)"/.exec(xmlStr);
+    const message = msgMatch ? msgMatch[1] : "";
+    const items: ElicitationItem[] = [];
+    const rx = /<Elicitation\s+label="([^"]*?)"\s+query="([^"]*?)"\s*\/>/g;
+    let em = rx.exec(xmlStr);
+    while (em !== null) {
+      items.push({ label: em[1], query: em[2] });
+      em = rx.exec(xmlStr);
+    }
+    return { message, items };
+  };
+
+  for (const line of rawLines) {
+    const trimmed = line.trim();
+
+    if (inXml) {
+      xmlBuffer.push(line);
+      if (inXml === "sequence" && trimmed === "</Sequence>") {
+        const steps = parseSequence(xmlBuffer.join("\n"));
+        if (steps.length > 0) segments.push({ type: "sequence", steps });
+        xmlBuffer = []; inXml = null;
+      } else if (inXml === "elicitations" && trimmed === "</ElicitationsGroup>") {
+        const { message, items } = parseElicitations(xmlBuffer.join("\n"));
+        if (items.length > 0) segments.push({ type: "elicitations", message, items });
+        xmlBuffer = []; inXml = null;
+      }
       continue;
     }
 
+    if (trimmed.startsWith("<Sequence>")) {
+      flushCardGroup(); flushText(); flushTable(); flushBlockquote();
+      inXml = "sequence"; xmlBuffer = [line]; continue;
+    }
+    if (trimmed.startsWith("<ElicitationsGroup")) {
+      flushCardGroup(); flushText(); flushTable(); flushBlockquote();
+      inXml = "elicitations"; xmlBuffer = [line]; continue;
+    }
+
+    if (line.startsWith("Evidence Card")) {
+      flushText(); flushTable(); flushBlockquote(); flushCard();
+      card = {}; continue;
+    }
     if (card !== null && CARD_FIELD.test(line)) {
       const colon = line.indexOf(":");
       const label = line.slice(0, colon).toLowerCase().trim();
@@ -779,45 +952,76 @@ function ChatMarkdown({ content }: { content: string }) {
       }
       continue;
     }
-
-    if (card !== null && line.trim() === "") continue;
-
+    if (card !== null && trimmed === "") continue;
     if (card !== null) flushCardGroup();
+
+    if (line.startsWith("> ") || trimmed === ">") {
+      flushText(); flushTable();
+      bqLines.push(line.startsWith("> ") ? line.slice(2) : "");
+      continue;
+    }
+    if (bqLines.length > 0 && !line.startsWith(">")) flushBlockquote();
+
+    if (line.startsWith("|")) {
+      flushText(); flushBlockquote();
+      tableRows.push(line.split("|").slice(1, -1));
+      continue;
+    }
+    if (tableRows.length > 0 && !line.startsWith("|")) flushTable();
 
     textLines.push(line);
   }
 
   flushCardGroup();
   flushText();
+  flushTable();
+  flushBlockquote();
 
   const renderText = (seg: TextSeg, si: number) => {
     const elements: React.ReactNode[] = [];
     let k = 0;
     for (const line of seg.lines) {
-      if (line.startsWith("### ")) {
+      if (line.startsWith("# ")) {
+        elements.push(
+          <p key={k++} className="text-sm font-mono font-black text-white mt-2 mb-0.5 first:mt-0">
+            <InlineText text={line.slice(2)} />
+          </p>
+        );
+      } else if (line.startsWith("### ")) {
         elements.push(
           <p key={k++} className="text-[11px] font-mono font-black text-[#38bdf8] uppercase tracking-widest mt-3 mb-1 first:mt-0">
-            {line.slice(4)}
+            <InlineText text={line.slice(4)} />
           </p>
         );
       } else if (line.startsWith("## ")) {
         elements.push(
           <p key={k++} className="text-xs font-mono font-black text-slate-300 uppercase tracking-wider mt-3 mb-1 first:mt-0">
-            {line.slice(3)}
+            <InlineText text={line.slice(3)} />
           </p>
         );
-      } else if (/^[•\-\*] /.test(line)) {
+      } else if (/^\*\s/.test(line) || /^[•\-]\s/.test(line)) {
+        const text = line.replace(/^[\*•\-]\s/, "");
         elements.push(
           <div key={k++} className="flex items-start gap-2">
             <span className="text-[#38bdf8] shrink-0 mt-0.5 text-xs">•</span>
-            <span className="text-sm text-slate-200 leading-relaxed">{line.replace(/^[•\-\*] /, "")}</span>
+            <span className="text-sm text-slate-200 leading-relaxed"><InlineText text={text} /></span>
+          </div>
+        );
+      } else if (/^\d+\.\s/.test(line)) {
+        const numMatch = line.match(/^(\d+)\.\s/);
+        const num = numMatch ? numMatch[1] : "1";
+        const text = line.replace(/^\d+\.\s/, "");
+        elements.push(
+          <div key={k++} className="flex items-start gap-2">
+            <span className="text-[#38bdf8] shrink-0 mt-0.5 text-xs font-mono font-black">{num}.</span>
+            <span className="text-sm text-slate-200 leading-relaxed"><InlineText text={text} /></span>
           </div>
         );
       } else if (line.trim() === "") {
         elements.push(<div key={k++} className="h-1" />);
       } else {
         elements.push(
-          <p key={k++} className="text-sm text-slate-200 leading-relaxed">{line}</p>
+          <p key={k++} className="text-sm text-slate-200 leading-relaxed"><InlineText text={line} /></p>
         );
       }
     }
@@ -826,11 +1030,16 @@ function ChatMarkdown({ content }: { content: string }) {
 
   return (
     <div className="space-y-1.5">
-      {segments.map((seg, si) =>
-        seg.type === "cards"
-          ? <EvidenceCardGroup key={si} cards={seg.cards} />
-          : renderText(seg, si)
-      )}
+      {segments.map((seg, si) => {
+        switch (seg.type) {
+          case "cards":        return <EvidenceCardGroup key={si} cards={seg.cards} />;
+          case "table":        return <TableBlock key={si} rows={seg.rows} />;
+          case "blockquote":   return <BlockquoteBlock key={si} lines={seg.lines} />;
+          case "sequence":     return <SequenceBlock key={si} steps={seg.steps} />;
+          case "elicitations": return <ElicitationsBlock key={si} message={seg.message} items={seg.items} onQuery={onQuery} />;
+          default:             return renderText(seg as TextSeg, si);
+        }
+      })}
     </div>
   );
 }
@@ -877,15 +1086,13 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #1e2d45", background: "rgba(8,16,28,0.7)" }}>
       {/* Header */}
-      <div className="px-5 py-3 space-y-1" style={{ borderBottom: "1px solid #1e2d45", background: "rgba(15,37,53,0.6)" }}>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Analyst</span>
-          <span className="text-[10px] font-mono text-slate-600">· evidence-grounded answers only</span>
-        </div>
-        {activeFinding
-          ? <p className="text-[10px] font-mono text-slate-500">Focused on: <span className="text-[#38bdf8]">{activeFinding.title}</span> <span className="text-slate-600">— click another finding to switch</span></p>
-          : <p className="text-[10px] font-mono text-slate-700">Click a finding title above to focus the analyst on it</p>
-        }
+      <div className="px-5 py-2.5 flex items-center justify-between" style={{ borderBottom: "1px solid #1a2d42" }}>
+        <span className="text-[10px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Assistant</span>
+        {activeFinding && (
+          <span className="text-[10px] font-mono text-slate-500 truncate max-w-[60%] text-right">
+            {activeFinding.title}
+          </span>
+        )}
       </div>
 
       {/* Chat thread */}
@@ -898,7 +1105,7 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
                   ? { background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.25)" }
                   : { background: "rgba(15,37,53,0.8)", border: "1px solid #1e2d45" }}>
                 {m.role === "assistant"
-                  ? <ChatMarkdown content={m.content} />
+                  ? <ChatMarkdown content={m.content} onQuery={(q) => void sendMessage(q)} />
                   : <p className="text-sm text-slate-200 leading-relaxed">{m.content}</p>}
               </div>
               {m.role === "user" && <span className="text-[10px] font-mono font-black text-slate-600 shrink-0 mt-1">You</span>}
@@ -915,17 +1122,65 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
           <div ref={bottomRef} />
         </div>
 
-      {/* Input */}
-      <div className="px-5 py-3 flex gap-2" style={{ borderTop: "1px solid #1e2d45" }}>
-        <input type="text" value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(input); } }}
-          placeholder="Ask about the evidence..." disabled={chatLoading}
-          className="flex-1 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none font-mono"
-          style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
-        <button type="button" onClick={() => void sendMessage(input)} disabled={chatLoading || !input.trim()}
-          className="px-4 py-2 rounded-lg text-sm font-black text-[#0f2535] bg-[#38bdf8] hover:bg-[#7dd3fc] disabled:opacity-40 transition-colors shrink-0">
-          Ask
-        </button>
+      {/* Input — pill bar */}
+      <div className="px-4 pb-4 pt-3">
+        <div className="flex items-center gap-2 rounded-full px-3 py-2"
+          style={{ background: "rgba(10,20,35,0.7)", border: "1px solid #2a3f58" }}>
+
+          {/* + new chat */}
+          <button
+            type="button"
+            onClick={() => setMessages([])}
+            title="New conversation"
+            className="w-7 h-7 flex items-center justify-center rounded-full shrink-0 text-slate-500 hover:text-slate-300 hover:bg-white/[0.06] transition-all text-base font-light">
+            +
+          </button>
+
+          {/* Text input */}
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(input); } }}
+            placeholder="Ask anything"
+            disabled={chatLoading}
+            className="flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none min-w-0"
+          />
+
+          {/* Mic icon — decorative */}
+          <button type="button" disabled
+            className="shrink-0 text-slate-600 cursor-default">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="2" width="6" height="11" rx="3"/>
+              <path d="M5 10a7 7 0 0 0 14 0"/>
+              <line x1="12" y1="19" x2="12" y2="22"/>
+              <line x1="9" y1="22" x2="15" y2="22"/>
+            </svg>
+          </button>
+
+          {/* Send button */}
+          <button
+            type="button"
+            onClick={() => void sendMessage(input)}
+            disabled={chatLoading || !input.trim()}
+            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all"
+            style={{
+              background: input.trim() && !chatLoading ? "#ffffff" : "rgba(255,255,255,0.1)",
+            }}>
+            {chatLoading ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                stroke={input.trim() ? "#0f1a26" : "#64748b"} strokeWidth="2.5" strokeLinecap="round"
+                className="animate-spin">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                stroke={input.trim() ? "#0f1a26" : "#64748b"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
