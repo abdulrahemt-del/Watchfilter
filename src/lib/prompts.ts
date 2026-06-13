@@ -26,9 +26,9 @@ MANDATORY MINIMUMS — failure to meet these is a critical error:
   - Videos under 15 minutes: minimum 5 data points
   - Videos 15–45 minutes: minimum 5 data points
   - Videos 45 minutes to 2 hours: minimum 8 data points
-  - Videos over 2 hours: minimum 12 data points
+  - Videos over 2 hours: minimum 12 data points, maximum 20 data points
 
-SELF-CHECK REQUIRED: After your initial extraction, count your data points. If you are under the minimum for this video's length, you MUST scan the remaining transcript again and extract more. A 2-hour video returning only 5 or 6 data points is WRONG — the model has stopped early. Keep extracting until you meet the minimum.
+SELF-CHECK REQUIRED: After your initial extraction, count your data points. If you are under the minimum for this video's length, you MUST scan the remaining transcript again and extract more. A 2-hour video returning only 5 or 6 data points is WRONG — the model has stopped early. Keep extracting until you meet the minimum. Stop at 20 — do not exceed this regardless of video length.
 
 You must also specifically capture:
 

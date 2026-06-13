@@ -127,6 +127,7 @@ async function summarizeTranscript(input: {
   const completion = await openai.beta.chat.completions.parse({
     model: input.model,
     temperature: input.temperature ?? 0,
+    max_tokens: 12000,
     messages: [
       { role: "system", content: WATCHFILTER_SYSTEM_PROMPT },
       { role: "user", content: userContent },

@@ -128,7 +128,8 @@ export const videoAnalysisSchema = z.object({
       }),
     )
     .min(5)
-    .describe("At least 5 specific, evidence-backed claims with causal chain, direct quote, credibility assessment, and timestamp. Mix quantitative and high-conviction qualitative claims — never fewer than 5."),
+    .max(20)
+    .describe("5–20 specific, evidence-backed claims with causal chain, direct quote, credibility assessment, and timestamp. Mix quantitative and high-conviction qualitative claims — never fewer than 5, never more than 20."),
   actionable_takeaways: z
     .array(
       z.object({
@@ -171,6 +172,7 @@ export const videoAnalysisSchema = z.object({
   off_script_nuggets: z
     .array(z.string())
     .min(5)
+    .max(8)
     .describe(
       "5–7 unexpected, high-value pieces of advice, personal anecdotes, or standalone golden nuggets the speaker drops that do NOT fit neatly within the primary thesis or hard data points — the off-the-cuff insights and mental models that are often the most memorable and immediately usable moments in the video. Each must be a complete, standalone sentence a viewer could quote or act on immediately.",
     ),
