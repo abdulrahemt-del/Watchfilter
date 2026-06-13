@@ -256,6 +256,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   const [consensusData, setConsensusData]         = useState<ConsensusResult | null>(null);
   const [consensusLoading, setConsensusLoading]   = useState(false);
   const [selectedConsensusTheme, setSelectedConsensusTheme] = useState<string | null>(null);
+  const [proofSort, setProofSort] = useState<"relevance" | "recent">("relevance");
   const [insightsVideo, setInsightsVideo]         = useState<FeedVideo | null>(null);
   const [insightsCache, setInsightsCache]         = useState<Record<string, Insight[]>>({});
   const [insightsTypeCache, setInsightsTypeCache] = useState<Record<string, VideoType | null>>({});
@@ -813,15 +814,28 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
   }, [filteredVideos]);
 
-  // Videos shown in the proof grid — filtered to selected consensus theme when one is active
+  // Videos shown in the proof grid — filtered by consensus theme and sorted by user preference
   const displayVideos = useMemo(() => {
-    if (!selectedConsensusTheme || !aiReady) return filteredVideos;
-    return filteredVideos.filter((v) =>
-      aiResults[v.videoId]?.categories?.some(
-        (c) => c.toLowerCase() === selectedConsensusTheme.toLowerCase()
-      )
-    );
-  }, [filteredVideos, selectedConsensusTheme, aiResults, aiReady]);
+    let vids = filteredVideos;
+    if (selectedConsensusTheme && aiReady) {
+      vids = vids.filter((v) =>
+        aiResults[v.videoId]?.categories?.some(
+          (c) => c.toLowerCase() === selectedConsensusTheme.toLowerCase()
+        )
+      );
+    }
+    if (proofSort === "recent") {
+      return [...vids].sort((a, b) =>
+        new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+      );
+    }
+    // relevance: sort by AI score descending, unscored videos go to the end
+    return [...vids].sort((a, b) => {
+      const sa = aiResults[a.videoId]?.score ?? -1;
+      const sb = aiResults[b.videoId]?.score ?? -1;
+      return sb - sa;
+    });
+  }, [filteredVideos, selectedConsensusTheme, aiResults, aiReady, proofSort]);
 
   const userName     = session?.user?.name?.split(" ")[0] ?? session?.user?.email?.split("@")[0] ?? "there";
   const hour         = new Date().getHours();
@@ -1755,7 +1769,22 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                       {selectedConsensusTheme ? ` · filtered by "${selectedConsensusTheme}"` : ""}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Sort toggle */}
+                    <div className="flex items-center rounded-lg overflow-hidden text-xs font-mono font-black"
+                      style={{ border: "1px solid #1e2d45" }}>
+                      {(["relevance", "recent"] as const).map((opt) => (
+                        <button
+                          key={opt}
+                          onClick={() => setProofSort(opt)}
+                          className="px-3 py-1.5 transition-colors capitalize"
+                          style={proofSort === opt
+                            ? { background: "#38bdf8", color: "#0f2535" }
+                            : { background: "rgba(15,37,53,0.6)", color: "#64748b" }}>
+                          {opt === "relevance" ? "By Score" : "Most Recent"}
+                        </button>
+                      ))}
+                    </div>
                     {selectedConsensusTheme && (
                       <button
                         onClick={() => setSelectedConsensusTheme(null)}
