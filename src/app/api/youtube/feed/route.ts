@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/options";
-import { getFeedCache, setFeedCache, recordBetaEvent } from "@/lib/db";
+import { getFeedCache, setFeedCache, recordBetaEvent, getKV, setKV } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -76,9 +76,25 @@ const CURATED_HANDLES = [
 ];
 
 let curatedChannelIdsCache: string[] | null = null;
+const CURATED_IDS_KV_KEY = "curated_channel_ids_v1";
 
 async function getCuratedChannelIds(accessToken: string): Promise<string[]> {
+  // Tier 1 — in-memory (within same server process)
   if (curatedChannelIdsCache !== null) return curatedChannelIdsCache;
+
+  // Tier 2 — DB (persists across cold starts / Vercel function restarts)
+  try {
+    const stored = await getKV(CURATED_IDS_KV_KEY);
+    if (stored) {
+      curatedChannelIdsCache = JSON.parse(stored) as string[];
+      console.log(`[feed] curated channels from DB: ${curatedChannelIdsCache.length}`);
+      return curatedChannelIdsCache;
+    }
+  } catch {
+    // non-fatal — fall through to YouTube API
+  }
+
+  // Tier 3 — YouTube API (10 units, only on first-ever cold start)
   const results = await Promise.allSettled(
     CURATED_HANDLES.map((handle) =>
       ytGet<{ items?: Array<{ id: string }> }>(
@@ -90,7 +106,8 @@ async function getCuratedChannelIds(accessToken: string): Promise<string[]> {
   curatedChannelIdsCache = results
     .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled" && r.value !== null)
     .map((r) => r.value);
-  console.log(`[feed] curated channels resolved: ${curatedChannelIdsCache.length}/${CURATED_HANDLES.length}`);
+  console.log(`[feed] curated channels resolved via API: ${curatedChannelIdsCache.length}/${CURATED_HANDLES.length}`);
+  setKV(CURATED_IDS_KV_KEY, JSON.stringify(curatedChannelIdsCache)).catch(() => {});
   return curatedChannelIdsCache;
 }
 

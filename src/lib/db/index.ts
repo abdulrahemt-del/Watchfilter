@@ -101,6 +101,11 @@ async function ensureSchema(): Promise<void> {
     )`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_research_analysis_id ON research_index (analysis_id)`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_research_channel ON research_index (channel_name)`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS kv_cache (
+      key       TEXT PRIMARY KEY,
+      value     TEXT NOT NULL,
+      cached_at TEXT NOT NULL
+    )`, args: [] },
   ], "write");
 
   for (const sql of [
@@ -384,6 +389,27 @@ export async function setFeedCache(userId: string, videos: unknown[]): Promise<v
           VALUES (?, ?, ?)
           ON CONFLICT(user_id) DO UPDATE SET cached_at = excluded.cached_at, videos = excluded.videos`,
     args: [userId, new Date().toISOString(), JSON.stringify(videos)],
+  });
+}
+
+// ── Generic KV cache (used for persistent config values, e.g. curated channel IDs) ──
+
+export async function getKV(key: string): Promise<string | null> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: "SELECT value FROM kv_cache WHERE key = ?",
+    args: [key],
+  });
+  return rows.length ? (rows[0].value as string) : null;
+}
+
+export async function setKV(key: string, value: string): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `INSERT INTO kv_cache (key, value, cached_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value, cached_at = excluded.cached_at`,
+    args: [key, value, new Date().toISOString()],
   });
 }
 
