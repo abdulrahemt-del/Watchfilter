@@ -547,6 +547,22 @@ export async function getAllCreatorProfiles(): Promise<CreatorProfile[]> {
   }));
 }
 
+export async function getAllCreatorPositions(): Promise<CreatorPosition[]> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT * FROM creator_positions ORDER BY confidence DESC`,
+    args: [],
+  });
+  return rows.map(r => ({
+    channel_name:     r.channel_name as string,
+    category:         r.category as string,
+    stance:           r.stance as "support" | "oppose" | "nuance",
+    confidence:       r.confidence as number,
+    data_point_count: r.data_point_count as number,
+    contrarian_count: r.contrarian_count as number,
+  }));
+}
+
 // ── Temporal intelligence ─────────────────────────────────────────────────────
 
 export type TemporalCreatorRow = {

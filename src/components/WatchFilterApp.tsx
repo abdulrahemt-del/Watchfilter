@@ -11,6 +11,7 @@ import { BriefingCard } from "./BriefingCard";
 import { SubscriptionFeed } from "./SubscriptionFeed";
 import { MarketIntelligencePulse } from "./MarketIntelligencePulse";
 import { ResearchMode } from "./ResearchMode";
+import { CreatorIntelligenceView } from "./CreatorIntelligenceView";
 import type {
   AnalysisSummary,
   ApiErrorBody,
@@ -1332,6 +1333,9 @@ export function WatchFilterApp() {
         {activeNav === "trends" && <MarketIntelligencePulse onNavigate={setActiveNav} onAnalyze={(ytUrl) => void analyzeFromUrl(ytUrl)} />}
 
         {activeNav === "research" && <ResearchMode onBack={() => setActiveNav("dashboard")} />}
+
+        {/* ── Creator Intelligence ── */}
+        {activeNav === "creators" && <CreatorIntelligenceView />}
 
         {/* ── Cross-Channel Consensus ── */}
         {activeNav === "consensus-page" && <CrossChannelConsensusView />}
