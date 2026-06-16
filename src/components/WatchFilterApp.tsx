@@ -1333,7 +1333,7 @@ export function WatchFilterApp() {
         {/* ── Trends ── */}
         {activeNav === "trends" && <MarketIntelligencePulse onNavigate={setActiveNav} onAnalyze={(ytUrl) => void analyzeFromUrl(ytUrl)} />}
 
-        {activeNav === "research" && <ResearchMode onBack={() => setActiveNav("dashboard")} />}
+        {activeNav === "research" && <ResearchMode onBack={() => setActiveNav("dashboard")} onDeepResearch={() => setActiveNav("deep-research")} />}
 
         {/* ── Deep Research ── */}
         {activeNav === "deep-research" && <DeepResearchView />}

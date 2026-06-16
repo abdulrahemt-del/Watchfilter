@@ -82,6 +82,25 @@ const SUGGESTED = [
   "AI agents",
 ];
 
+// ── Query router ──────────────────────────────────────────────────────────────
+
+const DEEP_KEYWORDS = [
+  "opportunity", "opportunities", "emerging", "emerge",
+  "trend", "trends", "future", "founder", "founders",
+  "market", "markets", "debate", "debates", "contradiction",
+  "invest", "investment", "startup", "startups", "moat",
+  "saturated", "white space", "blind spot", "blind spots",
+  "missing", "overlooked", "undiscovered", "forecast",
+  "predict", "prediction", "analyst", "intelligence",
+  "where do creators disagree", "find opportunities",
+  "what are founders",
+];
+
+function classifyQuery(q: string): "research" | "deep" {
+  const lower = q.toLowerCase();
+  return DEEP_KEYWORDS.some(kw => lower.includes(kw)) ? "deep" : "research";
+}
+
 // ── Quote card ────────────────────────────────────────────────────────────────
 
 function QuoteCard({ source, accent }: { source: ThemeSource; accent: string }) {
@@ -90,13 +109,13 @@ function QuoteCard({ source, accent }: { source: ThemeSource; accent: string }) 
 
   return (
     <div className="rounded-xl p-4 space-y-3"
-      style={{ background: "rgba(8,16,28,0.6)", border: "1px solid #1e2d45" }}>
+      style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
-          <p className="text-sm font-mono font-black text-slate-300 uppercase tracking-wider truncate">
+          <p className="text-sm font-mono font-black text-slate-700 uppercase tracking-wider truncate">
             {source.creator}
           </p>
-          <p className="text-xs font-mono text-slate-500 truncate">{source.videoTitle}</p>
+          <p className="text-xs font-mono text-slate-400 truncate">{source.videoTitle}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {source.signalStrength && (
@@ -114,7 +133,7 @@ function QuoteCard({ source, accent }: { source: ThemeSource; accent: string }) 
       </div>
       {source.quote && (
         <blockquote className="border-l-2 pl-3" style={{ borderColor: `${accent}50` }}>
-          <p className="text-base text-slate-200 italic leading-relaxed">
+          <p className="text-base text-slate-700 italic leading-relaxed">
             &ldquo;{source.quote}&rdquo;
           </p>
         </blockquote>
@@ -262,8 +281,8 @@ function IntelligenceSignalCard({ signal }: { signal: IntelligenceSignal }) {
           {signal.confidence !== undefined && <span>{signal.confidence}% confidence</span>}
         </div>
       </div>
-      <p className="text-sm text-slate-300 leading-relaxed">{signal.text}</p>
-      <p className="text-[10px] font-mono text-slate-700 italic">No direct quotes available — derived from subscription feed intelligence</p>
+      <p className="text-sm text-slate-700 leading-relaxed">{signal.text}</p>
+      <p className="text-[10px] font-mono text-slate-400 italic">No direct quotes available — derived from subscription feed intelligence</p>
     </div>
   );
 }
@@ -284,12 +303,12 @@ function ThemeCard({
   return (
     <div className="rounded-2xl overflow-hidden transition-all"
       style={{
-        border: isActive ? "1px solid rgba(56,189,248,0.6)" : `1px solid ${color.border}`,
-        boxShadow: isActive ? "0 0 0 1px rgba(56,189,248,0.2), 0 4px 24px #00000025" : "0 4px 24px #00000025",
+        border: isActive ? "1px solid #3b82f6" : "1px solid #e2e8f0",
+        boxShadow: isActive ? "0 0 0 2px rgba(59,130,246,0.15), 0 2px 8px rgba(0,0,0,0.06)" : "0 1px 4px rgba(0,0,0,0.06)",
       }}>
 
       <div className="p-5 space-y-4"
-        style={{ background: "linear-gradient(140deg,#0c1e30 0%,#0e2d4a 100%)" }}>
+        style={{ background: "white" }}>
 
         {/* Title row + evidence bar */}
         <div className="space-y-3">
@@ -300,7 +319,7 @@ function ThemeCard({
                 style={{ color: color.accent, background: color.bg, border: `1px solid ${color.border}` }}>
                 #{index + 1}
               </span>
-              <h3 className="text-base font-black text-white leading-snug">{theme.title}</h3>
+              <h3 className="text-base font-black text-slate-900 leading-snug">{theme.title}</h3>
             </div>
             {isActive && (
               <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded shrink-0 mt-0.5 uppercase tracking-widest"
@@ -313,11 +332,11 @@ function ThemeCard({
           {/* Evidence bar */}
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4 text-xs font-mono">
-              <span><span className="text-white font-black">{theme.creatorCount}</span><span className="text-slate-600"> creators</span></span>
-              <span className="text-slate-700">·</span>
-              <span><span className="text-white font-black">{theme.videoCount}</span><span className="text-slate-600"> videos</span></span>
-              <span className="text-slate-700">·</span>
-              <span><span className="text-white font-black">{theme.quoteCount}</span><span className="text-slate-600"> quotes</span></span>
+              <span><span className="text-slate-900 font-black">{theme.creatorCount}</span><span className="text-slate-400"> creators</span></span>
+              <span className="text-slate-300">·</span>
+              <span><span className="text-slate-900 font-black">{theme.videoCount}</span><span className="text-slate-400"> videos</span></span>
+              <span className="text-slate-300">·</span>
+              <span><span className="text-slate-900 font-black">{theme.quoteCount}</span><span className="text-slate-400"> quotes</span></span>
             </div>
             <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded uppercase tracking-wider shrink-0"
               style={{ color: confStyle.color, background: confStyle.bg, border: `1px solid ${confStyle.border}` }}>
@@ -326,7 +345,7 @@ function ThemeCard({
           </div>
 
           {theme.confidenceReasoning && (
-            <p className="text-[10px] font-mono text-slate-600 leading-relaxed">{theme.confidenceReasoning}</p>
+            <p className="text-[10px] font-mono text-slate-400 leading-relaxed">{theme.confidenceReasoning}</p>
           )}
         </div>
 
@@ -335,16 +354,16 @@ function ThemeCard({
           <div className="rounded-lg px-3 py-2"
             style={{ background: `${color.accent}0d`, border: `1px solid ${color.accent}22` }}>
             <p className="text-xs font-mono font-black text-slate-400 uppercase tracking-widest mb-0.5">Analyst Verdict</p>
-            <p className="text-sm font-mono text-slate-200 leading-relaxed">{theme.marketSignal}</p>
+            <p className="text-sm font-mono text-slate-700 leading-relaxed">{theme.marketSignal}</p>
           </div>
         )}
 
         {/* Description */}
-        <p className="text-sm text-slate-400 leading-relaxed">{theme.description}</p>
+        <p className="text-sm text-slate-600 leading-relaxed">{theme.description}</p>
 
         {/* Relevance reason */}
         {theme.relevanceReason && (
-          <p className="text-xs font-mono text-slate-600 italic pl-3 border-l-2"
+          <p className="text-xs font-mono text-slate-400 italic pl-3 border-l-2"
             style={{ borderColor: `${color.accent}22` }}>
             {theme.relevanceReason}
           </p>
@@ -354,27 +373,27 @@ function ThemeCard({
         {theme.operatorPlaybook.withheld ? (
           <div className="rounded-lg px-3 py-2"
             style={{ background: "rgba(100,116,139,0.06)", border: "1px solid rgba(100,116,139,0.18)" }}>
-            <p className="text-[10px] font-mono font-black uppercase tracking-widest mb-0.5 text-slate-500">
+            <p className="text-[10px] font-mono font-black uppercase tracking-widest mb-0.5 text-slate-400">
               ◌ Recommended Actions
             </p>
             <p className="text-sm leading-relaxed text-slate-500 font-mono italic">
-              <span className="text-amber-500/80">⚠ Recommendation withheld.</span> Baseline data consists of an isolated, unvalidated signal. Further cross-channel research is required before executing a definitive strategic playbook on this vector.
+              <span className="text-amber-600">⚠ Recommendation withheld.</span> Baseline data consists of an isolated, unvalidated signal. Further cross-channel research is required before executing a definitive strategic playbook on this vector.
             </p>
           </div>
         ) : (
           <div className="rounded-lg px-3 py-2.5 space-y-2"
             style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.22)" }}>
-            <p className="text-[10px] font-mono font-black uppercase tracking-widest text-emerald-400">
+            <p className="text-[10px] font-mono font-black uppercase tracking-widest text-emerald-600">
               ▶ Recommended Actions
             </p>
             <div className="space-y-0.5">
-              <p className="text-[10px] font-mono font-black text-emerald-500/70 uppercase tracking-wider">Strategic Step</p>
-              <p className="text-sm leading-relaxed text-emerald-100">{theme.operatorPlaybook.strategicStep}</p>
+              <p className="text-[10px] font-mono font-black text-emerald-600 uppercase tracking-wider">Strategic Step</p>
+              <p className="text-sm leading-relaxed text-emerald-900">{theme.operatorPlaybook.strategicStep}</p>
             </div>
             {theme.operatorPlaybook.implementationMetric && (
               <div className="space-y-0.5">
-                <p className="text-[10px] font-mono font-black text-emerald-500/70 uppercase tracking-wider">Implementation Metric</p>
-                <p className="text-sm font-mono text-emerald-200/90">{theme.operatorPlaybook.implementationMetric}</p>
+                <p className="text-[10px] font-mono font-black text-emerald-600 uppercase tracking-wider">Implementation Metric</p>
+                <p className="text-sm font-mono text-emerald-800">{theme.operatorPlaybook.implementationMetric}</p>
               </div>
             )}
           </div>
@@ -387,8 +406,8 @@ function ThemeCard({
         {theme.creators.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {theme.creators.map((c, i) => (
-              <span key={i} className="text-xs font-mono px-2 py-0.5 rounded-md text-slate-400"
-                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid #1e2d45" }}>
+              <span key={i} className="text-xs font-mono px-2 py-0.5 rounded-md text-slate-500"
+                style={{ background: "#f1f5f9", border: "1px solid #e2e8f0" }}>
                 {c}
               </span>
             ))}
@@ -400,12 +419,12 @@ function ThemeCard({
           <div className="rounded-xl p-4 space-y-2"
             style={{ background: color.bg, border: `1px solid ${color.border}` }}>
             <blockquote>
-              <p className="text-base text-slate-200 italic leading-relaxed">
+              <p className="text-base text-slate-700 italic leading-relaxed">
                 &ldquo;{theme.representativeQuote.quote}&rdquo;
               </p>
             </blockquote>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-mono font-black text-slate-400 truncate">
+              <p className="text-xs font-mono font-black text-slate-500 truncate">
                 — {theme.representativeQuote.creator} · {theme.representativeQuote.videoTitle}
               </p>
               {theme.representativeQuote.timestampStr && (
@@ -425,15 +444,15 @@ function ThemeCard({
 
       {/* Expand to show all quotes */}
       {otherSources.length > 0 && (
-        <div style={{ background: "rgba(8,16,28,0.4)" }}>
+        <div style={{ background: "#f8fafc" }}>
           <button
             onClick={() => setExpanded(e => !e)}
-            className="w-full flex items-center justify-between px-5 py-3 text-left transition-colors hover:bg-white/[0.02]"
-            style={{ borderTop: "1px solid #1e2d45" }}>
+            className="w-full flex items-center justify-between px-5 py-3 text-left transition-colors hover:bg-slate-100"
+            style={{ borderTop: "1px solid #e2e8f0" }}>
             <span className="text-xs font-mono text-slate-500">
               {expanded ? "Hide" : "Show"} {otherSources.length} more {otherSources.length === 1 ? "quote" : "quotes"}
             </span>
-            <span className="text-xs font-mono text-slate-600">{expanded ? "▲" : "▼"}</span>
+            <span className="text-xs font-mono text-slate-400">{expanded ? "▲" : "▼"}</span>
           </button>
           {expanded && (
             <div className="px-5 pb-5 space-y-3">
@@ -454,21 +473,21 @@ function RelatedSignalsPanel({ signals }: { signals: RelatedSignal[] }) {
   if (!signals.length) return null;
   return (
     <div className="rounded-2xl p-5 space-y-4"
-      style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(148,163,184,0.1)" }}>
+      style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
       <div className="space-y-0.5">
         <p className="text-xs font-mono font-black text-slate-400 uppercase tracking-widest">Related Signals</p>
-        <p className="text-xs font-mono text-slate-500">Adjacent observations — not central to your query</p>
+        <p className="text-xs font-mono text-slate-400">Adjacent observations — not central to your query</p>
       </div>
       <div className="space-y-0">
         {signals.map((sig, i) => (
           <div key={i}>
-            {i > 0 && <div className="border-t my-4" style={{ borderColor: "#1e2d45" }} />}
+            {i > 0 && <div className="border-t my-4" style={{ borderColor: "#e2e8f0" }} />}
             <div className="space-y-1.5">
-              <p className="text-sm font-black text-white">{sig.title}</p>
-              <p className="text-sm text-slate-300 leading-relaxed">{sig.description}</p>
+              <p className="text-sm font-black text-slate-900">{sig.title}</p>
+              <p className="text-sm text-slate-600 leading-relaxed">{sig.description}</p>
               {sig.sources[0]?.quote && (
-                <blockquote className="border-l-2 pl-3 text-xs text-slate-300 italic"
-                  style={{ borderColor: "#2d3f52" }}>
+                <blockquote className="border-l-2 pl-3 text-xs text-slate-500 italic"
+                  style={{ borderColor: "#cbd5e1" }}>
                   &ldquo;{sig.sources[0].quote}&rdquo;
                   {sig.sources[0].creator && (
                     <span className="not-italic text-slate-400"> — {sig.sources[0].creator}</span>
@@ -505,13 +524,13 @@ function ConsensusAnswer({ report }: { report: ResearchReport }) {
 
   return (
     <div className="rounded-2xl p-5 space-y-4"
-      style={{ background: "rgba(15,37,53,0.8)", border: "1px solid rgba(16,185,129,0.3)", boxShadow: "inset 0 1px #ffffff08" }}>
+      style={{ background: "white", border: "1px solid rgba(16,185,129,0.3)", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
 
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="space-y-0.5">
-          <p className="text-xs font-mono font-black text-emerald-500 uppercase tracking-widest">Consensus Answer</p>
-          <p className="text-[10px] font-mono text-slate-600">
+          <p className="text-xs font-mono font-black text-emerald-600 uppercase tracking-widest">Consensus Answer</p>
+          <p className="text-[10px] font-mono text-slate-400">
             Based on {report.videosMatched} videos from {report.creatorsMatched} creators
           </p>
         </div>
@@ -523,15 +542,15 @@ function ConsensusAnswer({ report }: { report: ResearchReport }) {
 
       {/* Main synthesis */}
       {report.synthesis && (
-        <p className="text-base text-slate-200 leading-relaxed">{report.synthesis}</p>
+        <p className="text-base text-slate-700 leading-relaxed">{report.synthesis}</p>
       )}
 
       {/* Key agreements */}
       {agreements.length > 0 && (
         <ul className="space-y-1.5">
           {agreements.map((a, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm text-slate-300 leading-relaxed">
-              <span className="text-emerald-400 shrink-0 mt-0.5">•</span>
+            <li key={i} className="flex items-start gap-2 text-sm text-slate-600 leading-relaxed">
+              <span className="text-emerald-500 shrink-0 mt-0.5">•</span>
               <span>{a}</span>
             </li>
           ))}
@@ -541,10 +560,10 @@ function ConsensusAnswer({ report }: { report: ResearchReport }) {
       {/* Notable disagreements */}
       {disagreements.length > 0 && (
         <div className="rounded-lg px-3 py-2 space-y-1"
-          style={{ background: "rgba(251,191,36,0.05)", border: "1px solid rgba(251,191,36,0.18)" }}>
-          <p className="text-[10px] font-mono font-black text-amber-500 uppercase tracking-widest">Notable Disagreements</p>
+          style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.25)" }}>
+          <p className="text-[10px] font-mono font-black text-amber-600 uppercase tracking-widest">Notable Disagreements</p>
           {disagreements.map((d, i) => (
-            <p key={i} className="text-xs text-slate-400 leading-relaxed">{d}</p>
+            <p key={i} className="text-xs text-slate-500 leading-relaxed">{d}</p>
           ))}
         </div>
       )}
@@ -552,10 +571,10 @@ function ConsensusAnswer({ report }: { report: ResearchReport }) {
       {/* Supporting creators */}
       {allCreators.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-[10px] font-mono text-slate-600 shrink-0">Supporting creators:</p>
+          <p className="text-[10px] font-mono text-slate-400 shrink-0">Supporting creators:</p>
           {allCreators.map((c, i) => (
-            <span key={i} className="text-xs font-mono px-2 py-0.5 rounded text-slate-400"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid #1e2d45" }}>
+            <span key={i} className="text-xs font-mono px-2 py-0.5 rounded text-slate-500"
+              style={{ background: "#f1f5f9", border: "1px solid #e2e8f0" }}>
               {c}
             </span>
           ))}
@@ -1142,12 +1161,12 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
   useEffect(() => { void sendMessage(report.topic, true); }, []);
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #1e2d45", background: "rgba(8,16,28,0.7)" }}>
+    <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #e2e8f0", background: "white", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
       {/* Header */}
-      <div className="px-5 py-2.5 flex items-center justify-between" style={{ borderBottom: "1px solid #1a2d42" }}>
-        <span className="text-[10px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Assistant</span>
+      <div className="px-5 py-2.5 flex items-center justify-between" style={{ borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+        <span className="text-[10px] font-mono font-black text-sky-600 uppercase tracking-widest">Research Assistant</span>
         {activeFinding && (
-          <span className="text-[10px] font-mono text-slate-500 truncate max-w-[60%] text-right">
+          <span className="text-[10px] font-mono text-slate-400 truncate max-w-[60%] text-right">
             {activeFinding.title}
           </span>
         )}
@@ -1157,23 +1176,23 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
       <div className="px-5 py-4 space-y-4 max-h-[600px] overflow-y-auto">
           {messages.map((m, i) => (
             <div key={i} className={`flex gap-3 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              {m.role === "assistant" && <span className="text-[10px] font-mono font-black text-[#38bdf8] shrink-0 mt-1">AI</span>}
+              {m.role === "assistant" && <span className="text-[10px] font-mono font-black text-sky-600 shrink-0 mt-1">AI</span>}
               <div className="max-w-[85%] rounded-xl px-4 py-3"
                 style={m.role === "user"
-                  ? { background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.25)" }
-                  : { background: "rgba(15,37,53,0.8)", border: "1px solid #1e2d45" }}>
+                  ? { background: "#e0f2fe", border: "1px solid #bae6fd" }
+                  : { background: "#0f172a", border: "1px solid #1e2d45" }}>
                 {m.role === "assistant"
                   ? <ChatMarkdown content={m.content} onQuery={(q) => void sendMessage(q)} />
-                  : <p className="text-sm text-slate-200 leading-relaxed">{m.content}</p>}
+                  : <p className="text-sm text-slate-700 leading-relaxed">{m.content}</p>}
               </div>
-              {m.role === "user" && <span className="text-[10px] font-mono font-black text-slate-600 shrink-0 mt-1">You</span>}
+              {m.role === "user" && <span className="text-[10px] font-mono font-black text-slate-400 shrink-0 mt-1">You</span>}
             </div>
           ))}
           {chatLoading && (
             <div className="flex gap-3 justify-start">
-              <span className="text-[10px] font-mono font-black text-[#38bdf8] shrink-0 mt-1">AI</span>
-              <div className="rounded-xl px-4 py-2.5" style={{ background: "rgba(15,37,53,0.8)", border: "1px solid #1e2d45" }}>
-                <p className="text-sm text-slate-600 font-mono animate-pulse">Searching evidence pool...</p>
+              <span className="text-[10px] font-mono font-black text-sky-600 shrink-0 mt-1">AI</span>
+              <div className="rounded-xl px-4 py-2.5" style={{ background: "#0f172a", border: "1px solid #1e2d45" }}>
+                <p className="text-sm text-slate-500 font-mono animate-pulse">Searching evidence pool...</p>
               </div>
             </div>
           )}
@@ -1181,16 +1200,16 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
         </div>
 
       {/* Input — pill bar */}
-      <div className="px-4 pb-4 pt-3">
+      <div className="px-4 pb-4 pt-3" style={{ borderTop: "1px solid #e2e8f0" }}>
         <div className="flex items-center gap-2 rounded-full px-3 py-2"
-          style={{ background: "rgba(10,20,35,0.7)", border: "1px solid #2a3f58" }}>
+          style={{ background: "#f1f5f9", border: "1px solid #e2e8f0" }}>
 
           {/* + new chat */}
           <button
             type="button"
             onClick={() => setMessages([])}
             title="New conversation"
-            className="w-7 h-7 flex items-center justify-center rounded-full shrink-0 text-slate-500 hover:text-slate-300 hover:bg-white/[0.06] transition-all text-base font-light">
+            className="w-7 h-7 flex items-center justify-center rounded-full shrink-0 text-slate-400 hover:text-slate-600 hover:bg-white transition-all text-base font-light">
             +
           </button>
 
@@ -1202,7 +1221,7 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(input); } }}
             placeholder="Ask anything"
             disabled={chatLoading}
-            className="flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none min-w-0"
+            className="flex-1 bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none min-w-0"
           />
 
           {/* Mic icon — decorative */}
@@ -1223,17 +1242,17 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
             disabled={chatLoading || !input.trim()}
             className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all"
             style={{
-              background: input.trim() && !chatLoading ? "#ffffff" : "rgba(255,255,255,0.1)",
+              background: input.trim() && !chatLoading ? "#0f172a" : "#e2e8f0",
             }}>
             {chatLoading ? (
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                stroke={input.trim() ? "#0f1a26" : "#64748b"} strokeWidth="2.5" strokeLinecap="round"
+                stroke={input.trim() ? "#ffffff" : "#94a3b8"} strokeWidth="2.5" strokeLinecap="round"
                 className="animate-spin">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
               </svg>
             ) : (
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                stroke={input.trim() ? "#0f1a26" : "#64748b"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                stroke={input.trim() ? "#ffffff" : "#94a3b8"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M12 5l7 7-7 7"/>
               </svg>
             )}
@@ -1246,7 +1265,7 @@ function ResearchChat({ report, activeFindingIndex }: { report: ResearchReport; 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ResearchMode({ onBack }: { onBack?: () => void }) {
+export function ResearchMode({ onBack, onDeepResearch }: { onBack?: () => void; onDeepResearch?: () => void }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ResearchReport | null>(null);
@@ -1257,6 +1276,7 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
   const [reindexMsg, setReindexMsg] = useState<string | null>(null);
   const [debugMode, setDebugMode] = useState(false);
   const [activeFindingIndex, setActiveFindingIndex] = useState<number | null>(null);
+  const [routingPrompt, setRoutingPrompt] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleReindexAll() {
@@ -1273,6 +1293,17 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
     }
   }
 
+  function handleSubmit(q: string) {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    if (onDeepResearch && classifyQuery(trimmed) === "deep" && !routingPrompt) {
+      setRoutingPrompt(trimmed);
+      return;
+    }
+    setRoutingPrompt(null);
+    void runSearch(trimmed);
+  }
+
   async function runSearch(q: string) {
     const trimmed = q.trim();
     if (!trimmed) return;
@@ -1282,6 +1313,7 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
     setReport(null);
     setDebugData(null);
     setActiveFindingIndex(null);
+    setRoutingPrompt(null);
     try {
       const res = await fetch("/api/research/search", {
         method: "POST",
@@ -1306,20 +1338,19 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
   const keyThemes = report?.themes ?? [];
 
   return (
-    <div className="min-h-screen text-slate-100 p-8 space-y-6 max-w-6xl mx-auto"
-      style={{ background: "linear-gradient(140deg,#0f2535 0%,#166088 55%,#0e3154 100%)" }}>
+    <div className="text-slate-900 space-y-6 max-w-6xl mx-auto">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           {onBack && (
             <button type="button" onClick={onBack}
-              className="flex items-center gap-1.5 text-xs font-mono text-slate-500 hover:text-[#38bdf8] transition-colors mb-1">
+              className="flex items-center gap-1.5 text-xs font-mono text-slate-500 hover:text-slate-900 transition-colors mb-1">
               ← Back
             </button>
           )}
-          <p className="text-base font-mono font-black text-[#38bdf8] uppercase tracking-widest">Research Mode</p>
-          <p className="text-sm text-slate-400 font-mono">
+          <h1 className="text-2xl font-black text-slate-900">Research Mode</h1>
+          <p className="text-sm text-slate-500">
             What are creators saying about this topic?
             {report?.totalIndexed ? ` Searching ${report.totalIndexed} indexed data points.` : ""}
           </p>
@@ -1329,41 +1360,78 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
           onClick={() => setDebugMode(v => !v)}
           className="text-[10px] font-mono font-black px-2 py-1 rounded shrink-0 transition-colors"
           style={{
-            color: debugMode ? "#a78bfa" : "#64748b",
-            background: debugMode ? "rgba(167,139,250,0.1)" : "rgba(255,255,255,0.05)",
-            border: `1px solid ${debugMode ? "rgba(167,139,250,0.4)" : "rgba(100,116,139,0.4)"}`,
+            color: debugMode ? "#7c3aed" : "#64748b",
+            background: debugMode ? "#f5f3ff" : "white",
+            border: `1px solid ${debugMode ? "#c4b5fd" : "#e2e8f0"}`,
           }}>
           {debugMode ? "● DEBUG ON" : "DEBUG"}
         </button>
       </div>
 
       {/* Search */}
-      <form onSubmit={e => { e.preventDefault(); void runSearch(query); }} className="flex gap-2">
+      <form onSubmit={e => { e.preventDefault(); handleSubmit(query); }} className="flex gap-2">
         <input
           ref={inputRef}
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search a topic..."
-          className="flex-1 rounded-xl px-4 py-3 text-base text-white placeholder:text-slate-500 focus:outline-none font-mono"
-          style={{ background: "rgba(15,37,53,0.7)", border: "1px solid #1e2d45" }}
+          className="flex-1 rounded-xl px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none"
+          style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
           disabled={loading}
         />
         <button type="submit" disabled={loading || !query.trim()}
-          className="px-5 py-3 bg-[#38bdf8] hover:bg-[#7dd3fc] disabled:opacity-40 text-[#0f2535] text-base font-black rounded-xl transition-colors whitespace-nowrap">
+          className="px-5 py-3 disabled:opacity-40 text-base font-black rounded-xl transition-colors whitespace-nowrap"
+          style={{ background: loading ? "#f1f5f9" : "#0f172a", color: "white", border: "1px solid #e2e8f0" }}>
           {loading ? "Searching..." : "Search"}
         </button>
       </form>
 
+      {/* Routing prompt banner */}
+      {routingPrompt && onDeepResearch && (
+        <div className="rounded-2xl p-5 space-y-4"
+          style={{ background: "#0f172a", border: "1px solid #1e3a5f", boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-base">⚡</span>
+              <p className="text-sm font-mono font-black text-sky-400 uppercase tracking-widest">Deep Research Query Detected</p>
+            </div>
+            <p className="text-base font-black text-white leading-snug">&ldquo;{routingPrompt}&rdquo;</p>
+            <p className="text-sm text-slate-400 leading-relaxed">
+              This query is best answered by Deep Research — it runs a multi-agent pipeline to surface opportunity signals, emerging trends, and debate maps from your creator library.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={onDeepResearch}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all hover:opacity-90"
+              style={{ background: "#38bdf8", color: "#0f172a" }}>
+              ⚡ Run Deep Research
+            </button>
+            <button
+              type="button"
+              onClick={() => { setRoutingPrompt(null); void runSearch(routingPrompt); }}
+              className="px-4 py-2.5 rounded-xl text-sm font-mono text-slate-400 hover:text-slate-200 transition-colors"
+              style={{ border: "1px solid #2a3f58" }}>
+              Search Research Mode anyway →
+            </button>
+          </div>
+          <p className="text-[10px] font-mono text-slate-600">
+            Research Mode answers "What do creators say?" · Deep Research answers "What does it mean?"
+          </p>
+        </div>
+      )}
+
       {/* Suggested topics */}
-      {!report && !loading && (
+      {!report && !loading && !routingPrompt && (
         <div className="space-y-3">
-          <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Topics</p>
+          <p className="text-xs font-mono text-slate-400 uppercase tracking-widest">Topics</p>
           <div className="flex flex-wrap gap-2">
             {SUGGESTED.map(s => (
-              <button key={s} onClick={() => { setQuery(s); void runSearch(s); }}
-                className="text-sm font-mono px-4 py-2 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
-                style={{ border: "1px solid #1e2d45", background: "rgba(15,37,53,0.5)" }}>
+              <button key={s} onClick={() => { setQuery(s); handleSubmit(s); }}
+                className="text-sm font-mono px-4 py-2 rounded-lg transition-colors text-slate-600 hover:text-slate-900 hover:border-slate-300"
+                style={{ border: "1px solid #e2e8f0", background: "white" }}>
                 {s}
               </button>
             ))}
@@ -1373,18 +1441,18 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
 
       {/* Error */}
       {error && (
-        <div className="rounded-xl px-4 py-3 text-sm text-red-300 font-mono space-y-2"
-          style={{ background: "rgba(127,29,29,0.25)", border: "1px solid rgba(185,28,28,0.4)" }}>
+        <div className="rounded-xl px-4 py-3 text-sm text-red-700 font-mono space-y-2"
+          style={{ background: "#fee2e2", border: "1px solid #fca5a5" }}>
           <p>{error}</p>
           {error.includes("indexed yet") && (
             <div className="space-y-1.5">
-              <p className="text-sm text-red-400/70">New analyses are indexed automatically. To index your existing library now:</p>
+              <p className="text-sm text-red-500">New analyses are indexed automatically. To index your existing library now:</p>
               <button onClick={handleReindexAll} disabled={reindexing}
                 className="text-sm font-mono font-bold text-white px-3 py-1 rounded disabled:opacity-50"
-                style={{ background: "rgba(127,29,29,0.5)", border: "1px solid rgba(185,28,28,0.5)" }}>
+                style={{ background: "#dc2626", border: "1px solid #b91c1c" }}>
                 {reindexing ? "Indexing..." : "Index my library now"}
               </button>
-              {reindexMsg && <p className="text-sm text-emerald-400">{reindexMsg}</p>}
+              {reindexMsg && <p className="text-sm text-emerald-600">{reindexMsg}</p>}
             </div>
           )}
         </div>
@@ -1393,9 +1461,9 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
       {/* Loading skeleton */}
       {loading && (
         <div className="space-y-4 animate-pulse">
-          <div className="rounded-xl h-16" style={{ background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
+          <div className="rounded-xl h-16" style={{ background: "#c8d8e4", border: "1px solid #bcd0de" }} />
           {[220, 260, 200].map((h, i) => (
-            <div key={i} className="rounded-2xl" style={{ height: `${h}px`, background: "rgba(15,37,53,0.6)", border: "1px solid #1e2d45" }} />
+            <div key={i} className="rounded-2xl" style={{ height: `${h}px`, background: "#c8d8e4", border: "1px solid #bcd0de" }} />
           ))}
         </div>
       )}
@@ -1406,31 +1474,53 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
 
           {/* Stats header with topic intent */}
           <div className="rounded-2xl p-5 space-y-3"
-            style={{ background: "rgba(15,37,53,0.8)", border: "1px solid #1e2d45", boxShadow: "inset 0 1px #ffffff08" }}>
+            style={{ background: "white", border: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
             <div className="flex items-start justify-between gap-6 flex-wrap">
               <div className="space-y-1.5 flex-1 min-w-0">
-                <p className="text-xs font-mono text-slate-600 uppercase tracking-widest">Topic</p>
-                <h2 className="text-xl font-black text-white">{report.topic}</h2>
+                <p className="text-xs font-mono text-slate-400 uppercase tracking-widest">Topic</p>
+                <h2 className="text-xl font-black text-slate-900">{report.topic}</h2>
                 {report.topicIntent && (
-                  <p className="text-sm text-slate-400 leading-relaxed">{report.topicIntent}</p>
+                  <p className="text-sm text-slate-500 leading-relaxed">{report.topicIntent}</p>
                 )}
               </div>
               <div className="flex items-center gap-6 text-sm font-mono text-slate-400 shrink-0">
                 <div className="text-center">
-                  <p className="text-xl font-black text-white">{report.videosMatched}</p>
+                  <p className="text-xl font-black text-slate-900">{report.videosMatched}</p>
                   <p className="text-xs">videos</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xl font-black text-white">{report.creatorsMatched}</p>
+                  <p className="text-xl font-black text-slate-900">{report.creatorsMatched}</p>
                   <p className="text-xs">creators</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xl font-black text-white">{report.quotesMatched}</p>
+                  <p className="text-xl font-black text-slate-900">{report.quotesMatched}</p>
                   <p className="text-xs">quotes</p>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Escalation CTA — offer Deep Research when signal is strong */}
+          {onDeepResearch && report.creatorsMatched >= 5 && report.quotesMatched >= 20 && (
+            <div className="rounded-xl px-5 py-4 flex items-center justify-between gap-4 flex-wrap"
+              style={{ background: "#0f172a", border: "1px solid #1e3a5f" }}>
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[10px] font-mono font-black text-sky-400 uppercase tracking-widest">Strong Signal — Ready for Deep Research</p>
+                <p className="text-sm text-slate-400">
+                  {report.creatorsMatched} creators · {report.quotesMatched} quotes
+                  {keyThemes.some(t => t.contrarians.length > 0) ? " · contradictions detected" : ""}
+                  {" "}— enough evidence to run opportunity discovery and market analysis.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onDeepResearch}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-black shrink-0 transition-all hover:opacity-90"
+                style={{ background: "#38bdf8", color: "#0f172a" }}>
+                ⚡ Deep Research
+              </button>
+            </div>
+          )}
 
           {/* Consensus Answer — top-level synthesis before themes */}
           {keyThemes.length > 0 && <ConsensusAnswer report={report} />}
@@ -1438,7 +1528,7 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
           {/* Key Findings */}
           {keyThemes.length > 0 && (
             <div className="space-y-3">
-              <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">
+              <p className="text-xs font-mono text-slate-400 uppercase tracking-widest">
                 Evidence Themes — {keyThemes.length} {keyThemes.length === 1 ? "theme" : "themes"}
               </p>
               {keyThemes.map((theme, i) => (
@@ -1450,10 +1540,10 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
           {/* ── Topic Mismatch: evidence found but for the wrong topic ─────── */}
           {report.constraintValidation?.matchType === "NO_MATCH" && (
             <div className="rounded-xl px-5 py-4 space-y-4"
-              style={{ background: "rgba(30,10,10,0.55)", border: "1px solid rgba(185,28,28,0.35)" }}>
+              style={{ background: "#fef2f2", border: "1px solid #fca5a5" }}>
               <div className="space-y-1.5">
-                <p className="text-[10px] font-mono font-black text-red-400 uppercase tracking-widest">⊘ Topic Mismatch — Evidence Gap Detected</p>
-                <p className="text-sm text-slate-400 leading-relaxed">
+                <p className="text-[10px] font-mono font-black text-red-600 uppercase tracking-widest">⊘ Topic Mismatch — Evidence Gap Detected</p>
+                <p className="text-sm text-slate-600 leading-relaxed">
                   Your library contains content, but no creators explicitly discuss the specific topic you searched.
                   The retrieved evidence does not satisfy the required constraints for this query.
                 </p>
@@ -1461,11 +1551,11 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
 
               {report.constraintValidation.failedConstraints.length > 0 && (
                 <div className="space-y-1.5">
-                  <p className="text-[10px] font-mono font-black text-red-400/70 uppercase tracking-widest">Missing Constraints</p>
+                  <p className="text-[10px] font-mono font-black text-red-500 uppercase tracking-widest">Missing Constraints</p>
                   <ul className="space-y-1">
                     {report.constraintValidation.failedConstraints.map((fc, i) => (
-                      <li key={i} className="text-sm font-mono text-red-300/70 pl-3 border-l-2"
-                        style={{ borderColor: "rgba(185,28,28,0.4)" }}>
+                      <li key={i} className="text-sm font-mono text-red-600 pl-3 border-l-2"
+                        style={{ borderColor: "#fca5a5" }}>
                         {fc}
                       </li>
                     ))}
@@ -1475,11 +1565,11 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
 
               {report.constraintValidation.adjacentTopics.length > 0 && (
                 <div className="space-y-1.5">
-                  <p className="text-[10px] font-mono font-black text-slate-500 uppercase tracking-widest">What Your Library Does Cover</p>
+                  <p className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest">What Your Library Does Cover</p>
                   <div className="flex flex-wrap gap-2">
                     {report.constraintValidation.adjacentTopics.map(t => (
-                      <span key={t} className="text-xs font-mono px-2.5 py-1 rounded-md text-slate-400"
-                        style={{ background: "rgba(100,116,139,0.12)", border: "1px solid rgba(100,116,139,0.2)" }}>
+                      <span key={t} className="text-xs font-mono px-2.5 py-1 rounded-md text-slate-500"
+                        style={{ background: "#f1f5f9", border: "1px solid #e2e8f0" }}>
                         {t}
                       </span>
                     ))}
@@ -1489,12 +1579,12 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
 
               {report.suggestions.length > 0 && (
                 <div className="space-y-1.5">
-                  <p className="text-[10px] font-mono font-black text-slate-500 uppercase tracking-widest">Try a query your library can answer</p>
+                  <p className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest">Try a query your library can answer</p>
                   <div className="flex flex-wrap gap-2">
                     {report.suggestions.map(s => (
                       <button key={s} onClick={() => void runSearch(s)}
-                        className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
-                        style={{ border: "1px solid rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}>
+                        className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-600 hover:text-sky-700"
+                        style={{ border: "1px solid #e2e8f0", background: "white" }}>
                         {s} →
                       </button>
                     ))}
@@ -1507,23 +1597,23 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
           {/* ── Partial match warning — bridge inference or incomplete direct coverage ── */}
           {report.constraintValidation?.matchType === "PARTIAL" && keyThemes.length > 0 && (
             <div className="rounded-lg px-4 py-3 space-y-2"
-              style={{ background: "rgba(30,20,5,0.5)", border: "1px solid rgba(251,191,36,0.3)" }}>
+              style={{ background: "#fffbeb", border: "1px solid #fcd34d" }}>
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] font-mono font-black text-amber-400/80 uppercase tracking-widest">
+                <p className="text-[10px] font-mono font-black text-amber-700 uppercase tracking-widest">
                   ⚠ Partial Evidence Coverage
                 </p>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-[10px] font-mono text-slate-500">
-                    Direct: <span className="text-amber-500/70">{report.constraintValidation.directCoverage}</span>
+                    Direct: <span className="text-amber-600">{report.constraintValidation.directCoverage}</span>
                   </span>
                   <span className="text-[10px] font-mono text-slate-500">
-                    Bridge: <span className="text-amber-500/70">{Math.round(report.constraintValidation.bridgeScore * 100)}%</span>
+                    Bridge: <span className="text-amber-600">{Math.round(report.constraintValidation.bridgeScore * 100)}%</span>
                   </span>
                 </div>
               </div>
 
               {report.constraintValidation.bridgeCoveredComponents.length > 0 && (
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-600">
                   Structural alignment found via conceptual bridge
                   {" "}({report.constraintValidation.bridgeCoveredComponents.join(", ")} components).
                   Findings may include indirect evidence — claims are labeled accordingly.
@@ -1533,7 +1623,7 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
               {report.constraintValidation.failedConstraints.length > 0 && (
                 <ul className="space-y-0.5 pt-0.5">
                   {report.constraintValidation.failedConstraints.map((fc, i) => (
-                    <li key={i} className="text-xs font-mono text-amber-500/60">↳ {fc}</li>
+                    <li key={i} className="text-xs font-mono text-amber-600">↳ {fc}</li>
                   ))}
                 </ul>
               )}
@@ -1550,9 +1640,9 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
             if (hasLimited) return (
               <div className="space-y-4">
                 <div className="rounded-xl px-5 py-4 space-y-1.5"
-                  style={{ background: "rgba(30,20,5,0.5)", border: "1px solid rgba(251,191,36,0.25)" }}>
-                  <p className="text-sm font-mono font-black text-amber-400/80 uppercase tracking-widest">Limited Evidence</p>
-                  <p className="text-sm text-slate-500 leading-relaxed">
+                  style={{ background: "#fffbeb", border: "1px solid #fcd34d" }}>
+                  <p className="text-sm font-mono font-black text-amber-700 uppercase tracking-widest">Limited Evidence</p>
+                  <p className="text-sm text-slate-600 leading-relaxed">
                     Relevant references found, but not enough independent creator agreement to establish strong consensus.
                     {" "}Each finding below comes from a single source — treat as a signal, not a conclusion.
                   </p>
@@ -1566,10 +1656,10 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
             // STATE 2 — Intelligence layer signals: no direct transcript evidence but synthesized data exists
             if (hasIntel) return (
               <div className="rounded-xl px-5 py-4 space-y-4"
-                style={{ background: "rgba(30,25,5,0.6)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                style={{ background: "white", border: "1px solid #fcd34d", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
                 <div className="space-y-1">
-                  <p className="text-sm font-mono font-black text-amber-400/80 uppercase tracking-widest">Intelligence Layer Signals</p>
-                  <p className="text-sm text-slate-500 leading-relaxed">Evidence exists in synthesized intelligence but direct quote coverage is limited. Analyze specific videos on this topic to generate direct quotes and timestamps.</p>
+                  <p className="text-sm font-mono font-black text-amber-700 uppercase tracking-widest">Intelligence Layer Signals</p>
+                  <p className="text-sm text-slate-600 leading-relaxed">Evidence exists in synthesized intelligence but direct quote coverage is limited. Analyze specific videos on this topic to generate direct quotes and timestamps.</p>
                 </div>
                 <div className="space-y-3">
                   {report.intelligenceSignals.map((sig, i) => (
@@ -1578,12 +1668,12 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
                 </div>
                 {hasSuggestions && (
                   <div className="pt-1 space-y-2">
-                    <p className="text-xs font-mono text-slate-600">Or search a topic with direct transcript coverage:</p>
+                    <p className="text-xs font-mono text-slate-500">Or search a topic with direct transcript coverage:</p>
                     <div className="flex flex-wrap gap-2">
                       {report.suggestions.map(s => (
                         <button key={s} onClick={() => void runSearch(s)}
-                          className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
-                          style={{ border: "1px solid rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}>
+                          className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-600 hover:text-sky-700"
+                          style={{ border: "1px solid #e2e8f0", background: "#f8fafc" }}>
                           {s} →
                         </button>
                       ))}
@@ -1596,10 +1686,10 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
             // STATE 3 — Insufficient Evidence: nothing in any layer
             return (
               <div className="rounded-xl px-5 py-4 space-y-3"
-                style={{ background: "rgba(15,37,53,0.5)", border: "1px solid rgba(185,28,28,0.3)" }}>
+                style={{ background: "#fef2f2", border: "1px solid #fca5a5" }}>
                 <div className="space-y-1">
-                  <p className="text-sm font-mono font-black text-red-400/70 uppercase tracking-widest">Insufficient Evidence</p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm font-mono font-black text-red-600 uppercase tracking-widest">Insufficient Evidence</p>
+                  <p className="text-sm text-slate-600">
                     {report.videosMatched > 0
                       ? "Evidence exists but consensus is weak. Analyze more videos specifically about this topic to strengthen the signal."
                       : "No creators in your library explicitly discuss this topic. Analyze more videos on this subject."}
@@ -1610,8 +1700,8 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
                   <div className="flex flex-wrap gap-2">
                     {report.suggestions.map(s => (
                       <button key={s} onClick={() => void runSearch(s)}
-                        className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-300 hover:text-[#38bdf8]"
-                        style={{ border: "1px solid rgba(56,189,248,0.25)", background: "rgba(56,189,248,0.06)" }}>
+                        className="text-sm font-mono px-3 py-1.5 rounded-lg transition-colors text-slate-600 hover:text-sky-700"
+                        style={{ border: "1px solid #e2e8f0", background: "white" }}>
                         {s} →
                       </button>
                     ))}
@@ -1631,13 +1721,13 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
           {debugData && <DebugPanel data={debugData} />}
 
           {/* Footer */}
-          <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "#1e2d45" }}>
-            <p className="text-xs font-mono text-slate-700">
+          <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "#e2e8f0" }}>
+            <p className="text-xs font-mono text-slate-400">
               {report.totalIndexed} data points · Quotes from real creator content
             </p>
             <button
               onClick={() => { setReport(null); setDebugData(null); setError(null); setQuery(""); setTimeout(() => inputRef.current?.focus(), 50); }}
-              className="text-sm font-mono text-[#38bdf8] hover:text-white transition-colors">
+              className="text-sm font-mono text-sky-600 hover:text-sky-800 transition-colors">
               New search →
             </button>
           </div>
