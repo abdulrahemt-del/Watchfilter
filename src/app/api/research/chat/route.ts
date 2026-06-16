@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import OpenAI from "openai";
 import type { ResearchReport, ResearchTheme } from "@/app/api/research/search/route";
+import { getCreatorProfilesForNames } from "@/lib/db";
+import { authorityTier } from "@/lib/creatorAuthority";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -39,6 +41,26 @@ Never extrapolate concept A into concept B. Name the gap, then reason past it.
 ACTIVE FINDING MODE:
 When active_finding is present: focus on that cluster, be direct and conversational.
 Do NOT re-explain the full topic.
+
+CREATOR AUTHORITY:
+The JSON context includes a "creator_authority" map. Each entry has:
+  - authority_score (0-100, computed from library presence)
+  - tier: "High" (65+) / "Medium" (30-64) / "Low" (<30)
+  - video_count: how many videos from this creator are in the library
+  - top_categories: their primary topics
+
+Use this to weight evidence:
+  - "High-authority creators" (tier: High) — weight more heavily; state this explicitly
+  - "Medium-authority" — standard weight
+  - "Low-authority" (1-2 videos, low score) — treat as Signal (Unverified)
+
+When citing evidence, prefer High-authority creators.
+When ALL supporting evidence is Low-authority, set Confidence to "Signal (Unverified)".
+When citing a creator with authority data, mention their tier naturally:
+  "Evan Carmichael (High Authority) reports..."
+  or just use authority to select which evidence to surface — don't mechanically label every bullet.
+
+If creator_authority is empty (profiles not yet synced), proceed normally without authority weighting.
 
 ================================================================================
 CORE PRINCIPLE
@@ -217,9 +239,36 @@ function buildCluster(t: ResearchTheme, clusterId: string) {
   };
 }
 
-function buildReportContext(report: ResearchReport, activeFindingIndex?: number): string {
+async function buildReportContext(report: ResearchReport, activeFindingIndex?: number): Promise<string> {
   const activeTheme =
     activeFindingIndex !== undefined ? report.themes[activeFindingIndex] : undefined;
+
+  const clusters = report.themes.map((t, i) => buildCluster(t, `finding_${i}`));
+  const limitedSignals = (report.limitedThemes ?? []).map((t, i) => buildCluster(t, `limited_${i}`));
+
+  // Collect unique creator names across all evidence cards
+  const creatorNames = [
+    ...new Set(
+      [...clusters, ...limitedSignals]
+        .flatMap(c => c.evidence_cards.map(e => e.creator).filter(Boolean)),
+    ),
+  ] as string[];
+
+  // Fetch authority profiles for the creators present in this report
+  let creatorAuthority: Record<string, { authority_score: number; tier: string; video_count: number; top_categories: string[] }> = {};
+  try {
+    const profiles = await getCreatorProfilesForNames(creatorNames);
+    for (const p of profiles) {
+      creatorAuthority[p.channel_name] = {
+        authority_score: p.authority_score,
+        tier: authorityTier(p.authority_score),
+        video_count: p.video_count,
+        top_categories: p.top_categories,
+      };
+    }
+  } catch {
+    // non-fatal — proceed without authority data
+  }
 
   const context = {
     activeFindingIndex: activeFindingIndex ?? null,
@@ -227,9 +276,10 @@ function buildReportContext(report: ResearchReport, activeFindingIndex?: number)
     active_finding: activeTheme
       ? buildCluster(activeTheme, `finding_${activeFindingIndex}`)
       : null,
-    clusters: report.themes.map((t, i) => buildCluster(t, `finding_${i}`)),
-    limited_signals: (report.limitedThemes ?? []).map((t, i) => buildCluster(t, `limited_${i}`)),
+    clusters,
+    limited_signals: limitedSignals,
     synthesis: report.synthesis ?? null,
+    creator_authority: creatorAuthority,
   };
 
   return JSON.stringify(context, null, 2);
@@ -251,7 +301,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing query or report" }, { status: 400 });
   }
 
-  const reportContext = buildReportContext(reportSnapshot, activeFindingIndex);
+  const reportContext = await buildReportContext(reportSnapshot, activeFindingIndex);
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: CHAT_SYSTEM },

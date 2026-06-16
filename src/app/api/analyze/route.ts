@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import { analyzeYouTubeVideo, TranscriptFetchError } from "@/lib/analyzeVideo";
 import { saveAnalysis, getLatestAnalysisByVideoId, recordBetaEvent } from "@/lib/db";
 import { indexAnalysis } from "@/lib/research/indexer";
+import { syncCreatorAuthority } from "@/lib/creatorAuthority";
 import { extractYouTubeVideoId } from "@/lib/youtube";
 import type { TranscriptFetchOverrides } from "@/lib/youtube";
 
@@ -109,8 +110,10 @@ export async function POST(request: Request) {
       console.log("[FIRST_ANALYSIS_GENERATED]", { userId, analysisId, timestamp: new Date().toISOString() });
     }).catch(() => {});
 
-    // Background research indexing — non-blocking, non-critical
-    indexAnalysis(analysisId).catch(() => {});
+    // Background: index into research_index, then rebuild creator authority profiles
+    indexAnalysis(analysisId)
+      .then(() => syncCreatorAuthority())
+      .catch(() => {});
 
     return NextResponse.json(saved);
   } catch (error) {

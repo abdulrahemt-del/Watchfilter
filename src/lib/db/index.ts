@@ -106,6 +106,28 @@ async function ensureSchema(): Promise<void> {
       value     TEXT NOT NULL,
       cached_at TEXT NOT NULL
     )`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS creator_profiles (
+      channel_name      TEXT PRIMARY KEY,
+      video_count       INTEGER NOT NULL DEFAULT 0,
+      data_point_count  INTEGER NOT NULL DEFAULT 0,
+      high_signal_count INTEGER NOT NULL DEFAULT 0,
+      category_count    INTEGER NOT NULL DEFAULT 0,
+      authority_score   INTEGER NOT NULL DEFAULT 0,
+      top_categories    TEXT NOT NULL DEFAULT '[]',
+      updated_at        TEXT NOT NULL
+    )`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS creator_positions (
+      id               TEXT PRIMARY KEY,
+      channel_name     TEXT NOT NULL,
+      category         TEXT NOT NULL,
+      stance           TEXT NOT NULL,
+      confidence       INTEGER NOT NULL DEFAULT 0,
+      data_point_count INTEGER NOT NULL DEFAULT 0,
+      contrarian_count INTEGER NOT NULL DEFAULT 0,
+      updated_at       TEXT NOT NULL,
+      UNIQUE(channel_name, category)
+    )`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_creator_positions_category ON creator_positions (category)`, args: [] },
   ], "write");
 
   for (const sql of [
@@ -412,6 +434,120 @@ export async function setKV(key: string, value: string): Promise<void> {
     args: [key, value, new Date().toISOString()],
   });
 }
+
+// ── Creator authority ─────────────────────────────────────────────────────────
+
+export type CreatorProfile = {
+  channel_name: string;
+  video_count: number;
+  data_point_count: number;
+  high_signal_count: number;
+  category_count: number;
+  authority_score: number;
+  top_categories: string[];
+  updated_at: string;
+};
+
+export type CreatorPosition = {
+  channel_name: string;
+  category: string;
+  stance: "support" | "oppose" | "nuance";
+  confidence: number;
+  data_point_count: number;
+  contrarian_count: number;
+};
+
+export async function upsertCreatorProfile(p: CreatorProfile): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `INSERT INTO creator_profiles
+            (channel_name, video_count, data_point_count, high_signal_count,
+             category_count, authority_score, top_categories, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(channel_name) DO UPDATE SET
+            video_count       = excluded.video_count,
+            data_point_count  = excluded.data_point_count,
+            high_signal_count = excluded.high_signal_count,
+            category_count    = excluded.category_count,
+            authority_score   = excluded.authority_score,
+            top_categories    = excluded.top_categories,
+            updated_at        = excluded.updated_at`,
+    args: [
+      p.channel_name, p.video_count, p.data_point_count, p.high_signal_count,
+      p.category_count, p.authority_score, JSON.stringify(p.top_categories), p.updated_at,
+    ],
+  });
+}
+
+export async function upsertCreatorPosition(p: CreatorPosition): Promise<void> {
+  const c = await db();
+  const id = `${p.channel_name}__${p.category}`.replace(/\s+/g, "_").toLowerCase();
+  await c.execute({
+    sql: `INSERT INTO creator_positions
+            (id, channel_name, category, stance, confidence, data_point_count, contrarian_count, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(channel_name, category) DO UPDATE SET
+            stance           = excluded.stance,
+            confidence       = excluded.confidence,
+            data_point_count = excluded.data_point_count,
+            contrarian_count = excluded.contrarian_count,
+            updated_at       = excluded.updated_at`,
+    args: [id, p.channel_name, p.category, p.stance, p.confidence, p.data_point_count, p.contrarian_count, new Date().toISOString()],
+  });
+}
+
+export async function getCreatorProfilesForNames(names: string[]): Promise<CreatorProfile[]> {
+  if (!names.length) return [];
+  const c = await db();
+  const placeholders = names.map(() => "?").join(",");
+  const { rows } = await c.execute({
+    sql: `SELECT * FROM creator_profiles WHERE channel_name IN (${placeholders})`,
+    args: names,
+  });
+  return rows.map(r => ({
+    channel_name:      r.channel_name as string,
+    video_count:       r.video_count as number,
+    data_point_count:  r.data_point_count as number,
+    high_signal_count: r.high_signal_count as number,
+    category_count:    r.category_count as number,
+    authority_score:   r.authority_score as number,
+    top_categories:    JSON.parse(r.top_categories as string) as string[],
+    updated_at:        r.updated_at as string,
+  }));
+}
+
+export async function getCreatorPositionsByCategory(category: string): Promise<CreatorPosition[]> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT * FROM creator_positions WHERE category = ?`,
+    args: [category],
+  });
+  return rows.map(r => ({
+    channel_name:    r.channel_name as string,
+    category:        r.category as string,
+    stance:          r.stance as "support" | "oppose" | "nuance",
+    confidence:      r.confidence as number,
+    data_point_count: r.data_point_count as number,
+    contrarian_count: r.contrarian_count as number,
+  }));
+}
+
+export async function getAllCreatorProfiles(): Promise<CreatorProfile[]> {
+  const c = await db();
+  const { rows } = await c.execute({ sql: `SELECT * FROM creator_profiles ORDER BY authority_score DESC`, args: [] });
+  return rows.map(r => ({
+    channel_name:      r.channel_name as string,
+    video_count:       r.video_count as number,
+    data_point_count:  r.data_point_count as number,
+    high_signal_count: r.high_signal_count as number,
+    category_count:    r.category_count as number,
+    authority_score:   r.authority_score as number,
+    top_categories:    JSON.parse(r.top_categories as string) as string[],
+    updated_at:        r.updated_at as string,
+  }));
+}
+
+// ── Pipeline cache ─────────────────────────────────────────────────────────────
 
 export async function getUserPipelineCache(userId: string): Promise<{
   aiScores: Record<string, unknown>;
