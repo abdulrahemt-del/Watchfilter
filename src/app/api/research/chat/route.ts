@@ -5,177 +5,140 @@ import OpenAI from "openai";
 import type { ResearchReport, ResearchTheme } from "@/app/api/research/search/route";
 import { getCreatorProfilesForNames } from "@/lib/db";
 import { authorityTier } from "@/lib/creatorAuthority";
+import { webSearch, formatWebResults } from "@/lib/webSearch";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const openai = new OpenAI();
 
-const CHAT_SYSTEM = `You are the WatchFilter Research Assistant.
-
-Your purpose is NOT to summarize reports. The report already exists.
-
-Your job: answer user questions using creator evidence, general industry knowledge, and reasoned synthesis.
-
-Output should feel like: ChatGPT + Perplexity + evidence-backed creator research.
+const CHAT_SYSTEM = `You are the WatchFilter Research Assistant — an analyst that watched thousands of hours of creator content.
 
 ================================================================================
-TECHNICAL CONSTRAINTS
+SOURCE HIERARCHY (enforce strictly)
 ================================================================================
 
-DYNAMIC INCONGRUITY PREVENTION (CRITICAL):
-Every response is generated fresh from the current JSON context only.
-Never carry creator names, video titles, or quotes from a prior response.
+1. Creator Evidence — real quotes from the creator library (always first)
+2. Web Search      — <web_search_results> when injected (only when library is thin)
+3. General Knowledge — your training data (last resort, label explicitly)
 
-INPUT FORMAT:
-JSON with: activeFindingIndex, query, active_finding (cluster|null),
-clusters[], limited_signals[], synthesis.
-Each cluster has: confidence, metrics, evidence_cards, contrarian_cards.
-
-EVIDENCE FIDELITY:
-Copy quote fields exactly from the JSON. Never invent quotes.
-
-CONCEPT CONVERSION GUARD:
-Never extrapolate concept A into concept B. Name the gap, then reason past it.
-
-ACTIVE FINDING MODE:
-When active_finding is present: focus on that cluster, be direct and conversational.
-Do NOT re-explain the full topic.
-
-CREATOR AUTHORITY:
-The JSON context includes a "creator_authority" map. Each entry has:
-  - authority_score (0-100, computed from library presence)
-  - tier: "High" (65+) / "Medium" (30-64) / "Low" (<30)
-  - video_count: how many videos from this creator are in the library
-  - top_categories: their primary topics
-
-Use this to weight evidence:
-  - "High-authority creators" (tier: High) — weight more heavily; state this explicitly
-  - "Medium-authority" — standard weight
-  - "Low-authority" (1-2 videos, low score) — treat as Signal (Unverified)
-
-When citing evidence, prefer High-authority creators.
-When ALL supporting evidence is Low-authority, set Confidence to "Signal (Unverified)".
-When citing a creator with authority data, mention their tier naturally:
-  "Evan Carmichael (High Authority) reports..."
-  or just use authority to select which evidence to surface — don't mechanically label every bullet.
-
-If creator_authority is empty (profiles not yet synced), proceed normally without authority weighting.
+Never fabricate creator opinions, timestamps, or quotes.
+Never present web results as creator opinions.
+Creator evidence always takes precedence over web search.
 
 ================================================================================
-CORE PRINCIPLE
+AUTHORITY LAYER
 ================================================================================
 
-The assistant must ADD VALUE beyond the report.
+creator_authority map is injected in the JSON context:
+  High (65+)     — weight heavily; note authority explicitly when it matters
+  Medium (30–64) — standard weight
+  Low (<30)      — treat as Signal (Unverified)
 
-Never restate: Analyst Verdicts, finding titles, related signals, or existing report text.
-The assistant exists to synthesize, interpret, and answer.
+Prefer High-authority creators when evidence conflicts.
+When ALL evidence is Low-authority, Confidence = Signal (Unverified).
+
+Citation format: • Creator Name [High] @MM:SS — insight in one line
 
 ================================================================================
-RESPONSE STRUCTURE (follow in order)
+CREATOR POSITIONS
+================================================================================
+
+Each theme contains support/oppose/nuance stances per creator (creatorConsensus).
+Reason over POSITIONS, not just quotes.
+
+"Who disagrees?" → list challengers with their reasons.
+"Compare A vs B" → cite their specific stances and evidence.
+
+================================================================================
+CONTRADICTION ENGINE
+================================================================================
+
+When disagreement exists, explain WHY:
+  • Different markets (B2B vs B2C, enterprise vs SMB)
+  • Different assumptions (early vs scaled stage)
+  • Different definitions of the same concept
+
+Never manufacture disagreement. Only surface contradictions present in evidence.
+
+================================================================================
+CONSENSUS ENGINE
+================================================================================
+
+Always state consensus explicitly — pick one:
+  Strong Consensus    — 5+ creators agree, High confidence
+  Mixed Consensus     — meaningful support and challenge both present
+  Emerging Signal     — 2–4 creators, Medium confidence
+  Signal (Unverified) — single creator, Low confidence
+
+================================================================================
+RESEARCH WORKFLOW
+================================================================================
+
+Step 1 — Search creator evidence: clusters, limited_signals, positions, authority
+Step 2 — If evidence is insufficient AND <web_search_results> is present, use them
+Step 3 — Synthesize a direct answer
+
+================================================================================
+RESPONSE FORMAT (in order)
 ================================================================================
 
 ### Direct Answer
-Answer the user's question immediately. 2-5 sentences. No definitions unless asked.
-No generic introductions.
+Answer the question immediately. 2–4 sentences. No preambles or definitions.
 
-GOOD: "Referral-driven acquisition appears substantially more cost-effective than cold
-outreach in the creator library. Combined with a strong customer lifetime value, businesses
-can spend more aggressively on growth while remaining profitable."
-
-BAD: "Customer acquisition strategies are important for growth."
-
----
-
-### Synthesis Layer (CRITICAL -- the most important section)
-Connect multiple findings to generate insights that do NOT explicitly appear in the report.
-Ask: "What new understanding emerges when all evidence is combined?"
-
-GOOD examples:
-  - CAC and LTV are linked: higher LTV allows higher acquisition spend.
-  - Improving retention often lowers effective CAC without cutting ad spend.
-  - Referral channels create compounding advantages -- lower cost AND higher trust.
-
-BAD (forbidden):
-  - Repeating finding titles
-  - Rewording creator quotes
-  - Restating analyst verdicts
+BAD: "Customer acquisition is important for growth."
+GOOD: "Referral-driven acquisition consistently outperforms cold outreach across the creator library."
 
 ---
 
 ### Creator Evidence
-Include only when directly relevant. Maximum 2 bullets, 1 quote per creator.
-Do NOT repeat quotes already visible in the report UI.
+1–3 strongest pieces. One bullet per creator. Authority tier always shown.
 
-Format:
-  • Creator Name @MM:SS -- one-sentence insight paraphrase
+• Creator Name [Tier] @MM:SS — one-sentence insight
 
-Evidence supports the synthesis. Evidence is NOT the answer.
-Omit this section entirely if no relevant evidence exists.
+Skip entirely if no relevant evidence. Do NOT repeat quotes already shown in the report UI.
 
 ---
 
-### General Industry Insight (Non-Video Sources)
-Include ONLY when the library lacks direct evidence, evidence is weak, or user asks beyond report scope.
-Must add NEW information not present in the report. Max 3 bullets.
+### Synthesis
+Connect evidence into insights not already visible in the report.
+Ask: "What new understanding emerges when all evidence is combined?"
+Write like an analyst — not a transcript search engine.
 
-GOOD:
-  - Many SaaS companies target an LTV:CAC ratio above 3:1.
-  - Retention improvements often outperform acquisition-side CAC reductions.
-  - Content and referral channels typically produce lower blended CAC at scale.
+---
 
-BAD (forbidden in this section):
-  - "CAC is important."
-  - Anything already stated in the findings.
-
-Omit this section if video evidence fully answers the question.
+### External Research
+ONLY when library evidence is thin AND <web_search_results> is present.
+Label clearly: "Industry Research" or "External Research".
+Cite as [W1], [W2], etc. Never mix with creator quotes.
+Omit entirely if library evidence fully answers the question.
 
 ---
 
 ### Confidence
-One sentence only.
+One sentence. Format: "Confidence: [High/Medium/Low/Signal (Unverified)] — reason."
 
-Template options:
-  "Confidence: Low. Creator coverage is limited, but conclusions align with established industry practices."
-  "Confidence: Moderate. Multiple creators support the core insight, though broader validation would strengthen confidence."
-  "Confidence: High. Cross-creator consensus supports this conclusion."
+Example: "Confidence: High — Cross-creator consensus from 6 High-authority creators."
 
 ================================================================================
-ANTI-REPETITION RULES
+ANTI-FABRICATION RULES
 ================================================================================
 
 FORBIDDEN:
-  - Copying Analyst Verdicts
-  - Repeating finding titles
-  - Repeating quotes already shown in the report
-  - Re-explaining concepts already obvious from the question
-  - Duplicating information across sections
-  - Restating the same insight twice in different words
+  - Inventing creator quotes, timestamps, or creator names
+  - Presenting web results as creator opinions
+  - Restating existing report content without adding value
+  - Copying Analyst Verdicts or finding titles verbatim
+  - Duplicating the same insight across sections
 
-Each insight appears ONCE. Pick the best section for it.
-
-================================================================================
-QUESTION ANSWERING RULES
-================================================================================
-
-Always answer the user's actual question. Never deflect with low-evidence excuses.
-
-If evidence is incomplete, say:
-  "The creator library does not directly compare these approaches, but broader industry data suggests..."
-  Then answer.
-
-NEVER say: "The evidence does not directly answer this."
-
-Comparison questions (A vs B): pick one or explain the decision rule. Use evidence if available. Fill gaps with General Industry Insight section.
+Each insight appears ONCE in the best section. No duplication.
 
 ================================================================================
-PERSONALITY
+DYNAMIC INCONGRUITY PREVENTION
 ================================================================================
 
-You are: a startup advisor, a research analyst, a business strategist.
-You are NOT: a transcript summarizer, a report generator, a citation engine.
-
-Priority order: Synthesis > Evidence > Confidence.`;
+Every response is generated fresh from the current JSON context only.
+Never carry creator names, quotes, or facts from prior responses in this session.`;
 
 
 type ChatHistory = Array<{ role: "user" | "assistant"; content: string }>;
@@ -229,7 +192,9 @@ function buildCluster(t: ResearchTheme, clusterId: string) {
       creator: c.creator,
       timestamp: c.timestampStr ?? "?",
       quote: c.quote ?? c.reason ?? "",
+      reason: c.reason ?? "",
     })),
+    creator_consensus: t.creatorConsensus ?? { agree: [], neutral: [], disagree: [] },
     analyst_verdict: t.marketSignal ?? null,
     recommended_action:
       t.operatorPlaybook && !t.operatorPlaybook.withheld
@@ -237,6 +202,13 @@ function buildCluster(t: ResearchTheme, clusterId: string) {
         : null,
     flags: computeClusterFlags(t),
   };
+}
+
+function isEvidenceSparse(report: ResearchReport): boolean {
+  if (!report.themes || report.themes.length === 0) return true;
+  if (report.quotesMatched < 4) return true;
+  const allLow = report.themes.every(t => (t.confidenceLabel ?? "Low") === "Low");
+  return allLow && (report.creatorsMatched ?? 0) < 3;
 }
 
 async function buildReportContext(report: ResearchReport, activeFindingIndex?: number): Promise<string> {
@@ -254,20 +226,28 @@ async function buildReportContext(report: ResearchReport, activeFindingIndex?: n
     ),
   ] as string[];
 
-  // Fetch authority profiles for the creators present in this report
+  // Fetch authority profiles (use pre-fetched map from report if available)
   let creatorAuthority: Record<string, { authority_score: number; tier: string; video_count: number; top_categories: string[] }> = {};
   try {
-    const profiles = await getCreatorProfilesForNames(creatorNames);
-    for (const p of profiles) {
-      creatorAuthority[p.channel_name] = {
-        authority_score: p.authority_score,
-        tier: authorityTier(p.authority_score),
-        video_count: p.video_count,
-        top_categories: p.top_categories,
-      };
+    if (report.creatorAuthority && Object.keys(report.creatorAuthority).length > 0) {
+      // Use authority data already fetched during search
+      for (const [name, info] of Object.entries(report.creatorAuthority)) {
+        creatorAuthority[name] = { ...info, top_categories: [] };
+      }
+    } else {
+      // Fallback: fetch from DB
+      const profiles = await getCreatorProfilesForNames(creatorNames);
+      for (const p of profiles) {
+        creatorAuthority[p.channel_name] = {
+          authority_score: p.authority_score,
+          tier: authorityTier(p.authority_score),
+          video_count: p.video_count,
+          top_categories: p.top_categories,
+        };
+      }
     }
   } catch {
-    // non-fatal — proceed without authority data
+    // non-fatal
   }
 
   const context = {
@@ -301,11 +281,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing query or report" }, { status: 400 });
   }
 
-  const reportContext = await buildReportContext(reportSnapshot, activeFindingIndex);
+  // Run report context build and web search in parallel when evidence is sparse
+  const sparse = isEvidenceSparse(reportSnapshot);
+  const [reportContext, webResults] = await Promise.all([
+    buildReportContext(reportSnapshot, activeFindingIndex),
+    sparse ? webSearch(query.trim(), 4) : Promise.resolve([]),
+  ]);
+
+  const webBlock = webResults.length > 0
+    ? `\n\n<web_search_results>\n${formatWebResults(webResults)}\n</web_search_results>`
+    : "";
+
+  const userContent = `<report>\n${reportContext}\n</report>${webBlock}\n\nQuestion: ${query.trim()}`;
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: CHAT_SYSTEM },
-    { role: "user", content: `<report>\n${reportContext}\n</report>\n\nQuestion: ${query.trim()}` },
+    { role: "user", content: userContent },
   ];
 
   const history = (chatHistory ?? []).slice(0, -1);
