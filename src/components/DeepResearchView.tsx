@@ -204,21 +204,44 @@ function DebateCard({ debate }: { debate: DebateCluster }) {
 
 // ── Opportunity card ──────────────────────────────────────────────────────────
 
+function MetaBadge({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 72 }}>
+      <span style={{ fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#94a3b8" }}>{label}</span>
+      <span style={{ fontSize: "0.68rem", fontWeight: 700, color }}>{value}</span>
+    </div>
+  );
+}
+
 function OpportunityCard({ opp, rank }: { opp: OpportunityEntry; rank: number }) {
   const [expanded, setExpanded] = useState(false);
-  const score = Math.min(100, Math.round(opp.opportunity_score * 100));
   const rankColor = rank === 1 ? "#f59e0b" : rank === 2 ? "#94a3b8" : rank === 3 ? "#cd7c54" : "#475569";
+
+  const compColor = opp.competition === "Low" ? "#10b981" : opp.competition === "Medium" ? "#f59e0b" : "#ef4444";
+  const barrierColor = opp.barrier_to_entry === "Low" ? "#10b981" : opp.barrier_to_entry === "Medium" ? "#f59e0b" : "#ef4444";
+  const sizeColor = opp.market_size === "Large" ? "#10b981" : opp.market_size === "Medium" ? "#f59e0b" : "#64748b";
 
   return (
     <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem" }}>
-        <span style={{ fontSize: "1.1rem", fontWeight: 900, color: rankColor, minWidth: 24, fontVariantNumeric: "tabular-nums" }}>
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", padding: "0.75rem 1rem" }}>
+        <span style={{ fontSize: "1.1rem", fontWeight: 900, color: rankColor, minWidth: 24, flexShrink: 0, fontVariantNumeric: "tabular-nums", paddingTop: 2 }}>
           #{rank}
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: "0 0 0.35rem", fontSize: "0.82rem", fontWeight: 700, color: "#0f172a" }}>
-            {opp.name}
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.35rem" }}>
+            <p style={{ margin: 0, fontSize: "0.82rem", fontWeight: 700, color: "#0f172a" }}>{opp.name}</p>
+            {opp.industry && (
+              <span style={{ fontSize: "0.6rem", fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#475569", flexShrink: 0 }}>
+                {opp.industry}
+              </span>
+            )}
+          </div>
+          {opp.customer && (
+            <p style={{ margin: "0 0 0.35rem", fontSize: "0.71rem", color: "#64748b" }}>
+              Target: <strong style={{ color: "#374151" }}>{opp.customer}</strong>
+            </p>
+          )}
           <ScoreBar score={opp.opportunity_score} />
         </div>
         <button
@@ -230,31 +253,55 @@ function OpportunityCard({ opp, rank }: { opp: OpportunityEntry; rank: number })
         </button>
       </div>
 
+      {/* Meta badges */}
+      {(opp.market_size ?? opp.competition ?? opp.barrier_to_entry ?? opp.founder_fit) && (
+        <div style={{ display: "flex", gap: "1.25rem", padding: "0.55rem 1rem", background: "#fafafa", borderTop: "1px solid #f1f5f9", flexWrap: "wrap" }}>
+          {opp.market_size && <MetaBadge label="Market Size" value={opp.market_size} color={sizeColor} />}
+          {opp.competition && <MetaBadge label="Competition" value={opp.competition} color={compColor} />}
+          {opp.barrier_to_entry && <MetaBadge label="Barrier to Entry" value={opp.barrier_to_entry} color={barrierColor} />}
+          {opp.founder_fit && <MetaBadge label="Founder Fit" value={opp.founder_fit} color="#6366f1" />}
+        </div>
+      )}
+
       {expanded && (
-        <div style={{ borderTop: "1px solid #f1f5f9", padding: "0.75rem 1rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        <div style={{ borderTop: "1px solid #f1f5f9", padding: "0.75rem 1rem", display: "flex", flexDirection: "column", gap: "0.7rem" }}>
+          {opp.pain_point && (
+            <div>
+              <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#ef4444" }}>Pain Point</p>
+              <p style={{ margin: 0, fontSize: "0.75rem", color: "#374151" }}>{opp.pain_point}</p>
+            </div>
+          )}
           {opp.why_now && (
             <div>
               <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10b981" }}>Why Now</p>
               <p style={{ margin: 0, fontSize: "0.75rem", color: "#374151" }}>{opp.why_now}</p>
             </div>
           )}
+          {opp.existing_solutions && (
+            <div>
+              <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Existing Solutions</p>
+              <p style={{ margin: 0, fontSize: "0.75rem", color: "#374151" }}>{opp.existing_solutions}</p>
+            </div>
+          )}
+          {opp.gap && (
+            <div>
+              <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6366f1" }}>Gap in Market</p>
+              <p style={{ margin: 0, fontSize: "0.75rem", color: "#374151" }}>{opp.gap}</p>
+            </div>
+          )}
           {opp.supporting_evidence.length > 0 && (
             <div>
               <p style={{ margin: "0 0 0.3rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3b82f6" }}>Supporting Evidence</p>
               {opp.supporting_evidence.map((e, i) => (
-                <p key={i} style={{ margin: "0.15rem 0", fontSize: "0.73rem", color: "#374151", paddingLeft: "0.75rem", borderLeft: "2px solid #dbeafe" }}>
-                  {e}
-                </p>
+                <p key={i} style={{ margin: "0.15rem 0", fontSize: "0.73rem", color: "#374151", paddingLeft: "0.75rem", borderLeft: "2px solid #dbeafe" }}>{e}</p>
               ))}
             </div>
           )}
           {opp.counterarguments.length > 0 && (
             <div>
-              <p style={{ margin: "0 0 0.3rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#ef4444" }}>Counterarguments</p>
+              <p style={{ margin: "0 0 0.3rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#f59e0b" }}>Counterarguments</p>
               {opp.counterarguments.map((c, i) => (
-                <p key={i} style={{ margin: "0.15rem 0", fontSize: "0.73rem", color: "#374151", paddingLeft: "0.75rem", borderLeft: "2px solid #fee2e2" }}>
-                  {c}
-                </p>
+                <p key={i} style={{ margin: "0.15rem 0", fontSize: "0.73rem", color: "#374151", paddingLeft: "0.75rem", borderLeft: "2px solid #fef3c7" }}>{c}</p>
               ))}
             </div>
           )}
@@ -408,7 +455,33 @@ function InvestmentMemoDisplay({ memo }: { memo: InvestmentMemo }) {
             {memo.executive_summary.market_interpretation}
           </p>
         )}
+
+        {/* Creator concentration row */}
+        {memo.concentration_level && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid #1e293b", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#475569" }}>Creator Diversity</span>
+            <span style={{
+              fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em",
+              padding: "2px 8px", borderRadius: 20,
+              background: memo.concentration_level === "HIGH" ? "#fee2e2" : memo.concentration_level === "MEDIUM" ? "#fef3c7" : "#dcfce7",
+              color: memo.concentration_level === "HIGH" ? "#991b1b" : memo.concentration_level === "MEDIUM" ? "#92400e" : "#166534",
+              border: `1px solid ${memo.concentration_level === "HIGH" ? "#fca5a5" : memo.concentration_level === "MEDIUM" ? "#fbbf24" : "#86efac"}`,
+            }}>
+              {memo.concentration_level} concentration · {Math.round((memo.creator_concentration ?? 0) * 100)}%
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Skew warning banner */}
+      {memo.skew_warning && (
+        <div style={{ display: "flex", gap: "0.6rem", alignItems: "flex-start", padding: "0.75rem 1rem", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10 }}>
+          <span style={{ fontSize: "0.85rem", flexShrink: 0 }}>⚠</span>
+          <p style={{ margin: 0, fontSize: "0.76rem", color: "#9a3412", lineHeight: 1.5 }}>
+            <strong>Single-Creator Skew Detected.</strong> {memo.skew_warning} Treat insights as preliminary signals. Cross-reference with additional creators before acting.
+          </p>
+        </div>
+      )}
 
       {/* Emerging Trends */}
       {memo.emerging_trends.length > 0 && (
