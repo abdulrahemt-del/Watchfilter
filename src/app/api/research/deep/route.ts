@@ -44,6 +44,9 @@ export type TrendEntry = {
 
 export type OpportunityEntry = {
   name: string;
+  market_shift?: string;
+  pain_point?: string;
+  gap?: string;
   opportunity_score: number;
   why_now: string;
   supporting_evidence: string[];
@@ -64,6 +67,18 @@ export type EvidenceItem = {
   url?: string;
 };
 
+export type RecommendedAction = {
+  confidence_level: "HIGH" | "MEDIUM" | "LOW";
+  label: string;
+  action: string;
+  detail: string;
+  implementation?: string;
+  metrics?: string;
+  risks?: string;
+  missing_evidence?: string;
+  follow_up_queries?: string[];
+};
+
 export type InvestmentMemo = {
   topic: string;
   generated_at: string;
@@ -77,7 +92,20 @@ export type InvestmentMemo = {
   opportunity_ranking: OpportunityEntry[];
   risk_signals: RiskEntry[];
   evidence_appendix: EvidenceItem[];
+  recommended_actions: RecommendedAction;
 };
+
+// ── Confidence classifier (deterministic) ─────────────────────────────────────
+
+function classifyConfidence(
+  uniqueCreators: number,
+  evidenceCount: number,
+  hasExternal: boolean,
+): "HIGH" | "MEDIUM" | "LOW" {
+  if (uniqueCreators >= 5 && evidenceCount >= 20 && hasExternal) return "HIGH";
+  if (uniqueCreators >= 3 && evidenceCount >= 8) return "MEDIUM";
+  return "LOW";
+}
 
 // ── Keyword extractor ─────────────────────────────────────────────────────────
 
@@ -129,10 +157,18 @@ async function runExplorer(topic: string, evidence: string): Promise<AtomicClaim
         content: `You are the Explorer Agent in a multi-agent intelligence system.
 Extract atomic claims from creator video evidence.
 
+RELEVANCE FILTER (mandatory):
+- Each claim must have query_relevance_score ≥ 0.75 to the user's topic.
+- Compute relevance using keyword overlap and topical alignment.
+- REJECT claims that discuss unrelated topics (e.g. if topic is "short form content", reject claims about investing, ETFs, real estate, unrelated finance).
+- Only surface evidence directly relevant to the user's query.
+- The Evidence Appendix must not contain unrelated claims.
+
 Each claim must be:
 - ONE verifiable idea (never compound)
 - Normalized: strip hedges, keep the core assertion
 - Grounded only in the provided evidence — no hallucination
+- query_relevance_score ≥ 0.75 (drop anything below)
 
 Return JSON:
 {
@@ -145,7 +181,8 @@ Return JSON:
       "type": "fact|opinion|prediction|recommendation",
       "confidence": 0.0-1.0,
       "creator": "channel_name",
-      "evidence": "brief quote excerpt max 80 chars"
+      "evidence": "brief quote excerpt max 80 chars",
+      "query_relevance_score": 0.0-1.0
     }
   ]
 }`,
@@ -162,7 +199,7 @@ Return JSON:
 
 // ── Agent: Critic — detect contradictions ─────────────────────────────────────
 
-async function runCritic(claims: AtomicClaim[]): Promise<DebateCluster[]> {
+async function runCritic(topic: string, claims: AtomicClaim[]): Promise<DebateCluster[]> {
   if (claims.length < 2) return [];
 
   const res = await openai.chat.completions.create({
@@ -175,6 +212,15 @@ async function runCritic(claims: AtomicClaim[]): Promise<DebateCluster[]> {
         role: "system",
         content: `You are the Critic Agent in a multi-agent intelligence system.
 Find genuine debates and contradictions between claims.
+
+TOPIC CONSTRAINT (mandatory):
+- Debates MUST be constrained to the active query topic: "${topic}"
+- Before computing contradictions, assess topic_similarity(query, claim).
+- REJECT claims with topic_similarity < 0.80 — do not use them in any debate.
+- Only compare claims within the same topic cluster.
+- Cross-topic contradictions are PROHIBITED.
+- If a creator discusses investing/ETFs/real estate/unrelated finance but the query is about content formats, those claims must be excluded.
+- If no valid on-topic debate exists, return an empty debates array.
 
 ONLY flag real contradictions — where claims genuinely oppose, partially disagree, or reinterpret the same trend differently.
 Do NOT manufacture disagreement. Do NOT merge unrelated claims.
@@ -192,7 +238,7 @@ Return JSON:
   ]
 }`,
       },
-      { role: "user", content: `Claims:\n${JSON.stringify(claims, null, 2)}` },
+      { role: "user", content: `Query topic: ${topic}\n\nClaims:\n${JSON.stringify(claims, null, 2)}` },
     ],
   });
 
@@ -211,15 +257,39 @@ async function runSynthesizer(
   webContext: string,
   authorityMap: Record<string, string>,
   evidenceCount: number,
+  confidenceLevel: "HIGH" | "MEDIUM" | "LOW",
 ): Promise<InvestmentMemo> {
   const authorityCtx = Object.entries(authorityMap)
     .map(([n, t]) => `${n}: ${t}`)
     .join(", ");
 
+  const confidenceInstructions = {
+    HIGH: `Confidence level: HIGH (≥5 creators, ≥20 evidence, external validation exists).
+Output recommended_actions with:
+  label: "▶ Recommended Action"
+  action: concrete strategic action (what to do right now)
+  detail: why it matters + expected impact
+  implementation: specific implementation suggestion`,
+    MEDIUM: `Confidence level: MEDIUM (≥3 creators, ≥8 evidence).
+Output recommended_actions with:
+  label: "◐ Suggested Experiment"
+  action: a small test or experiment to run
+  detail: what to monitor and how long to run it
+  metrics: specific metrics to track
+  risks: what could go wrong`,
+    LOW: `Confidence level: LOW (limited evidence).
+Output recommended_actions with:
+  label: "◌ Research Hypothesis"
+  action: what this signal suggests + what is still unknown
+  detail: what evidence is missing to validate this
+  missing_evidence: specific gaps in the data
+  follow_up_queries: 2-3 specific research queries to strengthen the signal`,
+  }[confidenceLevel];
+
   const res = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.15,
-    max_tokens: 2800,
+    max_tokens: 3200,
     response_format: { type: "json_object" },
     messages: [
       {
@@ -238,6 +308,14 @@ Scoring (range 0.0–1.0):
   consensus_score     = agreement weighted by authority tier (High > Medium > Low)
   contradiction_pressure = strength of opposing camps
   opportunity_score   = emergence_score × contradiction_pressure × (1 − consensus_score)
+
+OPPORTUNITY GENERATION RULES (mandatory):
+- Every opportunity must specify: market_shift, pain_point, gap, proposed_opportunity (the name)
+- name must be a SPECIFIC actionable product/service/strategy (e.g. "AI tools that convert long-form video to platform-specific clips")
+- REJECT generic category names like "Short-Form Content Creation" or "Long-Form Strategy"
+- Valid: "Analytics platform measuring cross-format content ROI" — Invalid: "Content Analytics"
+
+${confidenceInstructions}
 
 Return JSON exactly matching this schema:
 {
@@ -267,7 +345,10 @@ Return JSON exactly matching this schema:
   ],
   "opportunity_ranking": [
     {
-      "name": "string",
+      "name": "string (must be a specific actionable product/service/strategy, NOT a generic category like 'Short-Form Content Creation')",
+      "market_shift": "what is changing in the market",
+      "pain_point": "what problem exists",
+      "gap": "what remains unsolved",
       "opportunity_score": 0.0-1.0,
       "why_now": "string",
       "supporting_evidence": ["string"],
@@ -279,7 +360,18 @@ Return JSON exactly matching this schema:
   ],
   "evidence_appendix": [
     { "claim": "string", "creator": "string", "video": "string", "type": "creator|web", "url": "string|null" }
-  ]
+  ],
+  "recommended_actions": {
+    "confidence_level": "${confidenceLevel}",
+    "label": "string",
+    "action": "string",
+    "detail": "string",
+    "implementation": "string or null",
+    "metrics": "string or null",
+    "risks": "string or null",
+    "missing_evidence": "string or null",
+    "follow_up_queries": ["string"] or null
+  }
 }`,
       },
       {
@@ -301,6 +393,14 @@ ${webContext || "None available"}`,
   });
 
   const now = new Date().toISOString();
+  const fallbackRecommendation: RecommendedAction = {
+    confidence_level: confidenceLevel,
+    label: "◌ Research Hypothesis",
+    action: "Run additional research to strengthen the evidence base.",
+    detail: "Insufficient evidence to generate a concrete recommendation.",
+    follow_up_queries: [`Run Deep Research on ${topic}`, "Search for creators discussing this topic"],
+  };
+
   const fallback: InvestmentMemo = {
     topic,
     generated_at: now,
@@ -311,6 +411,7 @@ ${webContext || "None available"}`,
     opportunity_ranking: [],
     risk_signals: [],
     evidence_appendix: [],
+    recommended_actions: fallbackRecommendation,
   };
 
   try {
@@ -323,6 +424,7 @@ ${webContext || "None available"}`,
       opportunity_ranking: parsed.opportunity_ranking ?? [],
       risk_signals:       parsed.risk_signals ?? [],
       evidence_appendix:  parsed.evidence_appendix ?? [],
+      recommended_actions: parsed.recommended_actions ?? fallbackRecommendation,
     };
   } catch { return fallback; }
 }
@@ -387,7 +489,7 @@ export async function POST(req: NextRequest) {
         // ── Stage 3: Critic — contradiction detection ──────────────────────────
         emit("stage", { agent: "Critic", message: "Detecting contradictions and debates…" });
 
-        const debates = await runCritic(claims);
+        const debates = await runCritic(topic.trim(), claims);
 
         emit("stage", {
           agent: "Critic",
@@ -410,8 +512,14 @@ export async function POST(req: NextRequest) {
         });
 
         // ── Stage 5: Synthesizer + Scorer ─────────────────────────────────────
+        const confidenceLevel = classifyConfidence(
+          creatorSet.size,
+          evidenceRows.length,
+          webRaw.length > 0,
+        );
+
         emit("stage", { agent: "Synthesizer", message: "Building Investment Intelligence Memo…" });
-        emit("stage", { agent: "Scorer", message: "Computing emergence, consensus, and opportunity scores…" });
+        emit("stage", { agent: "Scorer", message: `Computing scores — ${confidenceLevel} confidence tier (${creatorSet.size} creators, ${evidenceRows.length} evidence points)` });
 
         const memo = await runSynthesizer(
           topic.trim(),
@@ -420,6 +528,7 @@ export async function POST(req: NextRequest) {
           webContext,
           authorityMap,
           evidenceRows.length,
+          confidenceLevel,
         );
 
         emit("stage", {

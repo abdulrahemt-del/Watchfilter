@@ -7,6 +7,7 @@ import type {
   DebateCluster,
   OpportunityEntry,
   RiskEntry,
+  RecommendedAction,
 } from "@/app/api/research/deep/route";
 
 // ── Agent log ─────────────────────────────────────────────────────────────────
@@ -284,6 +285,88 @@ function RiskItem({ risk }: { risk: RiskEntry }) {
   );
 }
 
+// ── Recommended Action Card ───────────────────────────────────────────────────
+
+const CONFIDENCE_META: Record<"HIGH" | "MEDIUM" | "LOW", { accent: string; bg: string; border: string; icon: string }> = {
+  HIGH:   { accent: "#10b981", bg: "#f0fdf4", border: "#bbf7d0", icon: "▶" },
+  MEDIUM: { accent: "#f59e0b", bg: "#fffbeb", border: "#fde68a", icon: "◐" },
+  LOW:    { accent: "#6366f1", bg: "#f5f3ff", border: "#c4b5fd", icon: "◌" },
+};
+
+function RecommendedActionCard({ rec }: { rec: RecommendedAction }) {
+  const meta = CONFIDENCE_META[rec.confidence_level];
+  return (
+    <section>
+      <div style={{ fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b", marginBottom: "0.6rem" }}>
+        Recommended Action
+      </div>
+      <div style={{ background: meta.bg, border: `1px solid ${meta.border}`, borderRadius: 12, padding: "1rem 1.1rem", display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+        {/* Label + confidence */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "0.78rem", fontWeight: 800, color: meta.accent, fontFamily: "monospace" }}>
+            {rec.label}
+          </span>
+          <span style={{ fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", padding: "2px 8px", borderRadius: 20, background: meta.border, color: meta.accent }}>
+            {rec.confidence_level} CONFIDENCE
+          </span>
+        </div>
+
+        {/* Action */}
+        <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: 700, color: "#0f172a", lineHeight: 1.45 }}>
+          {rec.action}
+        </p>
+
+        {/* Detail */}
+        {rec.detail && (
+          <p style={{ margin: 0, fontSize: "0.78rem", color: "#475569", lineHeight: 1.55 }}>
+            {rec.detail}
+          </p>
+        )}
+
+        {/* HIGH: implementation */}
+        {rec.implementation && (
+          <div style={{ background: "white", borderRadius: 8, padding: "0.6rem 0.75rem", border: `1px solid ${meta.border}` }}>
+            <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: meta.accent }}>Implementation</p>
+            <p style={{ margin: 0, fontSize: "0.76rem", color: "#334155" }}>{rec.implementation}</p>
+          </div>
+        )}
+
+        {/* MEDIUM: metrics + risks */}
+        {rec.metrics && (
+          <div style={{ background: "white", borderRadius: 8, padding: "0.6rem 0.75rem", border: `1px solid ${meta.border}` }}>
+            <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: meta.accent }}>Metrics to Track</p>
+            <p style={{ margin: 0, fontSize: "0.76rem", color: "#334155" }}>{rec.metrics}</p>
+          </div>
+        )}
+        {rec.risks && (
+          <div style={{ background: "white", borderRadius: 8, padding: "0.6rem 0.75rem", border: `1px solid ${meta.border}` }}>
+            <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "#f59e0b" }}>Risks</p>
+            <p style={{ margin: 0, fontSize: "0.76rem", color: "#334155" }}>{rec.risks}</p>
+          </div>
+        )}
+
+        {/* LOW: missing evidence + follow-up queries */}
+        {rec.missing_evidence && (
+          <div style={{ background: "white", borderRadius: 8, padding: "0.6rem 0.75rem", border: `1px solid ${meta.border}` }}>
+            <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: meta.accent }}>Missing Evidence</p>
+            <p style={{ margin: 0, fontSize: "0.76rem", color: "#334155" }}>{rec.missing_evidence}</p>
+          </div>
+        )}
+        {rec.follow_up_queries && rec.follow_up_queries.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+            <p style={{ margin: 0, fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: meta.accent }}>Follow-up Queries</p>
+            {rec.follow_up_queries.map((q, i) => (
+              <p key={i} style={{ margin: 0, fontSize: "0.74rem", color: "#334155", paddingLeft: "0.75rem", borderLeft: `2px solid ${meta.border}` }}>
+                {q}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // ── Memo ──────────────────────────────────────────────────────────────────────
 
 function InvestmentMemoDisplay({ memo }: { memo: InvestmentMemo }) {
@@ -371,6 +454,11 @@ function InvestmentMemoDisplay({ memo }: { memo: InvestmentMemo }) {
             {memo.risk_signals.map((r, i) => <RiskItem key={i} risk={r} />)}
           </div>
         </section>
+      )}
+
+      {/* Recommended Action */}
+      {memo.recommended_actions && (
+        <RecommendedActionCard rec={memo.recommended_actions} />
       )}
 
       {/* Evidence Appendix */}
