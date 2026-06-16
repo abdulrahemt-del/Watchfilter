@@ -917,6 +917,29 @@ function ElicitationsBlock({
   );
 }
 
+// ── Collapsible section (for Evidence From Creators) ─────────────────────────
+
+function CollapseSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="my-1.5 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(56,189,248,0.25)" }}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 text-left transition-colors hover:opacity-90"
+        style={{ background: "rgba(56,189,248,0.08)" }}>
+        <span className="text-[10px] font-mono font-black text-[#38bdf8] uppercase tracking-widest">{title}</span>
+        <span className="text-[10px] font-mono text-slate-400">{open ? "▲ Hide" : "▼ Show"}</span>
+      </button>
+      {open && (
+        <div className="px-3 py-2.5 space-y-1" style={{ background: "rgba(56,189,248,0.03)" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
 function ChatMarkdown({ content, onQuery }: { content: string; onQuery?: (q: string) => void }) {
@@ -1054,55 +1077,91 @@ function ChatMarkdown({ content, onQuery }: { content: string; onQuery?: (q: str
   flushTable();
   flushBlockquote();
 
+  const renderLine = (line: string, k: number): React.ReactNode => {
+    if (/^\*\s/.test(line) || /^[•\-]\s/.test(line)) {
+      const text = line.replace(/^[\*•\-]\s/, "");
+      return (
+        <div key={k} className="flex items-start gap-2">
+          <span className="text-[#38bdf8] shrink-0 mt-0.5 text-xs">•</span>
+          <span className="text-sm text-slate-200 leading-relaxed"><InlineText text={text} /></span>
+        </div>
+      );
+    }
+    if (/^\d+\.\s/.test(line)) {
+      const numMatch = line.match(/^(\d+)\.\s/);
+      const num = numMatch ? numMatch[1] : "1";
+      const text = line.replace(/^\d+\.\s/, "");
+      return (
+        <div key={k} className="flex items-start gap-2">
+          <span className="text-[#38bdf8] shrink-0 mt-0.5 text-xs font-mono font-black">{num}.</span>
+          <span className="text-sm text-slate-200 leading-relaxed"><InlineText text={text} /></span>
+        </div>
+      );
+    }
+    if (line.trim() === "") return <div key={k} className="h-1" />;
+    return <p key={k} className="text-sm text-slate-200 leading-relaxed"><InlineText text={line} /></p>;
+  };
+
   const renderText = (seg: TextSeg, si: number) => {
-    const elements: React.ReactNode[] = [];
-    let k = 0;
+    // Split lines into sections grouped by headings
+    type Section = { heading: string | null; level: 1 | 2 | 3; lines: string[] };
+    const sections: Section[] = [{ heading: null, level: 3, lines: [] }];
     for (const line of seg.lines) {
-      if (line.startsWith("# ")) {
-        elements.push(
-          <p key={k++} className="text-sm font-mono font-black text-white mt-2 mb-0.5 first:mt-0">
-            <InlineText text={line.slice(2)} />
-          </p>
-        );
-      } else if (line.startsWith("### ")) {
-        elements.push(
-          <p key={k++} className="text-[11px] font-mono font-black text-[#38bdf8] uppercase tracking-widest mt-3 mb-1 first:mt-0">
-            <InlineText text={line.slice(4)} />
-          </p>
-        );
+      if (line.startsWith("### ")) {
+        sections.push({ heading: line.slice(4), level: 3, lines: [] });
       } else if (line.startsWith("## ")) {
-        elements.push(
-          <p key={k++} className="text-xs font-mono font-black text-slate-300 uppercase tracking-wider mt-3 mb-1 first:mt-0">
-            <InlineText text={line.slice(3)} />
-          </p>
-        );
-      } else if (/^\*\s/.test(line) || /^[•\-]\s/.test(line)) {
-        const text = line.replace(/^[\*•\-]\s/, "");
-        elements.push(
-          <div key={k++} className="flex items-start gap-2">
-            <span className="text-[#38bdf8] shrink-0 mt-0.5 text-xs">•</span>
-            <span className="text-sm text-slate-200 leading-relaxed"><InlineText text={text} /></span>
-          </div>
-        );
-      } else if (/^\d+\.\s/.test(line)) {
-        const numMatch = line.match(/^(\d+)\.\s/);
-        const num = numMatch ? numMatch[1] : "1";
-        const text = line.replace(/^\d+\.\s/, "");
-        elements.push(
-          <div key={k++} className="flex items-start gap-2">
-            <span className="text-[#38bdf8] shrink-0 mt-0.5 text-xs font-mono font-black">{num}.</span>
-            <span className="text-sm text-slate-200 leading-relaxed"><InlineText text={text} /></span>
-          </div>
-        );
-      } else if (line.trim() === "") {
-        elements.push(<div key={k++} className="h-1" />);
+        sections.push({ heading: line.slice(3), level: 2, lines: [] });
+      } else if (line.startsWith("# ")) {
+        sections.push({ heading: line.slice(2), level: 1, lines: [] });
       } else {
-        elements.push(
-          <p key={k++} className="text-sm text-slate-200 leading-relaxed"><InlineText text={line} /></p>
-        );
+        sections[sections.length - 1].lines.push(line);
       }
     }
-    return <div key={si} className="space-y-0.5">{elements}</div>;
+
+    let k = 0;
+    const outerElements: React.ReactNode[] = [];
+
+    for (const sec of sections) {
+      const innerEls = sec.lines.map(line => renderLine(line, k++));
+
+      if (!sec.heading) {
+        outerElements.push(...innerEls);
+        continue;
+      }
+
+      const isEvidence = /evidence/i.test(sec.heading);
+
+      if (isEvidence) {
+        outerElements.push(
+          <CollapseSection key={k++} title={sec.heading}>
+            {innerEls}
+          </CollapseSection>
+        );
+      } else {
+        if (sec.level === 1) {
+          outerElements.push(
+            <p key={k++} className="text-sm font-mono font-black text-white mt-2 mb-0.5 first:mt-0">
+              <InlineText text={sec.heading} />
+            </p>
+          );
+        } else if (sec.level === 2) {
+          outerElements.push(
+            <p key={k++} className="text-xs font-mono font-black text-slate-300 uppercase tracking-wider mt-3 mb-1 first:mt-0">
+              <InlineText text={sec.heading} />
+            </p>
+          );
+        } else {
+          outerElements.push(
+            <p key={k++} className="text-[11px] font-mono font-black text-[#38bdf8] uppercase tracking-widest mt-3 mb-1 first:mt-0">
+              <InlineText text={sec.heading} />
+            </p>
+          );
+        }
+        outerElements.push(...innerEls);
+      }
+    }
+
+    return <div key={si} className="space-y-0.5">{outerElements}</div>;
   };
 
   return (
