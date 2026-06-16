@@ -8,7 +8,7 @@ import { runIntelligencePipeline } from "@/lib/worker";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 export async function GET() {
   const session = await getServerSession(authOptions);

@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { getIntelligenceSnapshot, upsertIntelligenceSnapshot } from "./db";
+import { getFeedCache, getIntelligenceSnapshot, upsertIntelligenceSnapshot } from "./db";
 import { SCORER_SYSTEM_PROMPT, CONSENSUS_SYSTEM_PROMPT } from "./prompts";
 import type { AIScore } from "@/app/api/youtube/filter/route";
 import type { ConsensusResult } from "@/app/api/youtube/consensus/route";
@@ -31,7 +31,24 @@ type RawChan = { id: string; contentDetails: { relatedPlaylists: { uploads: stri
 type RawPlaylistItem = { snippet: { title: string; resourceId: { videoId: string }; channelTitle: string; publishedAt: string; thumbnails: { medium?: { url: string }; default?: { url: string } } } };
 type RawVideoMeta = { id: string; contentDetails: { duration: string }; snippet: { description: string } };
 
-async function fetchFeed(accessToken: string): Promise<FeedVideo[]> {
+const FEED_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours — matches feed route DB TTL
+
+async function fetchFeed(userId: string, accessToken: string): Promise<FeedVideo[]> {
+  // Reuse the feed route's DB cache to avoid redundant YouTube API calls.
+  // The pipeline only needs a fresh feed fetch if the cache is older than 12h.
+  try {
+    const cached = await getFeedCache(userId);
+    if (cached && Date.now() - cached.cachedAt.getTime() < FEED_CACHE_TTL_MS) {
+      const videos = (cached.videos as FeedVideo[]).filter(
+        v => v.duration && isoToSecs(v.duration) >= 600,
+      );
+      console.log(`[intelligence-worker] feed cache HIT — ${videos.length} videos (skipping YouTube API)`);
+      return videos;
+    }
+  } catch (err) {
+    console.warn("[intelligence-worker] feed cache lookup failed (non-fatal):", err);
+  }
+
   const subData = await ytGet<{ items?: RawSub[] }>(
     `subscriptions?part=snippet&mine=true&maxResults=50&order=relevance`,
     accessToken,
@@ -393,7 +410,7 @@ export async function runIntelligencePipeline(userId: string, accessToken: strin
     const prevSnap = await getIntelligenceSnapshot(userId);
     const prevThemes = (prevSnap?.metaData?.themes ?? []) as Array<{ topic: string; count: number }>;
 
-    const videos = await fetchFeed(accessToken);
+    const videos = await fetchFeed(userId, accessToken);
     console.log(`[intelligence-worker] feed: ${videos.length} videos`);
     if (!videos.length) return;
 

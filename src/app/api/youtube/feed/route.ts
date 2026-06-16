@@ -133,7 +133,7 @@ export async function GET(req: Request) {
     }
 
     const forceRefresh = new URL(req.url).searchParams.get("force") === "true";
-    const DB_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+    const DB_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
     const cacheKey = session.user?.email ?? accessToken.slice(0, 16);
 
     // Tier 1 — in-memory (fastest, survives within same server process)
