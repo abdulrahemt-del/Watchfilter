@@ -601,6 +601,82 @@ export async function getCreatorTemporalData(creatorNames: string[]): Promise<Te
   }));
 }
 
+// ── Deep Research evidence retrieval ─────────────────────────────────────────
+
+export type DeepResearchRow = {
+  quote: string;
+  insight: string | null;
+  channel_name: string;
+  video_title: string | null;
+  timestamp_str: string | null;
+  type: string;
+  signal_strength: string | null;
+  contrarian: string | null;
+  category: string | null;
+  takeaway: string | null;
+  upload_date: string | null;
+};
+
+export async function getDeepResearchEvidence(
+  keywords: string[],
+  limit = 60,
+): Promise<DeepResearchRow[]> {
+  const c = await db();
+
+  let sql: string;
+  let args: (string | number)[];
+
+  if (keywords.length === 0) {
+    sql = `
+      SELECT ri.quote, ri.insight, ri.channel_name, ri.video_title,
+             ri.timestamp_str, ri.type, ri.signal_strength, ri.contrarian,
+             ri.category, ri.takeaway,
+             COALESCE(a.upload_date, ri.indexed_at) AS upload_date
+      FROM research_index ri
+      LEFT JOIN analyses a ON ri.analysis_id = a.id
+      WHERE ri.quote IS NOT NULL AND ri.quote != ''
+      ORDER BY CASE ri.signal_strength WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 ELSE 2 END,
+               ri.indexed_at DESC
+      LIMIT ${limit}
+    `;
+    args = [];
+  } else {
+    const kws = keywords.slice(0, 6);
+    const conditions = kws
+      .map(() => `(LOWER(ri.quote) LIKE ? OR LOWER(COALESCE(ri.insight,'')) LIKE ? OR LOWER(COALESCE(ri.category,'')) LIKE ? OR LOWER(COALESCE(ri.video_title,'')) LIKE ?)`)
+      .join(" OR ");
+    sql = `
+      SELECT ri.quote, ri.insight, ri.channel_name, ri.video_title,
+             ri.timestamp_str, ri.type, ri.signal_strength, ri.contrarian,
+             ri.category, ri.takeaway,
+             COALESCE(a.upload_date, ri.indexed_at) AS upload_date
+      FROM research_index ri
+      LEFT JOIN analyses a ON ri.analysis_id = a.id
+      WHERE ri.quote IS NOT NULL AND ri.quote != ''
+        AND (${conditions})
+      ORDER BY CASE ri.signal_strength WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 ELSE 2 END,
+               ri.indexed_at DESC
+      LIMIT ${limit}
+    `;
+    args = kws.flatMap(kw => [`%${kw}%`, `%${kw}%`, `%${kw}%`, `%${kw}%`]);
+  }
+
+  const { rows } = await c.execute({ sql, args });
+  return rows.map(r => ({
+    quote:          r.quote as string,
+    insight:        r.insight as string | null,
+    channel_name:   r.channel_name as string,
+    video_title:    r.video_title as string | null,
+    timestamp_str:  r.timestamp_str as string | null,
+    type:           r.type as string,
+    signal_strength: r.signal_strength as string | null,
+    contrarian:     r.contrarian as string | null,
+    category:       r.category as string | null,
+    takeaway:       r.takeaway as string | null,
+    upload_date:    r.upload_date as string | null,
+  }));
+}
+
 // ── Upload-date backfill (updates analyses + research_index for existing rows) ─
 
 export async function getAnalysesWithNullUploadDate(): Promise<Array<{ id: string; video_id: string }>> {

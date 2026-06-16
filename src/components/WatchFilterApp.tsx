@@ -12,6 +12,7 @@ import { SubscriptionFeed } from "./SubscriptionFeed";
 import { MarketIntelligencePulse } from "./MarketIntelligencePulse";
 import { ResearchMode } from "./ResearchMode";
 import { CreatorIntelligenceView } from "./CreatorIntelligenceView";
+import { DeepResearchView } from "./DeepResearchView";
 import type {
   AnalysisSummary,
   ApiErrorBody,
@@ -1333,6 +1334,9 @@ export function WatchFilterApp() {
         {activeNav === "trends" && <MarketIntelligencePulse onNavigate={setActiveNav} onAnalyze={(ytUrl) => void analyzeFromUrl(ytUrl)} />}
 
         {activeNav === "research" && <ResearchMode onBack={() => setActiveNav("dashboard")} />}
+
+        {/* ── Deep Research ── */}
+        {activeNav === "deep-research" && <DeepResearchView />}
 
         {/* ── Creator Intelligence ── */}
         {activeNav === "creators" && <CreatorIntelligenceView />}
