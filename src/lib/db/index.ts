@@ -547,6 +547,67 @@ export async function getAllCreatorProfiles(): Promise<CreatorProfile[]> {
   }));
 }
 
+// ── Temporal intelligence ─────────────────────────────────────────────────────
+
+export type TemporalCreatorRow = {
+  year: string;
+  channel_name: string;
+  data_point_count: number;
+  contrarian_count: number;
+};
+
+export async function getCreatorTemporalData(creatorNames: string[]): Promise<TemporalCreatorRow[]> {
+  if (!creatorNames.length) return [];
+  const c = await db();
+  const placeholders = creatorNames.map(() => "?").join(",");
+  const { rows } = await c.execute({
+    sql: `
+      SELECT
+        SUBSTR(COALESCE(upload_date, indexed_at), 1, 4)     AS year,
+        channel_name,
+        COUNT(CASE WHEN type = 'data_point' THEN 1 END)     AS data_point_count,
+        COUNT(CASE WHEN contrarian IS NOT NULL
+                    AND contrarian != '' THEN 1 END)        AS contrarian_count
+      FROM research_index
+      WHERE channel_name IN (${placeholders})
+        AND (upload_date IS NOT NULL OR indexed_at IS NOT NULL)
+      GROUP BY year, channel_name
+      HAVING year GLOB '[0-9][0-9][0-9][0-9]'
+      ORDER BY year, channel_name
+    `,
+    args: creatorNames,
+  });
+  return rows.map(r => ({
+    year:              r.year as string,
+    channel_name:      r.channel_name as string,
+    data_point_count:  r.data_point_count as number,
+    contrarian_count:  r.contrarian_count as number,
+  }));
+}
+
+// ── Upload-date backfill (updates analyses + research_index for existing rows) ─
+
+export async function getAnalysesWithNullUploadDate(): Promise<Array<{ id: string; video_id: string }>> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT id, video_id FROM analyses WHERE upload_date IS NULL`,
+    args: [],
+  });
+  return rows.map(r => ({ id: r.id as string, video_id: r.video_id as string }));
+}
+
+export async function setAnalysisUploadDate(id: string, uploadDate: string): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `UPDATE analyses SET upload_date = ? WHERE id = ?`,
+    args: [uploadDate, id],
+  });
+  await c.execute({
+    sql: `UPDATE research_index SET upload_date = ? WHERE analysis_id = ?`,
+    args: [uploadDate, id],
+  });
+}
+
 // ── Pipeline cache ─────────────────────────────────────────────────────────────
 
 export async function getUserPipelineCache(userId: string): Promise<{

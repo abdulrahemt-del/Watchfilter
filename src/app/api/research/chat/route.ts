@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import OpenAI from "openai";
 import type { ResearchReport, ResearchTheme } from "@/app/api/research/search/route";
-import { getCreatorProfilesForNames } from "@/lib/db";
+import { getCreatorProfilesForNames, getCreatorTemporalData } from "@/lib/db";
 import { authorityTier } from "@/lib/creatorAuthority";
 import { webSearch, formatWebResults } from "@/lib/webSearch";
 
@@ -115,10 +115,39 @@ Omit entirely if library evidence fully answers the question.
 
 ---
 
+### Temporal Analysis
+ONLY when <temporal_context> is present AND the question is explicitly about change over time.
+Format: year-by-year breakdown → trend line.
+Omit entirely for non-temporal questions.
+
+---
+
 ### Confidence
 One sentence. Format: "Confidence: [High/Medium/Low/Signal (Unverified)] — reason."
 
 Example: "Confidence: High — Cross-creator consensus from 6 High-authority creators."
+
+================================================================================
+TEMPORAL INTELLIGENCE
+================================================================================
+
+When <temporal_context> is injected, a timeline of creator activity exists.
+
+Always lead with the shift: "Consensus shifted from X (YYYY) to Y (YYYY)"
+Quantify the change: creator counts and stance ratios by year.
+If a creator appears in multiple years, note whether their stance evolved.
+
+Timeline response format:
+  YYYY — N creators — [Strong Consensus / Mixed / Emerging Signal / Unverified]
+  YYYY — N creators — [label] — key shift if notable
+
+End with a trend line: "Consensus strengthened / weakened / reversed between YYYY and YYYY."
+
+Rules:
+  - Never invent dates, stances, or creator positions not in <temporal_context>
+  - If only one year exists: say "Insufficient historical range for trend analysis"
+  - If upload_date was unavailable, data reflects analysis date — note this if it matters
+  - Include this section ONLY when the question is explicitly temporal
 
 ================================================================================
 ANTI-FABRICATION RULES
@@ -211,6 +240,58 @@ function isEvidenceSparse(report: ResearchReport): boolean {
   return allLow && (report.creatorsMatched ?? 0) < 3;
 }
 
+const TEMPORAL_RE = /changed|shift|evolv|histor|trend|over time|used to|before\s+and\s+after|last year|this year|20\d{2}|still believe|not anymore|how long|since when|now vs|vs now|when did|look back|rewind|retrospect/i;
+
+function isTemporalQuery(query: string): boolean {
+  return TEMPORAL_RE.test(query);
+}
+
+function classifyStanceSimple(dp: number, contra: number): "support" | "oppose" | "nuance" {
+  if (dp === 0) return "support";
+  const r = contra / dp;
+  if (r > 0.5) return "oppose";
+  if (r > 0) return "nuance";
+  return "support";
+}
+
+function buildTemporalBlock(rows: Awaited<ReturnType<typeof getCreatorTemporalData>>): string {
+  type YearEntry = { supporting: string[]; opposing: string[]; nuanced: string[] };
+  const byYear = new Map<string, YearEntry>();
+
+  for (const r of rows) {
+    if (!byYear.has(r.year)) byYear.set(r.year, { supporting: [], opposing: [], nuanced: [] });
+    const entry = byYear.get(r.year)!;
+    const stance = classifyStanceSimple(r.data_point_count, r.contrarian_count);
+    if (stance === "support") entry.supporting.push(r.channel_name);
+    else if (stance === "oppose") entry.opposing.push(r.channel_name);
+    else entry.nuanced.push(r.channel_name);
+  }
+
+  const years = [...byYear.keys()].sort();
+  const timeline = years.map(year => {
+    const { supporting, opposing, nuanced } = byYear.get(year)!;
+    const total = supporting.length + opposing.length + nuanced.length;
+    const consensus =
+      total >= 5 && supporting.length / total >= 0.7 ? "Strong Consensus"
+      : supporting.length > 0 && opposing.length > 0 ? "Mixed"
+      : total >= 2 ? "Emerging Signal"
+      : "Signal (Unverified)";
+    return {
+      year,
+      total_creators: total,
+      supporting: supporting.length,
+      opposing: opposing.length,
+      nuanced: nuanced.length,
+      consensus,
+      key_supporters: supporting.slice(0, 3),
+      key_challengers: opposing.slice(0, 2),
+    };
+  });
+
+  if (timeline.length === 0) return "";
+  return JSON.stringify({ timeline, years_spanned: years.length }, null, 2);
+}
+
 async function buildReportContext(report: ResearchReport, activeFindingIndex?: number): Promise<string> {
   const activeTheme =
     activeFindingIndex !== undefined ? report.themes[activeFindingIndex] : undefined;
@@ -281,18 +362,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing query or report" }, { status: 400 });
   }
 
-  // Run report context build and web search in parallel when evidence is sparse
+  // Run all three in parallel: context build, web search (when sparse), temporal (when temporal query)
   const sparse = isEvidenceSparse(reportSnapshot);
-  const [reportContext, webResults] = await Promise.all([
+  const temporal = isTemporalQuery(query.trim());
+
+  const allCreatorNames = [
+    ...new Set(
+      (reportSnapshot.themes ?? []).flatMap(t => t.creators ?? [])
+    ),
+  ];
+
+  const [reportContext, webResults, temporalRows] = await Promise.all([
     buildReportContext(reportSnapshot, activeFindingIndex),
     sparse ? webSearch(query.trim(), 4) : Promise.resolve([]),
+    temporal && allCreatorNames.length > 0
+      ? getCreatorTemporalData(allCreatorNames)
+      : Promise.resolve([]),
   ]);
 
   const webBlock = webResults.length > 0
     ? `\n\n<web_search_results>\n${formatWebResults(webResults)}\n</web_search_results>`
     : "";
 
-  const userContent = `<report>\n${reportContext}\n</report>${webBlock}\n\nQuestion: ${query.trim()}`;
+  const temporalBlock = temporalRows.length > 0
+    ? `\n\n<temporal_context>\n${buildTemporalBlock(temporalRows)}\n</temporal_context>`
+    : "";
+
+  const userContent = `<report>\n${reportContext}\n</report>${webBlock}${temporalBlock}\n\nQuestion: ${query.trim()}`;
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: CHAT_SYSTEM },

@@ -143,7 +143,11 @@ async function fetchWatchPageData(
 
     const dateMatch =
       html.match(/<meta itemprop="uploadDate" content="([^"]+)"/) ??
-      html.match(/"uploadDate":"([^"T"]+)/);
+      html.match(/<meta itemprop="datePublished" content="([^"]+)"/) ??
+      html.match(/"publishDate":"(\d{4}-\d{2}-\d{2})/) ??
+      html.match(/"uploadDate":"(\d{4}-\d{2}-\d{2})/) ??
+      html.match(/"publishDate":"([^"T]+)/) ??
+      html.match(/"uploadDate":"([^"T]+)/);
     const uploadDate = dateMatch ? dateMatch[1].split("T")[0] : null;
 
     const durationMatch = html.match(/"lengthSeconds":"(\d+)"/);
