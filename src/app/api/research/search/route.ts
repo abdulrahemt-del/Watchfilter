@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import OpenAI from "openai";
-import { loadResearchIndex, getResearchIndexStats, getIntelligenceSnapshot, getUserPipelineCache, type ResearchRow } from "@/lib/db";
+import { loadResearchIndex, getResearchIndexStats, getIntelligenceSnapshot, getUserPipelineCache, getCreatorProfilesForNames, type ResearchRow } from "@/lib/db";
+import { authorityTier } from "@/lib/creatorAuthority";
 import { embedBatch, cosineSim } from "@/lib/research/embed";
 import { sanitizeText } from "@/lib/utils/sanitize";
 
@@ -102,6 +103,12 @@ export interface ConstraintValidation {
   adjacentTopics: string[];
 }
 
+export type CreatorAuthorityInfo = {
+  authority_score: number;
+  tier: "High" | "Medium" | "Low";
+  video_count: number;
+};
+
 export interface ResearchReport {
   query: string;
   topic: string;
@@ -117,6 +124,7 @@ export interface ResearchReport {
   intelligenceSignals: IntelligenceSignal[];
   totalIndexed: number;
   constraintValidation: ConstraintValidation;
+  creatorAuthority?: Record<string, CreatorAuthorityInfo>;
 }
 
 // ── GPT raw types ──────────────────────────────────────────────────────────────
@@ -1155,6 +1163,21 @@ export async function POST(req: Request) {
     } catch { /* best-effort */ }
   }
 
+  const allReportCreators = [
+    ...new Set([...keyThemes, ...limitedThemes].flatMap(t => t.creators)),
+  ];
+  let creatorAuthority: Record<string, CreatorAuthorityInfo> = {};
+  try {
+    const profiles = await getCreatorProfilesForNames(allReportCreators);
+    for (const p of profiles) {
+      creatorAuthority[p.channel_name] = {
+        authority_score: p.authority_score,
+        tier: authorityTier(p.authority_score),
+        video_count: p.video_count,
+      };
+    }
+  } catch {}
+
   const report: ResearchReport = {
     query,
     topic: sanitizeText(raw.topic ?? query),
@@ -1170,6 +1193,7 @@ export async function POST(req: Request) {
     intelligenceSignals,
     totalIndexed: stats.withEmbeddings,
     constraintValidation,
+    creatorAuthority,
   };
 
   if (debugMode) {

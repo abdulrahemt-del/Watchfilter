@@ -7,6 +7,7 @@ import type {
   RelatedSignal,
   ThemeSource,
   IntelligenceSignal,
+  CreatorAuthorityInfo,
 } from "@/app/api/research/search/route";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -43,6 +44,24 @@ const CONFIDENCE_STYLE = {
   Medium:      { color: "#38bdf8", icon: "◐", border: "rgba(56,189,248,0.3)",   bg: "rgba(56,189,248,0.1)"  },
   Low:         { color: "#fbbf24", icon: "◌", border: "rgba(251,191,36,0.25)",  bg: "rgba(251,191,36,0.08)" },
 };
+
+// ── Authority badge ───────────────────────────────────────────────────────────
+
+const AUTHORITY_STYLE: Record<string, { color: string; bg: string; border: string }> = {
+  High:   { color: "#38bdf8", bg: "rgba(56,189,248,0.12)",  border: "rgba(56,189,248,0.3)"  },
+  Medium: { color: "#94a3b8", bg: "rgba(148,163,184,0.08)", border: "rgba(148,163,184,0.2)" },
+  Low:    { color: "#fbbf24", bg: "rgba(251,191,36,0.08)",  border: "rgba(251,191,36,0.2)"  },
+};
+
+function AuthorityBadge({ tier }: { tier: string }) {
+  const s = AUTHORITY_STYLE[tier] ?? AUTHORITY_STYLE.Medium;
+  return (
+    <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0"
+      style={{ color: s.color, background: s.bg, border: `1px solid ${s.border}` }}>
+      {tier}
+    </span>
+  );
+}
 
 const CHAT_CATEGORIES = [
   { label: "Understand", color: "#38bdf8", chips: ["What is the strongest finding?", "Explain the top finding simply.", "What surprised experts most?"] },
@@ -104,6 +123,122 @@ function QuoteCard({ source, accent }: { source: ThemeSource; accent: string }) 
   );
 }
 
+// ── Contradiction Panel ───────────────────────────────────────────────────────
+
+function ContradictionPanel({
+  theme,
+  creatorAuthority,
+}: {
+  theme: ResearchTheme;
+  creatorAuthority?: Record<string, CreatorAuthorityInfo>;
+}) {
+  const hasContrarians = theme.contrarians.length > 0;
+
+  // Unique supporting creators (deduped)
+  const seenSupporters = new Set<string>();
+  const supporters = theme.sources.filter(s => {
+    if (seenSupporters.has(s.creator)) return false;
+    seenSupporters.add(s.creator);
+    return true;
+  }).slice(0, 5);
+
+  const opposers = theme.contrarians.slice(0, 4);
+
+  if (!hasContrarians) {
+    // Lightweight agreement bar — only when ≥2 creators
+    if (supporters.length < 2) return null;
+    return (
+      <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg flex-wrap"
+        style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.15)" }}>
+        <span className="text-[10px] font-mono font-black text-emerald-500/70 uppercase tracking-widest shrink-0">
+          ✓ Cross-creator agreement
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {supporters.map((s, i) => {
+            const auth = creatorAuthority?.[s.creator];
+            return (
+              <div key={i} className="flex items-center gap-1.5">
+                <span className="text-xs font-mono text-slate-400">{s.creator}</span>
+                {auth && <AuthorityBadge tier={auth.tier} />}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Full contradiction split panel
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(251,191,36,0.3)" }}>
+      <div className="px-4 py-2.5 flex items-center gap-3 flex-wrap"
+        style={{ background: "rgba(251,191,36,0.07)", borderBottom: "1px solid rgba(251,191,36,0.15)" }}>
+        <span className="text-[9px] font-mono font-black text-amber-400 uppercase tracking-widest">⚡ Contradiction Detected</span>
+        <span className="text-[10px] font-mono text-slate-600">
+          {supporters.length} support · {opposers.length} challenge
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 divide-x" style={{ borderColor: "rgba(251,191,36,0.12)" }}>
+        {/* Supporters */}
+        <div className="p-4 space-y-3" style={{ background: "rgba(16,185,129,0.04)" }}>
+          <p className="text-[10px] font-mono font-black text-emerald-500 uppercase tracking-widest">
+            Support ({supporters.length})
+          </p>
+          <div className="space-y-3">
+            {supporters.map((s, i) => {
+              const auth = creatorAuthority?.[s.creator];
+              return (
+                <div key={i} className="space-y-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-mono font-black text-slate-300">{s.creator}</span>
+                    {auth && <AuthorityBadge tier={auth.tier} />}
+                  </div>
+                  {s.quote && (
+                    <p className="text-[11px] text-slate-500 leading-relaxed border-l-2 pl-2 italic"
+                      style={{ borderColor: "rgba(16,185,129,0.3)" }}>
+                      &ldquo;{s.quote.length > 130 ? s.quote.slice(0, 130) + "…" : s.quote}&rdquo;
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Challengers */}
+        <div className="p-4 space-y-3" style={{ background: "rgba(251,191,36,0.04)" }}>
+          <p className="text-[10px] font-mono font-black text-amber-500 uppercase tracking-widest">
+            Challenge ({opposers.length})
+          </p>
+          <div className="space-y-3">
+            {opposers.map((o, i) => {
+              const auth = creatorAuthority?.[o.creator];
+              return (
+                <div key={i} className="space-y-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-mono font-black text-amber-300/80">{o.creator}</span>
+                    {auth && <AuthorityBadge tier={auth.tier} />}
+                  </div>
+                  {o.quote && (
+                    <p className="text-[11px] text-slate-500 leading-relaxed border-l-2 pl-2 italic"
+                      style={{ borderColor: "rgba(251,191,36,0.25)" }}>
+                      &ldquo;{o.quote.length > 130 ? o.quote.slice(0, 130) + "…" : o.quote}&rdquo;
+                    </p>
+                  )}
+                  {o.reason && (
+                    <p className="text-[10px] font-mono text-slate-700">{o.reason}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Intelligence signal card ──────────────────────────────────────────────────
 
 const SOURCE_LABEL: Record<IntelligenceSignal["source"], string> = {
@@ -136,20 +271,15 @@ function IntelligenceSignalCard({ signal }: { signal: IntelligenceSignal }) {
 // ── Theme card ────────────────────────────────────────────────────────────────
 
 function ThemeCard({
-  theme, index, limited = false, isActive = false, onFocus,
+  theme, index, limited = false, isActive = false, onFocus, creatorAuthority,
 }: {
   theme: ResearchTheme; index: number; limited?: boolean; isActive?: boolean; onFocus?: () => void;
+  creatorAuthority?: Record<string, CreatorAuthorityInfo>;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [showConsensus, setShowConsensus] = useState(false);
   const color = THEME_COLORS[index % THEME_COLORS.length];
   const otherSources = theme.sources.filter(s => s !== theme.representativeQuote);
   const confStyle = CONFIDENCE_STYLE[theme.confidenceLabel ?? "Low"] ?? CONFIDENCE_STYLE.Low;
-
-  const hasConsensusData =
-    theme.creatorConsensus.agree.length > 0 ||
-    theme.creatorConsensus.neutral.length > 0 ||
-    theme.creatorConsensus.disagree.length > 0;
 
   return (
     <div className="rounded-2xl overflow-hidden transition-all"
@@ -250,80 +380,8 @@ function ThemeCard({
           </div>
         )}
 
-        {/* Contrarians — always visible */}
-        <div className="rounded-xl p-4 space-y-3"
-          style={{ background: "rgba(251,191,36,0.05)", border: "1px solid rgba(251,191,36,0.18)" }}>
-          <p className="text-[10px] font-mono font-black text-amber-500 uppercase tracking-widest">⚠ Contrarian View</p>
-          {theme.contrarians.length === 0 ? (
-            <p className="text-xs font-mono text-slate-700">No significant creator disagreement found in current evidence pool.</p>
-          ) : (
-            theme.contrarians.map((c, i) => (
-              <div key={i} className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-mono font-black text-amber-400">{c.creator}</p>
-                  {c.timestampStr && (
-                    <a href={ytUrl(c.videoId, c.timestampStr)} target="_blank" rel="noopener noreferrer"
-                      className="text-[10px] font-mono text-amber-500/60 shrink-0 hover:text-amber-400 transition-colors">
-                      @{c.timestampStr} ↗
-                    </a>
-                  )}
-                </div>
-                {c.quote && (
-                  <blockquote className="text-xs text-amber-200/60 italic border-l-2 pl-2"
-                    style={{ borderColor: "rgba(251,191,36,0.25)" }}>
-                    &ldquo;{c.quote}&rdquo;
-                  </blockquote>
-                )}
-                {c.reason && (
-                  <p className="text-[10px] font-mono text-slate-600">{c.reason}</p>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Creator Consensus Map */}
-        {hasConsensusData && (
-          <div>
-            <button
-              onClick={() => setShowConsensus(v => !v)}
-              className="flex items-center gap-2 text-xs font-mono text-slate-600 hover:text-slate-400 transition-colors">
-              <span>Creator Positions</span>
-              <span>{showConsensus ? "▲" : "▼"}</span>
-            </button>
-            {showConsensus && (
-              <div className="mt-3 rounded-xl overflow-hidden"
-                style={{ border: "1px solid #1e2d45", background: "rgba(8,16,28,0.4)" }}>
-                <div className="grid grid-cols-3 divide-x" style={{ borderColor: "#1e2d45" }}>
-                  {[
-                    { label: "Agree",    entries: theme.creatorConsensus.agree,    color: "#10b981" },
-                    { label: "Neutral",  entries: theme.creatorConsensus.neutral,  color: "#64748b" },
-                    { label: "Disagree", entries: theme.creatorConsensus.disagree, color: "#f87171" },
-                  ].map(col => (
-                    <div key={col.label} className="p-3 space-y-2" style={{ borderColor: "#1e2d45" }}>
-                      <p className="text-[10px] font-mono font-black uppercase tracking-widest"
-                        style={{ color: col.color }}>
-                        {col.label} ({col.entries.length})
-                      </p>
-                      {col.entries.length === 0 ? (
-                        <p className="text-[10px] font-mono text-slate-700">—</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {col.entries.map((e, i) => (
-                            <div key={i} className="space-y-0.5">
-                              <p className="text-xs font-mono font-black text-slate-400 leading-tight">{e.creator}</p>
-                              <p className="text-[10px] text-slate-600 leading-relaxed">{e.reason}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* Contradiction Engine */}
+        <ContradictionPanel theme={theme} creatorAuthority={creatorAuthority} />
 
         {/* Creator pills */}
         {theme.creators.length > 0 && (
@@ -1384,7 +1442,7 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
                 Evidence Themes — {keyThemes.length} {keyThemes.length === 1 ? "theme" : "themes"}
               </p>
               {keyThemes.map((theme, i) => (
-                <ThemeCard key={i} theme={theme} index={i} />
+                <ThemeCard key={i} theme={theme} index={i} creatorAuthority={report.creatorAuthority} />
               ))}
             </div>
           )}
@@ -1500,7 +1558,7 @@ export function ResearchMode({ onBack }: { onBack?: () => void }) {
                   </p>
                 </div>
                 {report.limitedThemes.map((theme, i) => (
-                  <ThemeCard key={i} theme={theme} index={i} limited />
+                  <ThemeCard key={i} theme={theme} index={i} limited creatorAuthority={report.creatorAuthority} />
                 ))}
               </div>
             );

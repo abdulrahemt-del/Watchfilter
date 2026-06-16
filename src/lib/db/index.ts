@@ -148,7 +148,7 @@ async function ensureSchema(): Promise<void> {
   }
 }
 
-async function db(): Promise<Client> {
+export async function db(): Promise<Client> {
   if (!_schemaInit) _schemaInit = ensureSchema();
   await _schemaInit;
   return getClient();
