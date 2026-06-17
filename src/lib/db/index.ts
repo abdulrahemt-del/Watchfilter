@@ -128,6 +128,22 @@ async function ensureSchema(): Promise<void> {
       UNIQUE(channel_name, category)
     )`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_creator_positions_category ON creator_positions (category)`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS creator_predictions (
+      prediction_id              TEXT PRIMARY KEY,
+      creator                    TEXT NOT NULL,
+      topic                      TEXT NOT NULL,
+      prediction_text            TEXT NOT NULL,
+      created_at                 TEXT NOT NULL,
+      confidence                 REAL NOT NULL DEFAULT 0.5,
+      measurable_outcome         TEXT,
+      evidence_source            TEXT,
+      prediction_accuracy_score  REAL,
+      evaluation_evidence        TEXT,
+      evaluated_at               TEXT,
+      status                     TEXT NOT NULL DEFAULT 'pending'
+    )`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_predictions_creator ON creator_predictions (creator)`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_predictions_status  ON creator_predictions (status)`, args: [] },
   ], "write");
 
   for (const sql of [
@@ -909,6 +925,153 @@ export async function getTeamWorkspaceWaitlistCount(): Promise<number> {
   const c = await db();
   const r = await c.execute(`SELECT COUNT(*) as n FROM team_workspace_waitlist`);
   return Number(r.rows[0]?.n ?? 0);
+}
+
+// ── Creator Predictions ───────────────────────────────────────────────────────
+
+export type PredictionRow = {
+  prediction_id: string;
+  creator: string;
+  topic: string;
+  prediction_text: string;
+  created_at: string;
+  confidence: number;
+  measurable_outcome: string | null;
+  evidence_source: string | null;
+  prediction_accuracy_score: number | null;
+  evaluation_evidence: string | null;
+  evaluated_at: string | null;
+  status: "pending" | "accurate" | "inaccurate" | "unknown";
+};
+
+export type PredictionAccuracyStat = {
+  creator: string;
+  total: number;
+  evaluated: number;
+  accuracy_score: number;
+};
+
+export async function upsertPrediction(p: PredictionRow): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `INSERT INTO creator_predictions
+            (prediction_id, creator, topic, prediction_text, created_at, confidence,
+             measurable_outcome, evidence_source, prediction_accuracy_score,
+             evaluation_evidence, evaluated_at, status)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(prediction_id) DO UPDATE SET
+            prediction_accuracy_score = excluded.prediction_accuracy_score,
+            evaluation_evidence       = excluded.evaluation_evidence,
+            evaluated_at              = excluded.evaluated_at,
+            status                    = excluded.status`,
+    args: [
+      p.prediction_id, p.creator, p.topic, p.prediction_text, p.created_at,
+      p.confidence, p.measurable_outcome ?? null, p.evidence_source ?? null,
+      p.prediction_accuracy_score ?? null, p.evaluation_evidence ?? null,
+      p.evaluated_at ?? null, p.status,
+    ],
+  });
+}
+
+export async function listPredictions(limit = 100): Promise<PredictionRow[]> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT * FROM creator_predictions ORDER BY created_at DESC LIMIT ?`,
+    args: [limit],
+  });
+  return rows.map(r => ({
+    prediction_id: r.prediction_id as string,
+    creator: r.creator as string,
+    topic: r.topic as string,
+    prediction_text: r.prediction_text as string,
+    created_at: r.created_at as string,
+    confidence: r.confidence as number,
+    measurable_outcome: r.measurable_outcome as string | null,
+    evidence_source: r.evidence_source as string | null,
+    prediction_accuracy_score: r.prediction_accuracy_score as number | null,
+    evaluation_evidence: r.evaluation_evidence as string | null,
+    evaluated_at: r.evaluated_at as string | null,
+    status: (r.status as PredictionRow["status"]) ?? "pending",
+  }));
+}
+
+export async function getPredictionById(id: string): Promise<PredictionRow | null> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT * FROM creator_predictions WHERE prediction_id = ?`,
+    args: [id],
+  });
+  if (!rows.length) return null;
+  const r = rows[0];
+  return {
+    prediction_id: r.prediction_id as string,
+    creator: r.creator as string,
+    topic: r.topic as string,
+    prediction_text: r.prediction_text as string,
+    created_at: r.created_at as string,
+    confidence: r.confidence as number,
+    measurable_outcome: r.measurable_outcome as string | null,
+    evidence_source: r.evidence_source as string | null,
+    prediction_accuracy_score: r.prediction_accuracy_score as number | null,
+    evaluation_evidence: r.evaluation_evidence as string | null,
+    evaluated_at: r.evaluated_at as string | null,
+    status: (r.status as PredictionRow["status"]) ?? "pending",
+  };
+}
+
+export async function updatePredictionScore(
+  predictionId: string,
+  score: number,
+  evidence: string,
+  status: "accurate" | "inaccurate" | "unknown",
+): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: `UPDATE creator_predictions SET
+            prediction_accuracy_score = ?,
+            evaluation_evidence       = ?,
+            evaluated_at              = ?,
+            status                    = ?
+          WHERE prediction_id = ?`,
+    args: [score, evidence, new Date().toISOString(), status, predictionId],
+  });
+}
+
+export async function getCreatorPredictionStats(creators?: string[]): Promise<PredictionAccuracyStat[]> {
+  const c = await db();
+  let sql: string;
+  let args: (string | number)[];
+
+  if (creators?.length) {
+    const ph = creators.map(() => "?").join(",");
+    sql = `
+      SELECT creator,
+             COUNT(*) as total,
+             COUNT(CASE WHEN evaluated_at IS NOT NULL THEN 1 END) as evaluated,
+             COALESCE(AVG(CASE WHEN prediction_accuracy_score IS NOT NULL THEN prediction_accuracy_score END), 0) as accuracy_score
+      FROM creator_predictions WHERE creator IN (${ph})
+      GROUP BY creator ORDER BY accuracy_score DESC
+    `;
+    args = creators;
+  } else {
+    sql = `
+      SELECT creator,
+             COUNT(*) as total,
+             COUNT(CASE WHEN evaluated_at IS NOT NULL THEN 1 END) as evaluated,
+             COALESCE(AVG(CASE WHEN prediction_accuracy_score IS NOT NULL THEN prediction_accuracy_score END), 0) as accuracy_score
+      FROM creator_predictions
+      GROUP BY creator ORDER BY accuracy_score DESC
+    `;
+    args = [];
+  }
+
+  const { rows } = await c.execute({ sql, args });
+  return rows.map(r => ({
+    creator: r.creator as string,
+    total: r.total as number,
+    evaluated: r.evaluated as number,
+    accuracy_score: Math.round(r.accuracy_score as number),
+  }));
 }
 
 export async function upsertIntelligenceSnapshot(data: SnapshotUpsertData): Promise<void> {

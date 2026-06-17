@@ -13,6 +13,8 @@ import type {
   RiskEntry,
   RecommendedAction,
   OpportunityStage,
+  ConsensusStage,
+  FailureMode,
 } from "@/app/api/research/deep/route";
 
 // ── Agent log ─────────────────────────────────────────────────────────────────
@@ -125,8 +127,16 @@ function TrendCard({ trend }: { trend: TrendEntry }) {
         <h3 style={{ margin: 0, fontSize: "0.82rem", fontWeight: 700, color: "#0f172a", lineHeight: 1.3 }}>
           {trend.title}
         </h3>
-        <ConfidencePill level={trend.confidence} />
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", alignItems: "flex-end" }}>
+          <ConfidencePill level={trend.confidence} />
+          {trend.consensus_stage && <ConsensusLifecycleBadge stage={trend.consensus_stage} />}
+        </div>
       </div>
+      {trend.consensus_stage_reason && (
+        <p style={{ margin: 0, fontSize: "0.68rem", color: CONSENSUS_META[trend.consensus_stage!].color, fontWeight: 500 }}>
+          {trend.consensus_stage_reason}
+        </p>
+      )}
       <p style={{ margin: 0, fontSize: "0.75rem", color: "#475569", lineHeight: 1.5 }}>
         {trend.description}
       </p>
@@ -204,6 +214,24 @@ function DebateCard({ debate }: { debate: DebateCluster }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ── Consensus lifecycle ───────────────────────────────────────────────────────
+
+const CONSENSUS_META: Record<ConsensusStage, { icon: string; label: string; color: string; bg: string; border: string }> = {
+  EARLY_SIGNAL: { icon: "🔵", label: "EARLY SIGNAL", color: "#1d4ed8", bg: "#eff6ff", border: "#bfdbfe" },
+  EMERGING:     { icon: "🟢", label: "EMERGING",     color: "#166534", bg: "#dcfce7", border: "#86efac" },
+  MAINSTREAM:   { icon: "🟡", label: "MAINSTREAM",   color: "#854d0e", bg: "#fef9c3", border: "#fde047" },
+  SATURATED:    { icon: "🔴", label: "SATURATED",    color: "#991b1b", bg: "#fee2e2", border: "#fca5a5" },
+};
+
+function ConsensusLifecycleBadge({ stage }: { stage: ConsensusStage }) {
+  const m = CONSENSUS_META[stage];
+  return (
+    <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", padding: "2px 7px", borderRadius: 20, background: m.bg, border: `1px solid ${m.border}`, color: m.color, display: "inline-flex", alignItems: "center", gap: 3 }}>
+      {m.icon} {m.label}
+    </span>
   );
 }
 
@@ -502,6 +530,27 @@ function OpportunityCard({ opp, rank }: { opp: OpportunityEntry; rank: number })
               {opp.counterarguments.map((c, i) => (
                 <p key={i} style={{ margin: "0.15rem 0", fontSize: "0.73rem", color: "#374151", paddingLeft: "0.75rem", borderLeft: "2px solid #fef3c7" }}>{c}</p>
               ))}
+            </div>
+          )}
+          {(opp.failure_modes ?? []).length > 0 && (
+            <div>
+              <p style={{ margin: "0 0 0.4rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#dc2626" }}>
+                Failure Modes — What Would Make This Wrong?
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                {(opp.failure_modes ?? []).map((fm: FailureMode, i: number) => {
+                  const riskColor = fm.failure_risk === "HIGH" ? "#dc2626" : fm.failure_risk === "MEDIUM" ? "#d97706" : "#16a34a";
+                  const riskBg   = fm.failure_risk === "HIGH" ? "#fee2e2" : fm.failure_risk === "MEDIUM" ? "#fff7ed" : "#f0fdf4";
+                  return (
+                    <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", padding: "0.4rem 0.6rem", background: riskBg, borderRadius: 7, border: `1px solid ${riskBg === "#fee2e2" ? "#fca5a5" : riskBg === "#fff7ed" ? "#fed7aa" : "#bbf7d0"}` }}>
+                      <span style={{ fontSize: "0.6rem", fontWeight: 800, color: riskColor, textTransform: "uppercase", padding: "1px 5px", borderRadius: 4, background: "white", flexShrink: 0, marginTop: 1 }}>
+                        {fm.failure_risk}
+                      </span>
+                      <p style={{ margin: 0, fontSize: "0.72rem", color: "#374151" }}>{fm.description}</p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

@@ -1,25 +1,33 @@
-import { db, upsertCreatorProfile, upsertCreatorPosition } from "./db";
+import { db, upsertCreatorProfile, upsertCreatorPosition, getCreatorPredictionStats } from "./db";
 
 // ── Authority scoring ──────────────────────────────────────────────────────────
-// Computed purely from library data — no YouTube API calls required.
-// Score breakdown (0–100):
-//   video presence  0–40  (12pts × video_count, capped at 40)
-//   evidence density 0–30 (2pts × data_point_count, capped at 30)
-//   signal quality  0–20  (3pts × high_signal_count, capped at 20)
-//   topic breadth   0–10  (2pts × category_count, capped at 10)
+// Score breakdown (0–100 base, ±10 prediction modifier):
+//   video presence   0–40  (12pts × video_count, capped at 40)
+//   evidence density 0–30  (2pts × data_point_count, capped at 30)
+//   signal quality   0–20  (3pts × high_signal_count, capped at 20)
+//   topic breadth    0–10  (2pts × category_count, capped at 10)
+//   prediction boost ±10   (≥80 accuracy: +10, <30 accuracy: −10)
 
 export function computeAuthorityScore(
   videoCount: number,
   dataPointCount: number,
   highSignalCount: number,
   categoryCount: number,
+  predictionAccuracy?: number,
 ): number {
-  return (
+  const base =
     Math.min(videoCount * 12, 40) +
     Math.min(dataPointCount * 2, 30) +
     Math.min(highSignalCount * 3, 20) +
-    Math.min(categoryCount * 2, 10)
-  );
+    Math.min(categoryCount * 2, 10);
+
+  let predictionModifier = 0;
+  if (predictionAccuracy !== undefined) {
+    if (predictionAccuracy >= 80) predictionModifier = 10;
+    else if (predictionAccuracy < 30) predictionModifier = -10;
+  }
+
+  return Math.max(0, Math.min(100, base + predictionModifier));
 }
 
 export function authorityTier(score: number): "High" | "Medium" | "Low" {
@@ -109,6 +117,13 @@ export async function syncCreatorAuthority(): Promise<{
   let creatorCount = 0;
   let positionCount = 0;
 
+  const creatorNames = (creatorRows as unknown as RawCreatorRow[]).map(r => r.channel_name);
+  const predictionStats = await getCreatorPredictionStats(creatorNames);
+  const predictionAccuracyMap: Record<string, number> = {};
+  for (const s of predictionStats) {
+    if (s.evaluated > 0) predictionAccuracyMap[s.creator] = s.accuracy_score;
+  }
+
   for (const row of creatorRows as unknown as RawCreatorRow[]) {
     const categories: string[] = (() => {
       try {
@@ -124,6 +139,7 @@ export async function syncCreatorAuthority(): Promise<{
       row.data_point_count,
       row.high_signal_count,
       categories.length,
+      predictionAccuracyMap[row.channel_name],
     );
 
     // Top 3 categories by appearance in the json_group_array

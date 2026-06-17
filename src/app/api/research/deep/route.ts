@@ -40,9 +40,17 @@ export type TrendEntry = {
   supporting_creators: string[];
   confidence: "High" | "Medium" | "Low";
   emergence_score: number;
+  consensus_stage?: ConsensusStage;
+  consensus_stage_reason?: string;
 };
 
 export type OpportunityStage = "EMERGING" | "GROWING" | "SATURATED";
+export type ConsensusStage = "EARLY_SIGNAL" | "EMERGING" | "MAINSTREAM" | "SATURATED";
+
+export type FailureMode = {
+  description: string;
+  failure_risk: "LOW" | "MEDIUM" | "HIGH";
+};
 
 export type OpportunityEntry = {
   name: string;
@@ -63,6 +71,7 @@ export type OpportunityEntry = {
   founder_fit?: string;
   single_creator_insight?: boolean;
   market_shift?: string;
+  failure_modes?: FailureMode[];
   supporting_evidence: string[];
   counterarguments: string[];
 };
@@ -386,10 +395,30 @@ Output recommended_actions with:
     messages: [
       {
         role: "system",
-        content: `You are WatchFilter's Market Intelligence Engine — Phase 8.
+        content: `You are WatchFilter — a hybrid intelligence system that transforms multi-creator discourse and external sources into structured market hypotheses, debate maps, and opportunity signals.
 
-Your job: detect emerging markets, narrative shifts, creator stance changes, opportunity maturity, research gaps, and market maps.
-Prioritize: evidence > narratives, and temporal change > static snapshots.
+You do NOT generate financial advice. You DO generate structured, evidence-grounded market intelligence.
+
+PRIMARY OBJECTIVE: Separate narrative signals from real-world validated signals, then synthesize them into testable market opportunities.
+
+CORE PRINCIPLE: Never treat creator consensus as market truth.
+- Creator content = hypothesis generation input only (high bias, high signal for sentiment, NOT evidence of market reality)
+- External sources = primary grounding layer for factual claims (required for opportunity validation)
+
+INFORMATION LAYERS (mandatory separation in all outputs):
+  CNL = Creator Narrative Layer — podcasts, YouTube, newsletters → beliefs, opinions, mental models, narrative trends. Label: "What people are saying"
+  ERL = External Reality Layer — industry reports, academic research, financial data, market reports. Label: "What is verifiably true"
+  MBL = Market Behavior Layer — adoption trends, product usage, pricing signals, company formation, funding. Label: "What people are doing"
+
+EXTRACTION RULES:
+  Step 1 — Tag each atomic claim as CNL / ERL / MBL + confidence (low/medium/high) + type (opinion/fact/inference/numeric)
+  Step 2 — Bias check: if >40% of evidence comes from one creator → mark "HIGH BIAS RISK", downweight conclusions. Never allow clustered ecosystems to define "market consensus".
+  Step 3 — Debate detection: only TRUE disagreements count toward contradiction_pressure (not pseudo-disagreements or framing conflicts).
+
+VALIDATION RULES:
+  A claim is "validated" only if: supported by ≥1 ERL source OR ≥2 independent MBL signals. Otherwise: mark "UNVALIDATED HYPOTHESIS".
+  Never upgrade creator opinions into validated facts.
+  No opportunity may claim HIGH confidence without ERL support.
 
 CORE SCORING (range 0.0–1.0):
   emergence_score       = velocity + creator breadth + topic novelty
@@ -409,6 +438,22 @@ OPPORTUNITY STAGE (mandatory per opportunity):
   🟢 EMERGING  — rising mentions, low competition, fragmented consensus
   🟡 GROWING   — increasing adoption, moderate competition, strengthening consensus
   🔴 SATURATED — high competition, strong consensus, declining novelty
+
+CONSENSUS LIFECYCLE (mandatory per trend):
+  Classify each trend into its lifecycle stage:
+  🔵 EARLY_SIGNAL  — ≤2 creators, low mention frequency, fragmented or no consensus
+  🟢 EMERGING      — growing mentions, 3+ creators, contradiction density dropping
+  🟡 MAINSTREAM    — strong creator agreement, broad adoption language, moderate novelty
+  🔴 SATURATED     — high consensus, declining novelty, late-majority language
+  Output: consensus_stage + consensus_stage_reason per trend.
+  Prefer opportunities in EARLY_SIGNAL and EMERGING stages — these are pre-consensus alpha.
+
+COUNTERFACTUAL INTELLIGENCE (mandatory per opportunity):
+  Every opportunity must answer: "What would make this wrong?"
+  Generate at least 1, up to 3 failure_modes per opportunity.
+  Assign failure_risk: LOW | MEDIUM | HIGH per mode.
+  Examples: "AI costs fall slower than expected", "Regulation limits adoption", "Incumbent responds aggressively"
+  Strong opportunities: high upside + LOW failure_risk across most modes.
 
 MARKET FRICTION (mandatory per opportunity):
 - Every opportunity must answer: "Why doesn't this already exist?"
@@ -469,7 +514,9 @@ Return JSON exactly:
       "why_emerging": "string",
       "supporting_creators": ["string"],
       "confidence": "High|Medium|Low",
-      "emergence_score": 0.0-1.0
+      "emergence_score": 0.0-1.0,
+      "consensus_stage": "EARLY_SIGNAL|EMERGING|MAINSTREAM|SATURATED",
+      "consensus_stage_reason": "1 sentence"
     }
   ],
   "debate_map": [
@@ -501,6 +548,9 @@ Return JSON exactly:
       "barrier_to_entry": "High|Medium|Low",
       "founder_fit": "descriptive string",
       "single_creator_insight": false,
+      "failure_modes": [
+        { "description": "string", "failure_risk": "LOW|MEDIUM|HIGH" }
+      ],
       "supporting_evidence": ["string"],
       "counterarguments": ["string"]
     }

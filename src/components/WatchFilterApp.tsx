@@ -13,6 +13,7 @@ import { MarketIntelligencePulse } from "./MarketIntelligencePulse";
 import { ResearchMode } from "./ResearchMode";
 import { CreatorIntelligenceView } from "./CreatorIntelligenceView";
 import { DeepResearchView } from "./DeepResearchView";
+import { PredictionsView } from "./PredictionsView";
 import type {
   AnalysisSummary,
   ApiErrorBody,
@@ -1337,6 +1338,9 @@ export function WatchFilterApp() {
 
         {/* ── Deep Research ── */}
         {activeNav === "deep-research" && <DeepResearchView />}
+
+        {/* ── Prediction Tracking ── */}
+        {activeNav === "predictions" && <PredictionsView />}
 
         {/* ── Creator Intelligence ── */}
         {activeNav === "creators" && <CreatorIntelligenceView />}
