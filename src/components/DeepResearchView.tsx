@@ -6,8 +6,13 @@ import type {
   TrendEntry,
   DebateCluster,
   OpportunityEntry,
+  MarketMapEntry,
+  NarrativeShift,
+  EarlyMover,
+  ResearchGap,
   RiskEntry,
   RecommendedAction,
+  OpportunityStage,
 } from "@/app/api/research/deep/route";
 
 // ── Agent log ─────────────────────────────────────────────────────────────────
@@ -202,6 +207,176 @@ function DebateCard({ debate }: { debate: DebateCluster }) {
   );
 }
 
+// ── Opportunity stage ─────────────────────────────────────────────────────────
+
+const STAGE_META: Record<OpportunityStage, { icon: string; color: string; bg: string; border: string }> = {
+  EMERGING:  { icon: "🟢", color: "#166534", bg: "#dcfce7", border: "#86efac" },
+  GROWING:   { icon: "🟡", color: "#854d0e", bg: "#fef9c3", border: "#fde047" },
+  SATURATED: { icon: "🔴", color: "#991b1b", bg: "#fee2e2", border: "#fca5a5" },
+};
+
+function StageBadge({ stage }: { stage: OpportunityStage }) {
+  const m = STAGE_META[stage];
+  return (
+    <span style={{ fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", padding: "2px 8px", borderRadius: 20, background: m.bg, border: `1px solid ${m.border}`, color: m.color }}>
+      {m.icon} {stage}
+    </span>
+  );
+}
+
+// ── Market Map ────────────────────────────────────────────────────────────────
+
+function MarketMapSection({ entries }: { entries: MarketMapEntry[] }) {
+  if (entries.length === 0) return null;
+  const sorted = [...entries].sort((a, b) => b.market_score - a.market_score);
+  const compColor = (c: string) => c === "LOW" ? "#10b981" : c === "MEDIUM" ? "#f59e0b" : "#ef4444";
+  const fitColor = (f: string) => f === "SOLO" ? "#6366f1" : f === "SMALL TEAM" ? "#3b82f6" : "#94a3b8";
+
+  return (
+    <section>
+      <SectionHeader title="Opportunity Market Map" count={sorted.length} />
+      <p style={{ margin: "0 0 0.75rem", fontSize: "0.75rem", color: "#64748b" }}>
+        market_score = 0.30 × emergence + 0.25 × pain + 0.20 × market size + 0.15 × accessibility + 0.10 × (1 − competition). Ranked highest first.
+      </p>
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 80px 100px 90px 100px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", padding: "0.45rem 1rem", gap: "0.5rem" }}>
+          {["Industry / Opportunity", "Stage", "Score", "Competition", "Accessibility", "Founder Fit"].map(h => (
+            <span key={h} style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "#94a3b8" }}>{h}</span>
+          ))}
+        </div>
+        {sorted.map((e, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 80px 100px 90px 100px", padding: "0.6rem 1rem", gap: "0.5rem", alignItems: "center", borderBottom: i < sorted.length - 1 ? "1px solid #f1f5f9" : "none", background: i % 2 === 0 ? "white" : "#fafafa" }}>
+            <div>
+              <p style={{ margin: 0, fontSize: "0.75rem", fontWeight: 700, color: "#0f172a" }}>{e.industry}</p>
+              <p style={{ margin: "0.1rem 0 0", fontSize: "0.67rem", color: "#64748b" }}>{e.opportunity}</p>
+            </div>
+            <StageBadge stage={e.stage} />
+            <div>
+              <span style={{ fontSize: "0.78rem", fontWeight: 800, color: e.market_score >= 0.65 ? "#10b981" : e.market_score >= 0.35 ? "#f59e0b" : "#ef4444" }}>
+                {Math.round(e.market_score * 100)}%
+              </span>
+            </div>
+            <span style={{ fontSize: "0.68rem", fontWeight: 700, color: compColor(e.competition) }}>{e.competition}</span>
+            <span style={{ fontSize: "0.68rem", fontWeight: 700, color: fitColor(e.founder_fit) }}>{e.founder_fit}</span>
+            <span style={{ fontSize: "0.67rem", color: "#64748b" }}>{e.stage_reason}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ── Narrative Shifts ──────────────────────────────────────────────────────────
+
+function NarrativeShiftSection({ shifts }: { shifts: NarrativeShift[] }) {
+  const visible = shifts.filter(s => s.shift_confidence > 0.70);
+  if (visible.length === 0) return null;
+  return (
+    <section>
+      <SectionHeader title="Narrative Shifts" count={visible.length} />
+      <p style={{ margin: "0 0 0.75rem", fontSize: "0.75rem", color: "#64748b" }}>
+        Creator belief changes detected across evidence — temporal intelligence only shown when shift_confidence &gt; 0.70.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        {visible.map((s, i) => (
+          <div key={i} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0f172a" }}>{s.creator}</span>
+              <span style={{ fontSize: "0.68rem", color: "#94a3b8" }}>on</span>
+              <span style={{ fontSize: "0.73rem", fontWeight: 600, color: "#6366f1" }}>{s.topic}</span>
+              <span style={{ fontSize: "0.6rem", fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#f5f3ff", border: "1px solid #c4b5fd", color: "#6d28d9", marginLeft: "auto" }}>
+                {Math.round(s.shift_confidence * 100)}% confidence
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+              <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: 6, background: "#fee2e2", color: "#991b1b", fontWeight: 600 }}>{s.from_stance}</span>
+              <span style={{ color: "#94a3b8", fontSize: "0.8rem" }}>→</span>
+              <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: 6, background: "#dcfce7", color: "#166534", fontWeight: 600 }}>{s.to_stance}</span>
+              {s.period && <span style={{ fontSize: "0.67rem", color: "#94a3b8" }}>over {s.period}</span>}
+            </div>
+            {s.evidence && (
+              <p style={{ margin: 0, fontSize: "0.71rem", color: "#475569", fontStyle: "italic", borderLeft: "2px solid #e0e7ff", paddingLeft: "0.6rem" }}>
+                "{s.evidence}"
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ── Early Movers ──────────────────────────────────────────────────────────────
+
+function EarlyMoversSection({ movers }: { movers: EarlyMover[] }) {
+  if (movers.length === 0) return null;
+  const sorted = [...movers].sort((a, b) => b.predictive_score - a.predictive_score);
+  return (
+    <section>
+      <SectionHeader title="Early Movers" count={sorted.length} />
+      <p style={{ margin: "0 0 0.75rem", fontSize: "0.75rem", color: "#64748b" }}>
+        Creators who discussed trends before broad adoption — rewarded for prediction consistency.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        {sorted.map((m, i) => (
+          <div key={i} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.75rem 1rem", display: "flex", gap: "0.9rem", alignItems: "flex-start" }}>
+            <div style={{ flexShrink: 0, textAlign: "center", minWidth: 48 }}>
+              <p style={{ margin: 0, fontSize: "1rem", fontWeight: 900, color: "#6366f1" }}>{Math.round(m.predictive_score * 100)}</p>
+              <p style={{ margin: 0, fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>score</p>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.2rem", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#0f172a" }}>{m.creator}</span>
+                {m.months_ahead !== undefined && m.months_ahead > 0 && (
+                  <span style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "#fef3c7", border: "1px solid #fde68a", color: "#92400e" }}>
+                    ~{m.months_ahead}mo ahead
+                  </span>
+                )}
+                <span style={{ fontSize: "0.67rem", color: "#64748b" }}>{m.topic}</span>
+              </div>
+              <p style={{ margin: 0, fontSize: "0.73rem", color: "#475569" }}>{m.description}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ── Research Gaps ─────────────────────────────────────────────────────────────
+
+function ResearchGapsSection({ gaps, creatorCount }: { gaps: ResearchGap[]; creatorCount: number }) {
+  const weakGraph = creatorCount < 4;
+  if (gaps.length === 0 && !weakGraph) return null;
+  const typeColor: Record<string, string> = { "domain expert": "#6366f1", "practitioner": "#10b981", "investor": "#f59e0b" };
+
+  return (
+    <section>
+      <SectionHeader title="Research Gaps" count={gaps.length} />
+      {weakGraph && (
+        <div style={{ padding: "0.65rem 0.9rem", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, marginBottom: "0.65rem", fontSize: "0.75rem", color: "#92400e" }}>
+          ⚠ Additional creator coverage may materially improve results. Current analysis draws from {creatorCount} creator{creatorCount !== 1 ? "s" : ""}.
+        </div>
+      )}
+      {gaps.length > 0 && (
+        <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+          {gaps.map((g, i) => (
+            <div key={i} style={{ padding: "0.65rem 0.9rem", borderBottom: i < gaps.length - 1 ? "1px solid #f1f5f9" : "none", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+              <span style={{ fontSize: "0.6rem", fontWeight: 700, padding: "2px 7px", borderRadius: 20, flexShrink: 0, marginTop: 2, background: "#f1f5f9", border: "1px solid #e2e8f0", color: g.recommended_type ? (typeColor[g.recommended_type] ?? "#64748b") : "#64748b" }}>
+                {g.recommended_type ?? "missing"}
+              </span>
+              <div>
+                <p style={{ margin: "0 0 0.15rem", fontSize: "0.75rem", fontWeight: 700, color: "#0f172a" }}>{g.missing_perspective}</p>
+                <p style={{ margin: 0, fontSize: "0.7rem", color: "#64748b" }}>{g.why_matters}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ── Opportunity card ──────────────────────────────────────────────────────────
 
 function MetaBadge({ label, value, color }: { label: string; value: string; color: string }) {
@@ -231,18 +406,31 @@ function OpportunityCard({ opp, rank }: { opp: OpportunityEntry; rank: number })
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.35rem" }}>
             <p style={{ margin: 0, fontSize: "0.82rem", fontWeight: 700, color: "#0f172a" }}>{opp.name}</p>
+            {opp.single_creator_insight && (
+              <span style={{ fontSize: "0.58rem", fontWeight: 800, padding: "2px 7px", borderRadius: 20, background: "#fef3c7", border: "1px solid #fde68a", color: "#92400e", flexShrink: 0 }}>
+                SINGLE-CREATOR INSIGHT
+              </span>
+            )}
             {opp.industry && (
               <span style={{ fontSize: "0.6rem", fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#475569", flexShrink: 0 }}>
                 {opp.industry}
               </span>
             )}
+            {opp.stage && <StageBadge stage={opp.stage} />}
           </div>
           {opp.customer && (
             <p style={{ margin: "0 0 0.35rem", fontSize: "0.71rem", color: "#64748b" }}>
               Target: <strong style={{ color: "#374151" }}>{opp.customer}</strong>
             </p>
           )}
-          <ScoreBar score={opp.opportunity_score} />
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <div style={{ flex: 1 }}><ScoreBar score={opp.opportunity_score} /></div>
+            {opp.market_score !== undefined && (
+              <span style={{ fontSize: "0.6rem", color: "#94a3b8", whiteSpace: "nowrap" }}>
+                mkt {Math.round(opp.market_score * 100)}%
+              </span>
+            )}
+          </div>
         </div>
         <button
           type="button"
@@ -265,6 +453,11 @@ function OpportunityCard({ opp, rank }: { opp: OpportunityEntry; rank: number })
 
       {expanded && (
         <div style={{ borderTop: "1px solid #f1f5f9", padding: "0.75rem 1rem", display: "flex", flexDirection: "column", gap: "0.7rem" }}>
+          {opp.stage_reason && (
+            <div style={{ padding: "0.45rem 0.7rem", background: opp.stage ? STAGE_META[opp.stage].bg : "#f8fafc", borderRadius: 8, border: `1px solid ${opp.stage ? STAGE_META[opp.stage].border : "#e2e8f0"}` }}>
+              <p style={{ margin: 0, fontSize: "0.72rem", color: "#374151" }}>{opp.stage_reason}</p>
+            </div>
+          )}
           {opp.pain_point && (
             <div>
               <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#ef4444" }}>Pain Point</p>
@@ -275,6 +468,12 @@ function OpportunityCard({ opp, rank }: { opp: OpportunityEntry; rank: number })
             <div>
               <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10b981" }}>Why Now</p>
               <p style={{ margin: 0, fontSize: "0.75rem", color: "#374151" }}>{opp.why_now}</p>
+            </div>
+          )}
+          {opp.market_friction && (
+            <div style={{ padding: "0.5rem 0.7rem", background: "#fffbeb", borderRadius: 8, border: "1px solid #fde68a" }}>
+              <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#b45309" }}>Why This Doesn't Already Exist</p>
+              <p style={{ margin: 0, fontSize: "0.74rem", color: "#78350f" }}>{opp.market_friction}</p>
             </div>
           )}
           {opp.existing_solutions && (
@@ -483,7 +682,12 @@ function InvestmentMemoDisplay({ memo }: { memo: InvestmentMemo }) {
         </div>
       )}
 
-      {/* Emerging Trends */}
+      {/* 2. Opportunity Market Map */}
+      {(memo.market_map ?? []).length > 0 && (
+        <MarketMapSection entries={memo.market_map!} />
+      )}
+
+      {/* 3. Emerging Opportunities */}
       {memo.emerging_trends.length > 0 && (
         <section>
           <SectionHeader title="Emerging Trends" count={memo.emerging_trends.length} />
@@ -493,12 +697,25 @@ function InvestmentMemoDisplay({ memo }: { memo: InvestmentMemo }) {
         </section>
       )}
 
-      {/* Debate Map */}
+      {/* 4. Opportunity Ranking */}
+      {memo.opportunity_ranking.length > 0 && (
+        <section>
+          <SectionHeader title="Emerging Opportunities" count={memo.opportunity_ranking.length} />
+          <p style={{ margin: "0 0 0.75rem", fontSize: "0.75rem", color: "#64748b" }}>
+            Each opportunity validated: ≥3 creators, &lt;50% concentration, topical relevance &gt;0.75. Click to expand.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {memo.opportunity_ranking.map((o, i) => <OpportunityCard key={i} opp={o} rank={i + 1} />)}
+          </div>
+        </section>
+      )}
+
+      {/* 5. Debate Map */}
       {memo.debate_map.length > 0 && (
         <section>
           <SectionHeader title="Debate Map" count={memo.debate_map.length} />
           <p style={{ margin: "0 0 0.75rem", fontSize: "0.75rem", color: "#64748b" }}>
-            Where your creators disagree — the highest-signal intelligence in the library.
+            Where creators disagree — the highest-signal intelligence in the library.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
             {memo.debate_map.map((d, i) => <DebateCard key={i} debate={d} />)}
@@ -506,18 +723,14 @@ function InvestmentMemoDisplay({ memo }: { memo: InvestmentMemo }) {
         </section>
       )}
 
-      {/* Opportunity Ranking */}
-      {memo.opportunity_ranking.length > 0 && (
-        <section>
-          <SectionHeader title="Opportunity Ranking" count={memo.opportunity_ranking.length} />
-          <p style={{ margin: "0 0 0.75rem", fontSize: "0.75rem", color: "#64748b" }}>
-            Score = emergence × contradiction pressure × (1 − consensus stability). Click any row to expand.
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {memo.opportunity_ranking.map((o, i) => <OpportunityCard key={i} opp={o} rank={i + 1} />)}
-          </div>
-        </section>
-      )}
+      {/* 6. Narrative Shifts */}
+      <NarrativeShiftSection shifts={memo.narrative_shifts ?? []} />
+
+      {/* 7. Early Movers */}
+      <EarlyMoversSection movers={memo.early_movers ?? []} />
+
+      {/* 8. Research Gaps */}
+      <ResearchGapsSection gaps={memo.research_gaps ?? []} creatorCount={memo.creator_count ?? 0} />
 
       {/* Risk Signals */}
       {memo.risk_signals.length > 0 && (

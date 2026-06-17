@@ -42,6 +42,8 @@ export type TrendEntry = {
   emergence_score: number;
 };
 
+export type OpportunityStage = "EMERGING" | "GROWING" | "SATURATED";
+
 export type OpportunityEntry = {
   name: string;
   industry: string;
@@ -50,14 +52,53 @@ export type OpportunityEntry = {
   why_now: string;
   existing_solutions?: string;
   gap: string;
+  market_friction: string;
+  stage: OpportunityStage;
+  stage_reason: string;
   opportunity_score: number;
+  market_score?: number;
   market_size?: string;
   competition?: string;
   barrier_to_entry?: string;
   founder_fit?: string;
+  single_creator_insight?: boolean;
   market_shift?: string;
   supporting_evidence: string[];
   counterarguments: string[];
+};
+
+export type MarketMapEntry = {
+  industry: string;
+  opportunity: string;
+  market_score: number;
+  competition: "LOW" | "MEDIUM" | "HIGH";
+  founder_fit: "SOLO" | "SMALL TEAM" | "VENTURE";
+  stage: OpportunityStage;
+  stage_reason: string;
+};
+
+export type NarrativeShift = {
+  creator: string;
+  topic: string;
+  from_stance: string;
+  to_stance: string;
+  shift_confidence: number;
+  period: string;
+  evidence: string;
+};
+
+export type EarlyMover = {
+  creator: string;
+  topic: string;
+  months_ahead?: number;
+  description: string;
+  predictive_score: number;
+};
+
+export type ResearchGap = {
+  missing_perspective: string;
+  why_matters: string;
+  recommended_type?: string;
 };
 
 export type RiskEntry = {
@@ -90,6 +131,7 @@ export type InvestmentMemo = {
   topic: string;
   generated_at: string;
   evidence_count: number;
+  creator_count?: number;
   creator_concentration?: number;
   concentration_level?: "LOW" | "MEDIUM" | "HIGH";
   skew_warning?: string;
@@ -97,9 +139,13 @@ export type InvestmentMemo = {
     key_signals: string[];
     market_interpretation: string;
   };
+  market_map?: MarketMapEntry[];
   emerging_trends: TrendEntry[];
   debate_map: DebateCluster[];
   opportunity_ranking: OpportunityEntry[];
+  narrative_shifts?: NarrativeShift[];
+  early_movers?: EarlyMover[];
+  research_gaps?: ResearchGap[];
   risk_signals: RiskEntry[];
   evidence_appendix: EvidenceItem[];
   recommended_actions: RecommendedAction;
@@ -335,60 +381,87 @@ Output recommended_actions with:
   const res = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.15,
-    max_tokens: 3200,
+    max_tokens: 5000,
     response_format: { type: "json_object" },
     messages: [
       {
         role: "system",
-        content: `You are the Synthesizer and Scorer Agent in a Bloomberg Terminal-grade creator intelligence system.
+        content: `You are WatchFilter's Market Intelligence Engine — Phase 8.
 
-Build a complete Investment Intelligence Memo. Rules:
-- Truth structure over narrative fluency
-- Contradictions over consensus — disagreement IS intelligence
-- Emergence over popularity
-- Evidence over plausibility
-- Label weak findings: LOW CONFIDENCE / SPECULATIVE
+Your job: detect emerging markets, narrative shifts, creator stance changes, opportunity maturity, research gaps, and market maps.
+Prioritize: evidence > narratives, and temporal change > static snapshots.
 
-Scoring (range 0.0–1.0):
-  emergence_score     = velocity + creator breadth + topic novelty
-  consensus_score     = agreement weighted by authority tier (High > Medium > Low)
-  contradiction_pressure = strength of opposing camps
-  opportunity_score   = emergence_score × contradiction_pressure × (1 − consensus_score)
+CORE SCORING (range 0.0–1.0):
+  emergence_score       = velocity + creator breadth + topic novelty
+  pain_severity         = urgency × cost × frequency of the problem
+  market_size_score     = addressable market breadth (0–1)
+  founder_accessibility = ease of entry for a solo/small founder
+  competition_inverse   = 1 − competition_density
+  opportunity_score     = emergence × contradiction_pressure × (1 − consensus)
+  market_score          = 0.30×emergence + 0.25×pain_severity + 0.20×market_size_score + 0.15×founder_accessibility + 0.10×competition_inverse
 
-PIPELINE ORDER (mandatory): Evidence → Cluster by industry/topic → Synthesize → Score → Output opportunity
-- First, mentally cluster the claims by industry or topic area
-- Then synthesize insights within each cluster
-- Then score opportunities based on cross-cluster evidence
-- Only THEN output the opportunity_ranking
+PIPELINE (mandatory): Evidence → Cluster by industry → Synthesize per cluster → Score → Output
 ${broadQuery ? `
-BROAD QUERY MODE: The user asked a broad question. You MUST:
-- Identify at least 5 distinct industry clusters from the evidence (e.g. AI, Cybersecurity, Creator Economy, Fintech, Healthcare)
-- Return the best opportunity from EACH cluster — do not anchor on the first topic retrieved
-- Set industry field to the cluster name for each opportunity
-- Do NOT return multiple opportunities from the same industry
-- Title the executive_summary as "Top Opportunities by Industry"
+BROAD QUERY MODE — return one best opportunity per industry cluster. Identify ≥5 distinct industries. Do NOT anchor on first topic retrieved.
 ` : ""}
 
-OPPORTUNITY GENERATION RULES (mandatory):
-- name must be a SPECIFIC actionable product/service/strategy (e.g. "AI monitoring dashboard for SMB cybersecurity")
-- REJECT generic names: ✗ "AI Tool" ✗ "Content Analytics" ✗ "SaaS Platform"
-- Every opportunity MUST include: industry, customer, pain_point, why_now, gap
-- Also include when available: existing_solutions, market_size, competition, barrier_to_entry, founder_fit
+OPPORTUNITY STAGE (mandatory per opportunity):
+  🟢 EMERGING  — rising mentions, low competition, fragmented consensus
+  🟡 GROWING   — increasing adoption, moderate competition, strengthening consensus
+  🔴 SATURATED — high competition, strong consensus, declining novelty
 
-CREATOR DIVERSITY RULES (mandatory):
-- Creator concentration level: ${concentrationLevel}
-- Any trend or opportunity supported by ONLY 1 creator must be labeled "SINGLE-CREATOR INSIGHT" in its title
-- High-confidence trends (confidence: "High") require ≥ 3 supporting_creators — if fewer, downgrade to "Medium"
-- If concentration is HIGH, no trend or opportunity may claim high confidence without cross-creator validation
+MARKET FRICTION (mandatory per opportunity):
+- Every opportunity must answer: "Why doesn't this already exist?"
+- Examples: enterprise-only tools, SMB underservice, recent cost drop, new regulation, AI reduced dev cost
+- No opportunity without market_friction
+
+OPPORTUNITY VALIDATION:
+- Reject opportunities unless ≥ 3 creators support OR explicitly label "SINGLE-CREATOR INSIGHT"
+- creator concentration: ${concentrationLevel} — HIGH concentration: no High confidence without cross-creator validation
+- evidence topical relevance must be >0.75
+
+OPPORTUNITY RULES:
+- name = SPECIFIC product/service (e.g. "AI-powered compliance monitoring for healthcare SMBs")
+- REJECT: ✗ "AI Tool" ✗ "SaaS Platform" ✗ generic category names
+- Must include: industry, customer, pain_point, why_now, gap, market_friction, stage
+
+CREATOR DIVERSITY:
+- Concentration level: ${concentrationLevel}
+- Single-creator opportunities: set single_creator_insight: true
+- High-confidence trends require ≥3 supporting_creators, else downgrade to "Medium"
+
+NARRATIVE SHIFTS — detect temporal stance changes:
+- Only include if shift_confidence > 0.70
+- Infer from evidence: contrarian notes, changing language, disagreement patterns
+- Example: "Sentiment toward AI agencies shifted from cautious to bullish"
+
+EARLY MOVERS — creators who discussed a trend before broad adoption:
+- Infer from evidence recency signals, quote language ("I've been saying this for months")
+- predictive_score = consistency × early_adoption_signal
+
+RESEARCH GAPS — always identify:
+- Missing industry perspectives (e.g. no cybersecurity operators, no healthcare founders)
+- If graph density is weak, flag: "Additional creator coverage may materially improve results"
 
 ${confidenceInstructions}
 
-Return JSON exactly matching this schema:
+Return JSON exactly:
 {
   "executive_summary": {
-    "key_signals": ["3–6 one-line signals"],
+    "key_signals": ["3–6 signals"],
     "market_interpretation": "2–3 sentence synthesis"
   },
+  "market_map": [
+    {
+      "industry": "string",
+      "opportunity": "specific opportunity name",
+      "market_score": 0.0-1.0,
+      "competition": "LOW|MEDIUM|HIGH",
+      "founder_fit": "SOLO|SMALL TEAM|VENTURE",
+      "stage": "EMERGING|GROWING|SATURATED",
+      "stage_reason": "1 sentence"
+    }
+  ],
   "emerging_trends": [
     {
       "title": "string",
@@ -411,20 +484,52 @@ Return JSON exactly matching this schema:
   ],
   "opportunity_ranking": [
     {
-      "name": "specific product/service/strategy name — NOT a generic category",
-      "industry": "e.g. Cybersecurity, Creator Economy, Fintech, Healthcare",
-      "customer": "specific customer segment (e.g. 'SMBs under 50 employees', 'solo content creators')",
-      "pain_point": "concrete problem they face right now",
-      "why_now": "what market shift makes this timing right",
-      "existing_solutions": "what's already out there and why it fails",
-      "gap": "what remains unsolved that this opportunity addresses",
+      "name": "specific product/service — NOT generic",
+      "industry": "string",
+      "customer": "specific segment",
+      "pain_point": "concrete problem",
+      "why_now": "market shift reason",
+      "existing_solutions": "what exists and why it fails",
+      "gap": "what remains unsolved",
+      "market_friction": "why this doesn't already exist",
+      "stage": "EMERGING|GROWING|SATURATED",
+      "stage_reason": "1 sentence explaining the stage",
       "opportunity_score": 0.0-1.0,
+      "market_score": 0.0-1.0,
       "market_size": "Large|Medium|Small",
       "competition": "High|Medium|Low",
       "barrier_to_entry": "High|Medium|Low",
-      "founder_fit": "e.g. 'Strong for solo technical founders' or 'Best for teams with domain expertise'",
+      "founder_fit": "descriptive string",
+      "single_creator_insight": false,
       "supporting_evidence": ["string"],
       "counterarguments": ["string"]
+    }
+  ],
+  "narrative_shifts": [
+    {
+      "creator": "string",
+      "topic": "string",
+      "from_stance": "string",
+      "to_stance": "string",
+      "shift_confidence": 0.0-1.0,
+      "period": "string (e.g. 'last 6 months')",
+      "evidence": "quote or signal supporting this shift"
+    }
+  ],
+  "early_movers": [
+    {
+      "creator": "string",
+      "topic": "string",
+      "months_ahead": 0,
+      "description": "string",
+      "predictive_score": 0.0-1.0
+    }
+  ],
+  "research_gaps": [
+    {
+      "missing_perspective": "string (e.g. 'cybersecurity operators')",
+      "why_matters": "string",
+      "recommended_type": "domain expert|practitioner|investor"
     }
   ],
   "risk_signals": [
@@ -490,10 +595,14 @@ ${webContext || "None available"}`,
     const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as Partial<InvestmentMemo>;
     return {
       ...fallback,
-      executive_summary: parsed.executive_summary ?? fallback.executive_summary,
+      executive_summary:  parsed.executive_summary ?? fallback.executive_summary,
+      market_map:         parsed.market_map ?? [],
       emerging_trends:    parsed.emerging_trends ?? [],
       debate_map:         parsed.debate_map ?? debates,
       opportunity_ranking: parsed.opportunity_ranking ?? [],
+      narrative_shifts:   (parsed.narrative_shifts ?? []).filter(s => s.shift_confidence > 0.70),
+      early_movers:       parsed.early_movers ?? [],
+      research_gaps:      parsed.research_gaps ?? [],
       risk_signals:       parsed.risk_signals ?? [],
       evidence_appendix:  parsed.evidence_appendix ?? [],
       recommended_actions: parsed.recommended_actions ?? fallbackRecommendation,
@@ -622,6 +731,7 @@ export async function POST(req: NextRequest) {
 
         const finalMemo: InvestmentMemo = {
           ...memo,
+          creator_count: creatorSet.size,
           creator_concentration: concentration,
           concentration_level: concentrationLevel,
           skew_warning: skewWarning,
