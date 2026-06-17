@@ -13,6 +13,9 @@ const openai = new OpenAI();
 
 // ── Public types (consumed by DeepResearchView) ───────────────────────────────
 
+export type ClaimSpeakerRole = "HOST" | "GUEST" | "THIRD_PARTY";
+export type ClaimAttributionStrength = "EXPLICIT" | "IMPLIED" | "PARAPHRASED";
+
 export type AtomicClaim = {
   id: string;
   text: string;
@@ -22,6 +25,20 @@ export type AtomicClaim = {
   confidence: number;
   creator: string;
   evidence: string;
+  // v3 attribution fields (optional — populated when discernible from evidence)
+  speaker_name?: string;
+  speaker_role?: ClaimSpeakerRole;
+  attribution_strength?: ClaimAttributionStrength;
+};
+
+export type AttributionReport = {
+  total_claims: number;
+  host_claims: number;
+  guest_claims: number;
+  third_party_claims: number;
+  unlinked_claims: number;
+  guest_contamination_pct: number;
+  explicit_pct: number;
 };
 
 export type DebateCluster = {
@@ -158,6 +175,7 @@ export type InvestmentMemo = {
   risk_signals: RiskEntry[];
   evidence_appendix: EvidenceItem[];
   recommended_actions: RecommendedAction;
+  attribution_report?: AttributionReport;
 };
 
 // ── Confidence classifier (deterministic) ─────────────────────────────────────
@@ -269,6 +287,12 @@ Each claim must be:
 - Grounded only in the provided evidence — no hallucination
 - query_relevance_score ≥ 0.75 (drop anything below)
 
+ATTRIBUTION (v3 — fill in when discernible):
+- speaker_role: "HOST" if the channel creator is making the claim directly; "GUEST" if the video title/evidence suggests an interview guest; "THIRD_PARTY" if the host is referencing someone else's claim
+- attribution_strength: "EXPLICIT" if speaker states it as their own view; "IMPLIED" if logically inferred; "PARAPHRASED" if the host is relaying another person's words
+- speaker_name: actual speaker name if different from channel (e.g. guest name from video title)
+- Default to speaker_role: "HOST" and attribution_strength: "EXPLICIT" when context is insufficient
+
 Return JSON:
 {
   "claims": [
@@ -281,7 +305,10 @@ Return JSON:
       "confidence": 0.0-1.0,
       "creator": "channel_name",
       "evidence": "brief quote excerpt max 80 chars",
-      "query_relevance_score": 0.0-1.0
+      "query_relevance_score": 0.0-1.0,
+      "speaker_name": "name or null",
+      "speaker_role": "HOST|GUEST|THIRD_PARTY",
+      "attribution_strength": "EXPLICIT|IMPLIED|PARAPHRASED"
     }
   ]
 }`,
@@ -779,12 +806,35 @@ export async function POST(req: NextRequest) {
           broadQuery,
         );
 
+        // Build attribution report from Explorer claims
+        const attrReport: AttributionReport = (() => {
+          const total = claims.length;
+          let host = 0, guest = 0, third = 0, explicit = 0;
+          for (const c of claims) {
+            if (c.speaker_role === "GUEST") guest++;
+            else if (c.speaker_role === "THIRD_PARTY") third++;
+            else host++;
+            if (c.attribution_strength === "EXPLICIT") explicit++;
+          }
+          const unlinked = total - host - guest - third;
+          return {
+            total_claims: total,
+            host_claims: host,
+            guest_claims: guest,
+            third_party_claims: third,
+            unlinked_claims: Math.max(0, unlinked),
+            guest_contamination_pct: total > 0 ? Math.round((guest / total) * 100) : 0,
+            explicit_pct: total > 0 ? Math.round((explicit / total) * 100) : 0,
+          };
+        })();
+
         const finalMemo: InvestmentMemo = {
           ...memo,
           creator_count: creatorSet.size,
           creator_concentration: concentration,
           concentration_level: concentrationLevel,
           skew_warning: skewWarning,
+          attribution_report: attrReport,
         };
 
         emit("stage", {

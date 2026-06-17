@@ -731,6 +731,39 @@ function InvestmentMemoDisplay({ memo }: { memo: InvestmentMemo }) {
         </div>
       )}
 
+      {/* Attribution report */}
+      {memo.attribution_report && memo.attribution_report.total_claims > 0 && (() => {
+        const ar = memo.attribution_report;
+        const guestRisk = ar.guest_contamination_pct > 40 ? "#ef4444" : ar.guest_contamination_pct > 20 ? "#f59e0b" : "#10b981";
+        return (
+          <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.75rem 1rem" }}>
+            <p style={{ margin: "0 0 0.6rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#94a3b8" }}>
+              Claim Attribution Breakdown
+            </p>
+            <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", alignItems: "center" }}>
+              {[
+                { label: "Host", value: ar.host_claims, color: "#1d4ed8" },
+                { label: "Guest", value: ar.guest_claims, color: "#c2410c" },
+                { label: "3rd Party", value: ar.third_party_claims, color: "#166534" },
+                { label: "Explicit", value: `${ar.explicit_pct}%`, color: "#10b981" },
+              ].map(item => (
+                <div key={item.label}>
+                  <p style={{ margin: "0 0 0.05rem", fontSize: "0.57rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>{item.label}</p>
+                  <p style={{ margin: 0, fontSize: "0.9rem", fontWeight: 900, color: item.color }}>{item.value}</p>
+                </div>
+              ))}
+              {ar.guest_contamination_pct > 0 && (
+                <div style={{ marginLeft: "auto", padding: "0.3rem 0.75rem", borderRadius: 8, background: `${guestRisk}11`, border: `1px solid ${guestRisk}44` }}>
+                  <p style={{ margin: 0, fontSize: "0.67rem", fontWeight: 700, color: guestRisk }}>
+                    {ar.guest_contamination_pct}% guest-derived
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 2. Opportunity Market Map */}
       {(memo.market_map ?? []).length > 0 && (
         <MarketMapSection entries={memo.market_map!} />

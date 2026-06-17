@@ -14,6 +14,7 @@ import { ResearchMode } from "./ResearchMode";
 import { CreatorIntelligenceView } from "./CreatorIntelligenceView";
 import { DeepResearchView } from "./DeepResearchView";
 import { PredictionsView } from "./PredictionsView";
+import { IntelligenceView } from "./IntelligenceView";
 import type {
   AnalysisSummary,
   ApiErrorBody,
@@ -1338,6 +1339,9 @@ export function WatchFilterApp() {
 
         {/* ── Deep Research ── */}
         {activeNav === "deep-research" && <DeepResearchView />}
+
+        {/* ── Intelligence ── */}
+        {activeNav === "intelligence" && <IntelligenceView />}
 
         {/* ── Prediction Tracking ── */}
         {activeNav === "predictions" && <PredictionsView />}

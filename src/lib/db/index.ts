@@ -155,6 +155,15 @@ async function ensureSchema(): Promise<void> {
     `ALTER TABLE analyses ADD COLUMN duration_seconds INTEGER`,
     `ALTER TABLE analyses ADD COLUMN off_script_nuggets TEXT`,
     `ALTER TABLE analyses ADD COLUMN speaker_name TEXT`,
+    // v3 attribution fields for creator_predictions
+    `ALTER TABLE creator_predictions ADD COLUMN speaker_name TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN speaker_role TEXT NOT NULL DEFAULT 'HOST'`,
+    `ALTER TABLE creator_predictions ADD COLUMN speaker_confidence TEXT NOT NULL DEFAULT 'MEDIUM'`,
+    `ALTER TABLE creator_predictions ADD COLUMN entity_name TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN entity_type TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN attribution_strength TEXT NOT NULL DEFAULT 'IMPLIED'`,
+    `ALTER TABLE creator_predictions ADD COLUMN outcome_tier INTEGER`,
+    `ALTER TABLE creator_predictions ADD COLUMN is_evaluable INTEGER NOT NULL DEFAULT 0`,
     // Cloud pipeline cache — stores AI scores + consensus per user
     `ALTER TABLE intelligence_snapshot ADD COLUMN ai_scores_cache TEXT`,
     `ALTER TABLE intelligence_snapshot ADD COLUMN consensus_cache TEXT`,
@@ -929,6 +938,10 @@ export async function getTeamWorkspaceWaitlistCount(): Promise<number> {
 
 // ── Creator Predictions ───────────────────────────────────────────────────────
 
+export type SpeakerRole = "HOST" | "GUEST" | "THIRD_PARTY";
+export type AttributionStrength = "EXPLICIT" | "IMPLIED" | "PARAPHRASED";
+export type OutcomeTier = 1 | 2 | 3 | 4;
+
 export type PredictionRow = {
   prediction_id: string;
   creator: string;
@@ -938,10 +951,20 @@ export type PredictionRow = {
   confidence: number;
   measurable_outcome: string | null;
   evidence_source: string | null;
+  // v3 structural attribution
+  speaker_name: string | null;
+  speaker_role: SpeakerRole;
+  speaker_confidence: "HIGH" | "MEDIUM" | "LOW";
+  entity_name: string | null;
+  entity_type: string | null;
+  attribution_strength: AttributionStrength;
+  outcome_tier: OutcomeTier | null;
+  is_evaluable: boolean;
+  // evaluation output
   prediction_accuracy_score: number | null;
   evaluation_evidence: string | null;
   evaluated_at: string | null;
-  status: "pending" | "accurate" | "inaccurate" | "unknown";
+  status: "pending" | "accurate" | "inaccurate" | "unknown" | "unlinked";
 };
 
 export type PredictionAccuracyStat = {
@@ -956,10 +979,21 @@ export async function upsertPrediction(p: PredictionRow): Promise<void> {
   await c.execute({
     sql: `INSERT INTO creator_predictions
             (prediction_id, creator, topic, prediction_text, created_at, confidence,
-             measurable_outcome, evidence_source, prediction_accuracy_score,
-             evaluation_evidence, evaluated_at, status)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+             measurable_outcome, evidence_source,
+             speaker_name, speaker_role, speaker_confidence,
+             entity_name, entity_type, attribution_strength,
+             outcome_tier, is_evaluable,
+             prediction_accuracy_score, evaluation_evidence, evaluated_at, status)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
           ON CONFLICT(prediction_id) DO UPDATE SET
+            speaker_name              = excluded.speaker_name,
+            speaker_role              = excluded.speaker_role,
+            speaker_confidence        = excluded.speaker_confidence,
+            entity_name               = excluded.entity_name,
+            entity_type               = excluded.entity_type,
+            attribution_strength      = excluded.attribution_strength,
+            outcome_tier              = excluded.outcome_tier,
+            is_evaluable              = excluded.is_evaluable,
             prediction_accuracy_score = excluded.prediction_accuracy_score,
             evaluation_evidence       = excluded.evaluation_evidence,
             evaluated_at              = excluded.evaluated_at,
@@ -967,10 +1001,38 @@ export async function upsertPrediction(p: PredictionRow): Promise<void> {
     args: [
       p.prediction_id, p.creator, p.topic, p.prediction_text, p.created_at,
       p.confidence, p.measurable_outcome ?? null, p.evidence_source ?? null,
+      p.speaker_name ?? null, p.speaker_role, p.speaker_confidence,
+      p.entity_name ?? null, p.entity_type ?? null, p.attribution_strength,
+      p.outcome_tier ?? null, p.is_evaluable ? 1 : 0,
       p.prediction_accuracy_score ?? null, p.evaluation_evidence ?? null,
       p.evaluated_at ?? null, p.status,
     ],
   });
+}
+
+function rowToPrediction(r: Record<string, unknown>): PredictionRow {
+  return {
+    prediction_id:            r.prediction_id as string,
+    creator:                  r.creator as string,
+    topic:                    r.topic as string,
+    prediction_text:          r.prediction_text as string,
+    created_at:               r.created_at as string,
+    confidence:               r.confidence as number,
+    measurable_outcome:       r.measurable_outcome as string | null,
+    evidence_source:          r.evidence_source as string | null,
+    speaker_name:             r.speaker_name as string | null,
+    speaker_role:             (r.speaker_role as SpeakerRole) ?? "HOST",
+    speaker_confidence:       (r.speaker_confidence as "HIGH" | "MEDIUM" | "LOW") ?? "MEDIUM",
+    entity_name:              r.entity_name as string | null,
+    entity_type:              r.entity_type as string | null,
+    attribution_strength:     (r.attribution_strength as AttributionStrength) ?? "IMPLIED",
+    outcome_tier:             r.outcome_tier as OutcomeTier | null,
+    is_evaluable:             Boolean(r.is_evaluable),
+    prediction_accuracy_score: r.prediction_accuracy_score as number | null,
+    evaluation_evidence:      r.evaluation_evidence as string | null,
+    evaluated_at:             r.evaluated_at as string | null,
+    status:                   (r.status as PredictionRow["status"]) ?? "pending",
+  };
 }
 
 export async function listPredictions(limit = 100): Promise<PredictionRow[]> {
@@ -979,20 +1041,7 @@ export async function listPredictions(limit = 100): Promise<PredictionRow[]> {
     sql: `SELECT * FROM creator_predictions ORDER BY created_at DESC LIMIT ?`,
     args: [limit],
   });
-  return rows.map(r => ({
-    prediction_id: r.prediction_id as string,
-    creator: r.creator as string,
-    topic: r.topic as string,
-    prediction_text: r.prediction_text as string,
-    created_at: r.created_at as string,
-    confidence: r.confidence as number,
-    measurable_outcome: r.measurable_outcome as string | null,
-    evidence_source: r.evidence_source as string | null,
-    prediction_accuracy_score: r.prediction_accuracy_score as number | null,
-    evaluation_evidence: r.evaluation_evidence as string | null,
-    evaluated_at: r.evaluated_at as string | null,
-    status: (r.status as PredictionRow["status"]) ?? "pending",
-  }));
+  return rows.map(r => rowToPrediction(r as Record<string, unknown>));
 }
 
 export async function getPredictionById(id: string): Promise<PredictionRow | null> {
@@ -1002,28 +1051,15 @@ export async function getPredictionById(id: string): Promise<PredictionRow | nul
     args: [id],
   });
   if (!rows.length) return null;
-  const r = rows[0];
-  return {
-    prediction_id: r.prediction_id as string,
-    creator: r.creator as string,
-    topic: r.topic as string,
-    prediction_text: r.prediction_text as string,
-    created_at: r.created_at as string,
-    confidence: r.confidence as number,
-    measurable_outcome: r.measurable_outcome as string | null,
-    evidence_source: r.evidence_source as string | null,
-    prediction_accuracy_score: r.prediction_accuracy_score as number | null,
-    evaluation_evidence: r.evaluation_evidence as string | null,
-    evaluated_at: r.evaluated_at as string | null,
-    status: (r.status as PredictionRow["status"]) ?? "pending",
-  };
+  return rowToPrediction(rows[0] as Record<string, unknown>);
 }
 
 export async function updatePredictionScore(
   predictionId: string,
   score: number,
   evidence: string,
-  status: "accurate" | "inaccurate" | "unknown",
+  status: "accurate" | "inaccurate" | "unknown" | "unlinked",
+  outcomeTier?: OutcomeTier,
 ): Promise<void> {
   const c = await db();
   await c.execute({
@@ -1031,10 +1067,83 @@ export async function updatePredictionScore(
             prediction_accuracy_score = ?,
             evaluation_evidence       = ?,
             evaluated_at              = ?,
-            status                    = ?
+            status                    = ?,
+            outcome_tier              = COALESCE(?, outcome_tier)
           WHERE prediction_id = ?`,
-    args: [score, evidence, new Date().toISOString(), status, predictionId],
+    args: [score, evidence, new Date().toISOString(), status, outcomeTier ?? null, predictionId],
   });
+}
+
+export type AttributionContaminationReport = {
+  total: number;
+  host_claims: number;
+  guest_claims: number;
+  third_party_claims: number;
+  unlinked_claims: number;
+  evaluable: number;
+  guest_contamination_pct: number;
+  attribution_ambiguity_pct: number;
+  tier_distribution: { tier1: number; tier2: number; tier3: number; tier4: number };
+  weighted_accuracy: number | null;
+};
+
+export async function getAttributionContaminationReport(): Promise<AttributionContaminationReport> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT speaker_role, attribution_strength, is_evaluable, outcome_tier,
+                 prediction_accuracy_score, status
+          FROM creator_predictions`,
+    args: [],
+  });
+
+  let host = 0, guest = 0, third = 0, unlinked = 0;
+  let evaluable = 0;
+  let implied = 0, paraphrased = 0;
+  let t1 = 0, t2 = 0, t3 = 0, t4 = 0;
+  let weightedSum = 0, weightedCount = 0;
+
+  for (const r of rows) {
+    const role = r.speaker_role as string;
+    const strength = r.attribution_strength as string;
+    const status = r.status as string;
+    const tier = r.outcome_tier as number | null;
+    const score = r.prediction_accuracy_score as number | null;
+    const isEval = Boolean(r.is_evaluable);
+
+    if (role === "HOST") host++;
+    else if (role === "GUEST") guest++;
+    else if (role === "THIRD_PARTY") third++;
+    if (status === "unlinked") unlinked++;
+    if (isEval) evaluable++;
+    if (strength === "IMPLIED") implied++;
+    else if (strength === "PARAPHRASED") paraphrased++;
+
+    if (tier === 1) t1++;
+    else if (tier === 2) t2++;
+    else if (tier === 3) t3++;
+    else t4++;
+
+    // Weighted accuracy: Tier1=1.0, Tier2=0.6, Tier3=0.3, Tier4=excluded
+    if (score !== null && tier !== null && tier < 4) {
+      const w = tier === 1 ? 1.0 : tier === 2 ? 0.6 : 0.3;
+      weightedSum += (score / 100) * w;
+      weightedCount += w;
+    }
+  }
+
+  const total = rows.length;
+  return {
+    total,
+    host_claims: host,
+    guest_claims: guest,
+    third_party_claims: third,
+    unlinked_claims: unlinked,
+    evaluable,
+    guest_contamination_pct: total > 0 ? Math.round((guest / total) * 100) : 0,
+    attribution_ambiguity_pct: total > 0 ? Math.round(((implied + paraphrased) / total) * 100) : 0,
+    tier_distribution: { tier1: t1, tier2: t2, tier3: t3, tier4: t4 },
+    weighted_accuracy: weightedCount > 0 ? Math.round((weightedSum / weightedCount) * 100) : null,
+  };
 }
 
 export async function getCreatorPredictionStats(creators?: string[]): Promise<PredictionAccuracyStat[]> {
