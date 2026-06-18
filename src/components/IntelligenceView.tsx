@@ -42,11 +42,6 @@ function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
             {memo.directional}
           </span>
         )}
-        {memo.reddit_gap && (
-          <span style={{ fontSize: "0.57rem", fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#0f172a", color: "#64748b", border: "1px solid #334155", marginLeft: "auto" }}>
-            Community Intelligence unavailable
-          </span>
-        )}
       </div>
       <p style={{ margin: "0 0 1.1rem", fontSize: "1rem", color: "#f8fafc", lineHeight: 1.75, fontWeight: 400 }}>
         {memo.decision_summary}
@@ -152,6 +147,8 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
   const detail = memo.source_detail;
   if (!detail) return null;
   const sources = ["youtube", "reddit", "web"] as const;
+  const activeSources = sources.filter(s => !detail[s].excluded && detail[s].signal_count > 0);
+  if (!activeSources.length) return null;
 
   return (
     <section>
@@ -163,22 +160,7 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
           const d    = detail[src];
           const disp = SRC_DISPLAY[src];
 
-          if (d.excluded || d.signal_count === 0) {
-            return (
-              <div key={src} style={{ background: "#fafafa", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.75rem 1rem", opacity: 0.7 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                  <span style={{ fontSize: "0.75rem", color: "#cbd5e1" }}>{disp.icon}</span>
-                  <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#94a3b8" }}>{disp.label}</span>
-                  {d.quality_score > 0 && (
-                    <span style={{ fontSize: "0.57rem", color: "#cbd5e1", marginLeft: "auto" }}>Quality: {d.quality_score}</span>
-                  )}
-                </div>
-                <p style={{ margin: "0.35rem 0 0", fontSize: "0.65rem", color: "#94a3b8", fontStyle: "italic" }}>
-                  No qualifying evidence found. Excluded from synthesis.
-                </p>
-              </div>
-            );
-          }
+          if (d.excluded || d.signal_count === 0) return null;
 
           return (
             <div key={src} style={{ background: "white", border: "1px solid #e2e8f0", borderLeft: `3px solid ${disp.accent}`, borderRadius: 10, padding: "0.85rem 1rem" }}>
@@ -626,33 +608,29 @@ const LEVEL_META = {
 function EvidenceQualityPanel({ scores }: {
   scores: IntelligenceMemo["source_quality_scores"];
 }) {
+  const activeSources = QUALITY_SOURCES.filter(({ key }) => !scores[key].excluded);
+  if (!activeSources.length) return null;
   return (
     <section>
       <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
         Evidence Quality
       </h2>
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1rem", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-        {QUALITY_SOURCES.map(({ key, label, icon, accent }) => {
+        {QUALITY_SOURCES.filter(({ key }) => !scores[key].excluded).map(({ key, label, icon, accent }) => {
           const q = scores[key];
           return (
             <div key={key} style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <span style={{ fontSize: "0.75rem", color: q.excluded ? "#cbd5e1" : accent, flexShrink: 0, width: 14 }}>{icon}</span>
-              <span style={{ fontSize: "0.65rem", fontWeight: 600, color: q.excluded ? "#94a3b8" : "#374151", width: 160, flexShrink: 0 }}>
+              <span style={{ fontSize: "0.75rem", color: accent, flexShrink: 0, width: 14 }}>{icon}</span>
+              <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "#374151", width: 160, flexShrink: 0 }}>
                 {label}
               </span>
-              {q.excluded ? (
-                <span style={{ fontSize: "0.6rem", color: "#94a3b8", fontStyle: "italic" }}>Coverage insufficient — excluded from synthesis</span>
-              ) : (
-                <>
-                  <div style={{ flex: 1, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
-                    <div style={{ width: `${q.score}%`, height: "100%", background: LEVEL_META[q.level].bar, borderRadius: 2, transition: "width 0.5s ease" }} />
-                  </div>
-                  <span style={{ fontSize: "0.58rem", fontWeight: 700, padding: "1px 7px", borderRadius: 4, background: LEVEL_META[q.level].pill.bg, color: LEVEL_META[q.level].pill.color, minWidth: 42, textAlign: "center" }}>
-                    {q.level}
-                  </span>
-                  <span style={{ fontSize: "0.6rem", color: "#94a3b8", width: 22, textAlign: "right" }}>{q.score}</span>
-                </>
-              )}
+              <div style={{ flex: 1, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ width: `${q.score}%`, height: "100%", background: LEVEL_META[q.level].bar, borderRadius: 2, transition: "width 0.5s ease" }} />
+              </div>
+              <span style={{ fontSize: "0.58rem", fontWeight: 700, padding: "1px 7px", borderRadius: 4, background: LEVEL_META[q.level].pill.bg, color: LEVEL_META[q.level].pill.color, minWidth: 42, textAlign: "center" }}>
+                {q.level}
+              </span>
+              <span style={{ fontSize: "0.6rem", color: "#94a3b8", width: 22, textAlign: "right" }}>{q.score}</span>
             </div>
           );
         })}
