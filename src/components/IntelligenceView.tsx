@@ -899,9 +899,6 @@ function IntelligenceReport({ memo, query }: { memo: IntelligenceMemo; query: st
       {/* 6. Confidence */}
       <ConfidenceSection memo={memo} />
 
-      {/* 7. Evidence Gaps */}
-      {memo.coverage && <EvidenceGaps coverage={memo.coverage} />}
-
       {/* 8. Consensus */}
       <ConsensusSection consensus={memo.consensus} />
 

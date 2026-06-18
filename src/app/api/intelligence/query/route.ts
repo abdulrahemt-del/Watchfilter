@@ -99,6 +99,7 @@ export type IntelligenceMemo = {
     relevance_passed: number;
     quality_accepted: number;
     query_intent: string;
+    query_domain: string;
     is_recovery: boolean;
     quality_warning: string | null;
   };
@@ -243,6 +244,60 @@ const INTENT_THRESHOLDS: Record<QueryIntent, { relevanceGate: number; qualityExc
   prediction:     { relevanceGate: 40, qualityExclude: 45 },
   research:       { relevanceGate: 45, qualityExclude: 50 },
 };
+
+// ── Query domain classification ───────────────────────────────────────────────
+
+type QueryDomain =
+  | "customer_acquisition"
+  | "growth_strategy"
+  | "product_building"
+  | "fundraising"
+  | "technical"
+  | "market_research";
+
+// Per-domain: allowed vocabulary (for cluster validation) + forbidden markers
+const DOMAIN_VOCABULARY: Record<QueryDomain, { label: string; allowed: string[]; forbidden: string[] }> = {
+  customer_acquisition: {
+    label: "Customer Acquisition",
+    allowed: ["customer", "user", "acqui", "growth", "gtm", "outreach", "sales", "referral", "channel", "adopt", "traction", "lead", "conversion", "market", "funnel", "prospect", "signup", "revenue", "distribution", "niche", "audience", "trust", "early adopter", "cold", "inbound", "demand", "churn"],
+    forbidden: ["self-leadership", "personal development", "life outcome", "wealth mindset", "self-improvement", "leadership principle", "motivat", "life lesson", "philosophy of wealth"],
+  },
+  growth_strategy: {
+    label: "Growth Strategy",
+    allowed: ["growth", "scale", "expand", "market", "strateg", "competitive", "position", "retention", "churn", "viral", "loop", "network", "distribution", "acquisition"],
+    forbidden: ["self-leadership", "personal development", "life outcome", "wealth mindset"],
+  },
+  product_building: {
+    label: "Product Building",
+    allowed: ["product", "build", "feature", "mvp", "engineer", "develop", "iteration", "roadmap", "user research", "feedback", "ship", "launch", "design", "ux"],
+    forbidden: ["personal development", "leadership mindset", "self-leadership"],
+  },
+  fundraising: {
+    label: "Fundraising",
+    allowed: ["fund", "invest", "raise", "venture", "capital", "seed", "pitch", "valuation", "term", "dilution", "equity", "angel", "investor"],
+    forbidden: ["personal development", "self-leadership"],
+  },
+  technical: {
+    label: "Technical",
+    allowed: ["code", "engineer", "technical", "architect", "api", "infrastructure", "performance", "security", "deploy", "scale", "database", "system"],
+    forbidden: ["personal development", "mindset", "self-leadership"],
+  },
+  market_research: {
+    label: "Market Research",
+    allowed: ["market", "research", "trend", "industry", "competition", "analysis", "insight", "data", "report", "survey", "segment", "customer"],
+    forbidden: ["personal development", "self-leadership", "wealth mindset"],
+  },
+};
+
+function classifyQueryDomain(q: string): QueryDomain {
+  const s = q.toLowerCase();
+  if (s.includes("customer") || s.includes("acqui") || s.includes("first user") || s.includes("first customer") || s.includes("gtm") || s.includes("go-to-market") || s.includes("sales channel") || s.includes("early traction") || s.includes("100 customer") || s.includes("traction")) return "customer_acquisition";
+  if (s.includes("grow") || s.includes("scale") || s.includes("expand") || s.includes("viral") || s.includes("retention") || s.includes("churn")) return "growth_strategy";
+  if (s.includes("build") || s.includes("product") || s.includes("feature") || s.includes("mvp") || s.includes("ship") || s.includes("engineer") || s.includes("develop")) return "product_building";
+  if (s.includes("fund") || s.includes("invest") || s.includes("raise") || s.includes("pitch") || s.includes("vc ") || s.includes("capital")) return "fundraising";
+  if (s.includes("code") || s.includes("technical") || s.includes("architect") || s.includes("infrastructure") || s.includes("engineer")) return "technical";
+  return "market_research";
+}
 
 // ── Source → NormalizedClaim converters ───────────────────────────────────────
 // Note: queryRelevance is added externally after construction
@@ -723,9 +778,41 @@ const EXTRACTOR_EMPTY: ExtractorOutput = {
 
 async function runExtractor(
   query: string,
+  queryDomain: QueryDomain,
   claims: NormalizedClaim[],
   evidenceMap: Map<string, string>,
 ): Promise<ExtractorOutput> {
+  const vocab = DOMAIN_VOCABULARY[queryDomain];
+  const domainLock = `
+
+---
+
+# 🔒 DOMAIN LOCK: ${vocab.label.toUpperCase()}
+
+This analysis is STRICTLY scoped to: **${vocab.label}**
+
+ONLY extract normalized_claims and insight_clusters that directly address: "${query}"
+
+ACCEPT claims about: ${vocab.allowed.slice(0, 10).join(", ")}
+
+HARD REJECT — DO NOT include in output:
+• Personal development / mindset / self-leadership / life outcomes
+• Wealth philosophy or financial worldview content
+• Generic motivational or truism-style insights
+• Any claim that does not directly answer: "${query}"
+
+FORBIDDEN cluster themes (discard immediately):
+• "Foundational Business Insights" — too generic
+• "Core Principles" — personal development framing
+• "Leadership and Mindset" — wrong domain
+• Any theme that applies to life in general, not specifically to ${vocab.label}
+
+REQUIRED: Every insight_cluster.theme must name a specific ${vocab.label} tactic, mechanism, or behavior.
+Example GOOD: "Founder-Led Direct Outreach" / "Trust as a Conversion Driver" / "Early Adopter Tolerance"
+Example BAD: "Foundational Insights" / "Key Principles" / "Business Fundamentals"`;
+
+  const systemPrompt = EXTRACTOR_PROMPT + domainLock;
+
   const toInput = (c: NormalizedClaim) => ({
     id: c.id,
     type: c.type,
@@ -739,7 +826,7 @@ async function runExtractor(
     max_tokens: 5000,
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: EXTRACTOR_PROMPT },
+      { role: "system", content: systemPrompt },
       {
         role: "user",
         content: JSON.stringify({
@@ -766,6 +853,32 @@ function buildClusters(extractor: ExtractorOutput, claimIndex: Map<string, Norma
       claims: ec.claims.map(id => claimIndex.get(id)).filter((c): c is NormalizedClaim => c != null),
     }))
     .filter(c => c.claims.length >= 1);
+}
+
+// Domain validation safety net — catches any off-domain clusters the extractor
+// let through despite the domain lock prompt
+function filterClustersByDomain(
+  clusters:    ClaimCluster[],
+  extractor:   ExtractorOutput,
+  queryDomain: QueryDomain,
+): ClaimCluster[] {
+  const vocab = DOMAIN_VOCABULARY[queryDomain];
+
+  return clusters.filter(cluster => {
+    const ec = extractor.insight_clusters.find(e => e.theme === cluster.theme);
+    const allText = [
+      cluster.theme,
+      ec?.summary ?? "",
+      ...(ec?.key_themes ?? []),
+      ...cluster.claims.slice(0, 4).map(c => c.claim),
+    ].join(" ").toLowerCase();
+
+    // Hard-reject forbidden content
+    if (vocab.forbidden.some(f => allText.includes(f.toLowerCase()))) return false;
+
+    // Require at least one domain vocab match across the cluster's full text
+    return vocab.allowed.some(a => allText.includes(a.toLowerCase()));
+  });
 }
 
 // ── Decision LLM ──────────────────────────────────────────────────────────────
@@ -1363,10 +1476,11 @@ export async function POST(req: NextRequest) {
         emit({ type: "stage", source: "web", message: `Web search unavailable: ${err instanceof Error ? err.message : "error"}` });
       }
 
-      // Classify intent → choose gate thresholds (exploration is most permissive)
+      // Classify intent + domain (domain determines what counts as relevant content)
       const queryIntent = classifyQueryIntent(query);
+      const queryDomain = classifyQueryDomain(query);
       const intentThresholds = INTENT_THRESHOLDS[queryIntent];
-      console.log(`[Intent] "${queryIntent}" → relevanceGate=${intentThresholds.relevanceGate} qualityExclude=${intentThresholds.qualityExclude}`);
+      console.log(`[Intent] "${queryIntent}" domain="${queryDomain}" → relevanceGate=${intentThresholds.relevanceGate} qualityExclude=${intentThresholds.qualityExclude}`);
 
       // Normalize → add queryRelevance → reject only very weak claims (strength < 0.3)
       const addRelevance = (c: Omit<NormalizedClaim, "queryRelevance">): NormalizedClaim => ({
@@ -1467,6 +1581,7 @@ export async function POST(req: NextRequest) {
         relevance_passed: relevantClaims.length,
         quality_accepted: gatedClaims.length,
         query_intent: queryIntent,
+        query_domain: queryDomain,
         is_recovery: isRecovery,
         quality_warning: qualityWarning,
       };
@@ -1474,11 +1589,14 @@ export async function POST(req: NextRequest) {
       const evidenceMap = buildEvidenceMap(ytRows, hnClaims, articles);
       const claimIndex = new Map(gatedClaims.map(c => [c.id, c]));
 
-      // Stage 5: Extract + cluster
-      emit({ type: "stage", agent: "Extractor", message: `Extracting and clustering ${gatedClaims.length} signals…` });
-      const extractor = await runExtractor(query, gatedClaims, evidenceMap);
-      const clusters = buildClusters(extractor, claimIndex);
-      emit({ type: "stage", agent: "Extractor", message: `Formed ${clusters.length} insight clusters` });
+      // Stage 5: Extract + cluster (domain-locked prompt) + domain safety filter
+      emit({ type: "stage", agent: "Extractor", message: `Extracting and clustering ${gatedClaims.length} signals [domain: ${queryDomain}]…` });
+      const extractor = await runExtractor(query, queryDomain, gatedClaims, evidenceMap);
+      const rawClusters = buildClusters(extractor, claimIndex);
+      const clusters = filterClustersByDomain(rawClusters, extractor, queryDomain);
+      const offDomainRemoved = rawClusters.length - clusters.length;
+      if (offDomainRemoved > 0) console.log(`[Domain] ${offDomainRemoved} off-domain cluster(s) removed`);
+      emit({ type: "stage", agent: "Extractor", message: `Formed ${clusters.length} domain-scoped insight clusters${offDomainRemoved > 0 ? ` (${offDomainRemoved} off-domain removed)` : ""}` });
 
       // Stage 6: Score (deterministic; cap confidence in recovery mode)
       const extractorHasContrad = extractor.contradictions.length > 0;
