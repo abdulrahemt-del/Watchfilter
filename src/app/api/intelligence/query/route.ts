@@ -48,7 +48,11 @@ export type IntelligenceMemo = {
       early_stage:  string[];
       growth_stage: string[];
     };
-    priority_actions: string[];
+    priority_actions: Array<{
+      action: string;
+      evidence_strength: "High" | "Medium" | "Low";
+      supporting_signals: number;
+    }>;
   };
   insight_clusters: Array<{
     theme: string;
@@ -56,6 +60,14 @@ export type IntelligenceMemo = {
     confidence: "High" | "Medium" | "Low";
     key_themes: string[];
   }>;
+  insight_density: {
+    total_signals: number;
+    unique_insights: number;
+  };
+  evidence_used: {
+    total_signals: number;
+    primary_themes: string[];
+  };
   evidence_count: {
     youtube: number;
     reddit:  number;
@@ -80,6 +92,7 @@ export type IntelligenceMemo = {
     score: number;
     active: string[];
     missing: string[];
+    gap_impact: string[];
   };
 };
 
@@ -691,11 +704,17 @@ function buildClusters(extractor: ExtractorOutput, claimIndex: Map<string, Norma
 
 // ── Decision LLM ──────────────────────────────────────────────────────────────
 
+type PriorityAction = {
+  action: string;
+  evidence_strength: "High" | "Medium" | "Low";
+  supporting_signals: number;
+};
+
 async function generateDecision(
   query: string,
   clusters: ClaimCluster[],
   stageInterpretation: ExtractorOutput["stage_interpretation"],
-): Promise<{ directional: string; decision_summary: string; priority_actions: string[] }> {
+): Promise<{ directional: string; decision_summary: string; priority_actions: PriorityAction[] }> {
   const allFlat = clusters.flatMap(c => c.claims);
   const topBySource = (src: NormalizedClaim["source"]) =>
     allFlat
@@ -736,15 +755,19 @@ You do NOT browse, search, or invent facts. Work only from provided signals.
 
 4. Source fidelity: every insight must trace to at least one provided signal. No hallucinated synthesis.
 
-5. Priority actions: generate 3–5 actions. Each action MUST:
-   - Map directly to a specific provided signal (name the tactic, mechanism, or finding)
-   - Be immediately actionable with a specific next step (not a general strategy)
-   - Include the evidence that supports it, woven naturally into the action
+5. Priority actions: generate 3–5 actions. Each action MUST be:
+   - Immediately executable — specific verb + specific target (e.g. "reach out to 50 prospects this week", not "build relationships")
+   - Grounded in evidence — derives from a specific signal, not general startup wisdom
+   - Measurable — contains a number, frequency, or clear done/not-done criterion
 
-   GOOD: "Reach out personally to 50 ideal customers this week — evidence shows founder-led outreach at this stage converts at far higher rates than agency-driven campaigns."
-   GOOD: "Set up a weekly customer interview cadence (aim for 3–5 per week) — multiple signals confirm that early feedback loops are the primary driver of product-market fit."
-   BAD: "Develop clearly defined marketing campaigns."
-   BAD: "Build relationships with your target audience."
+   evidence_strength: "High" if 4+ signals support it, "Medium" if 2–3 signals, "Low" if 1 signal
+   supporting_signals: count of distinct evidence signals backing this action
+
+   GOOD action: "Reach out directly to 50 target prospects this week, focusing on the problem before the product"
+   GOOD action: "Conduct 3 customer interviews per week to identify the single most painful problem"
+   BAD action: "Develop clearly defined marketing campaigns"
+   BAD action: "Create a community"
+   BAD action: "Build a value proposition"
 
 6. Directional must be EXACTLY one of:
    "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)"
@@ -761,7 +784,10 @@ Return ONLY valid JSON:
 {
   "directional": "one of the five allowed labels",
   "decision_summary": "2–3 sentences: what the evidence shows, what is genuinely disputed, what matters most for this decision.",
-  "priority_actions": ["specific action with evidence basis", "specific action...", "specific action...", "specific action...", "specific action..."]
+  "priority_actions": [
+    { "action": "specific immediately executable action", "evidence_strength": "High|Medium|Low", "supporting_signals": 5 },
+    { "action": "...", "evidence_strength": "...", "supporting_signals": 3 }
+  ]
 }`,
       },
       { role: "user", content: JSON.stringify(input) },
@@ -772,14 +798,26 @@ Return ONLY valid JSON:
     "Strong YES (conditional)", "Lean YES", "Neutral / Tradeoff", "Lean NO", "Strong NO (conditional)",
   ]);
 
+  const VALID_STRENGTHS = new Set(["High", "Medium", "Low"]);
+
   try {
     const p = JSON.parse(res.choices[0]?.message?.content ?? "{}") as {
-      directional?: string; decision_summary?: string; priority_actions?: string[];
+      directional?: string;
+      decision_summary?: string;
+      priority_actions?: Array<{ action?: string; evidence_strength?: string; supporting_signals?: number }>;
     };
     return {
       directional:      VALID_DIRECTIONALS.has(p.directional ?? "") ? p.directional! : "Neutral / Tradeoff",
       decision_summary: p.decision_summary ?? "Insufficient evidence to synthesize a decision.",
-      priority_actions: Array.isArray(p.priority_actions) ? p.priority_actions.slice(0, 5) : [],
+      priority_actions: Array.isArray(p.priority_actions)
+        ? p.priority_actions.slice(0, 5)
+            .filter(a => typeof a.action === "string" && a.action.length > 0)
+            .map(a => ({
+                action:            a.action!,
+                evidence_strength: VALID_STRENGTHS.has(a.evidence_strength ?? "") ? (a.evidence_strength as "High" | "Medium" | "Low") : "Medium",
+                supporting_signals: Math.max(1, Math.round(a.supporting_signals ?? 1)),
+              }))
+        : [],
     };
   } catch {
     return {
@@ -790,30 +828,30 @@ Return ONLY valid JSON:
   }
 }
 
-// ── Best evidence ranking — synthesized claims from cluster summaries ──────────
+// ── Best evidence ranking — synthesized insight bullets from clusters ─────────
 
 function buildBestEvidenceRanking(
   gatedClaims: NormalizedClaim[],
   extractor:   ExtractorOutput,
 ): string[] {
-  // Prefer cluster summaries — these are synthesized findings, not raw excerpts
-  const fromSummaries = extractor.insight_clusters
-    .filter(c => c.summary && c.summary.length > 15)
-    .map(c => c.summary)
+  // Use key_themes — these are synthesized insight bullets, never raw excerpts
+  const fromKeyThemes = extractor.insight_clusters
+    .flatMap(c => c.key_themes ?? [])
+    .filter(t => t && t.length > 10 && !t.startsWith("#"))
     .slice(0, 4);
 
-  if (fromSummaries.length >= 3) return fromSummaries;
+  if (fromKeyThemes.length >= 3) return fromKeyThemes;
 
-  // Fill with top-scored claims (strength × relevance)
+  // Fill with top gated claims by strength × relevance (fallback only)
   const top = [...gatedClaims]
     .sort((a, b) =>
       (computeClaimStrength(b) * b.queryRelevance) -
       (computeClaimStrength(a) * a.queryRelevance)
     )
-    .slice(0, 4 - fromSummaries.length)
+    .slice(0, 4 - fromKeyThemes.length)
     .map(c => c.claim.length > 150 ? c.claim.slice(0, 150) + "…" : c.claim);
 
-  return [...new Set([...fromSummaries, ...top])].slice(0, 4);
+  return [...new Set([...fromKeyThemes, ...top])].slice(0, 4);
 }
 
 // ── Coverage: 5-layer model (youtube, reddit, web, research, predictions) ─────
@@ -826,16 +864,26 @@ const COVERAGE_LAYERS = [
   { key: "predictions", label: "Prediction Intelligence" },
 ];
 
+const GAP_IMPACT: Record<string, string[]> = {
+  "Community Intelligence":  ["Founder community experiences", "Operator-validated tactics", "Real-world startup discussions"],
+  "Web Intelligence":        ["Published research and articles", "Industry reports", "Market data"],
+  "Creator Intelligence":    ["Expert video analysis", "Creator-validated frameworks", "Long-form strategy content"],
+  "Research Intelligence":   ["Startup benchmark data", "Academic evidence", "Market validation studies"],
+  "Prediction Intelligence": ["Creator accuracy tracking", "Long-term trend validation", "Historical forecast outcomes"],
+};
+
 function computeCoverage(sourcesUsed: Array<"youtube" | "reddit" | "web">): {
-  score: number; active: string[]; missing: string[];
+  score: number; active: string[]; missing: string[]; gap_impact: string[];
 } {
   const used = new Set<string>(sourcesUsed);
   const active  = COVERAGE_LAYERS.filter(l => used.has(l.key)).map(l => l.label);
   const missing = COVERAGE_LAYERS.filter(l => !used.has(l.key)).map(l => l.label);
+  const gap_impact = missing.flatMap(m => GAP_IMPACT[m] ?? []).slice(0, 5);
   return {
     score: Math.round((active.length / COVERAGE_LAYERS.length) * 100),
     active,
     missing,
+    gap_impact,
   };
 }
 
@@ -855,7 +903,7 @@ function assembleMemo(
   clusters:         ClaimCluster[],
   extractor:        ExtractorOutput,
   confidenceResult: ConfidenceResult,
-  decision:         { directional: string; decision_summary: string; priority_actions: string[] },
+  decision:         { directional: string; decision_summary: string; priority_actions: PriorityAction[] },
   rawCounts:        { youtube: number; reddit: number; web: number },
   redditDiag:       IntelligenceMemo["reddit_diagnostics"],
   qualityScores:    Record<"youtube" | "reddit" | "web", SourceQualityResult>,
@@ -883,6 +931,13 @@ function assembleMemo(
         conflict_type: c.conflict_type ?? "direct" as const,
       }))
     : [];
+
+  // Insight density: unique themes vs total signals
+  const uniqueInsights = clusters.length;
+  const totalSignals   = gatedClaims.length;
+
+  // Primary themes for evidence_used
+  const primaryThemes = clusters.slice(0, 5).map(c => c.theme);
 
   // Build new insight clusters format: synthesized themes, not raw excerpts
   const clusterByTheme = new Map(clusters.map(c => [c.theme, c]));
@@ -936,6 +991,8 @@ function assembleMemo(
       priority_actions: decision.priority_actions,
     },
     insight_clusters: newClusters,
+    insight_density: { total_signals: totalSignals, unique_insights: uniqueInsights },
+    evidence_used: { total_signals: totalSignals, primary_themes: primaryThemes },
     evidence_count: rawCounts,
     reddit_diagnostics: redditDiag,
     source_quality_scores: qualityScores,

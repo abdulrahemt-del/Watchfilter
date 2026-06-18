@@ -4,54 +4,6 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import type { IntelligenceMemo } from "@/app/api/intelligence/query/route";
 import type { PredictionRow } from "@/lib/db";
 
-// ── Score ring ────────────────────────────────────────────────────────────────
-
-function ScoreRing({ score, label, size = 56 }: { score: number; label: string; size?: number }) {
-  const r = size * 0.4;
-  const circ = 2 * Math.PI * r;
-  const offset = circ * (1 - score / 100);
-  const color = score >= 72 ? "#10b981" : score >= 48 ? "#f59e0b" : "#ef4444";
-  const cx = size / 2;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.25rem" }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={cx} cy={cx} r={r} fill="none" stroke="#1e293b" strokeWidth={5} />
-        <circle cx={cx} cy={cx} r={r} fill="none" stroke={color} strokeWidth={5}
-          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-          transform={`rotate(-90 ${cx} ${cx})`} style={{ transition: "stroke-dashoffset 0.6s ease" }} />
-        <text x={cx} y={cx + 4} textAnchor="middle" fontSize={size * 0.22} fontWeight={800} fill={color}>{score}</text>
-      </svg>
-      <span style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#475569" }}>{label}</span>
-    </div>
-  );
-}
-
-// ── Confidence breakdown ──────────────────────────────────────────────────────
-
-function ConfidenceBreakdown({ bd }: { bd: IntelligenceMemo["confidence_breakdown"] }) {
-  const rows = [
-    { label: "Agreement",     value: bd.agreement,            color: "#10b981", sign: "+" },
-    { label: "Coverage",      value: bd.sourceCoverage,       color: "#3b82f6", sign: "+" },
-    { label: "Signal",        value: bd.signalDensity,        color: "#f59e0b", sign: "+" },
-    { label: "Contradiction", value: bd.contradictionPenalty, color: "#ef4444", sign: "-" },
-  ];
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.28rem", minWidth: 155 }}>
-      {rows.map(({ label, value, color, sign }) => (
-        <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
-          <span style={{ fontSize: "0.56rem", color: "#64748b", width: 72, flexShrink: 0 }}>{label}</span>
-          <div style={{ flex: 1, height: 3, background: "#1e293b", borderRadius: 2, overflow: "hidden" }}>
-            <div style={{ width: `${value}%`, height: "100%", background: color, borderRadius: 2 }} />
-          </div>
-          <span style={{ fontSize: "0.56rem", fontWeight: 700, color, width: 26, textAlign: "right" }}>
-            {sign}{value}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ── Source tag ────────────────────────────────────────────────────────────────
 
 function SourceTag({ src }: { src: "youtube" | "reddit" | "web" }) {
@@ -67,67 +19,150 @@ function SourceTag({ src }: { src: "youtube" | "reddit" | "web" }) {
   );
 }
 
-// ── Source breakdown ──────────────────────────────────────────────────────────
+// ── Decision card (primary) ───────────────────────────────────────────────────
 
-function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
-  const sources = [
-    { key: "youtube" as const, icon: "▶", label: "Creator Intelligence",   accent: "#ef4444" },
-    { key: "reddit"  as const, icon: "▲", label: "Community Intelligence", accent: "#10b981" },
-    { key: "web"     as const, icon: "⬡", label: "Web Intelligence",       accent: "#3b82f6" },
+const DIRECTIONAL_STYLE: Record<string, { bg: string; color: string; bar: string }> = {
+  "Strong YES (conditional)": { bg: "#14532d", color: "#86efac", bar: "#22c55e" },
+  "Lean YES":                 { bg: "#166534", color: "#bbf7d0", bar: "#4ade80" },
+  "Neutral / Tradeoff":       { bg: "#292524", color: "#d6d3d1", bar: "#78716c" },
+  "Lean NO":                  { bg: "#7c2d12", color: "#fdba74", bar: "#fb923c" },
+  "Strong NO (conditional)":  { bg: "#7f1d1d", color: "#fca5a5", bar: "#f87171" },
+};
+
+function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
+  const ds = DIRECTIONAL_STYLE[memo.directional] ?? { bg: "#1e293b", color: "#94a3b8", bar: "#475569" };
+  return (
+    <div style={{ background: "#0f172a", borderRadius: 12, padding: "1.5rem 1.75rem", borderLeft: `4px solid ${ds.bar}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.85rem", flexWrap: "wrap" }}>
+        <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#475569" }}>
+          Decision
+        </span>
+        {memo.directional && (
+          <span style={{ fontSize: "0.62rem", fontWeight: 800, padding: "2px 10px", borderRadius: 20, background: ds.bg, color: ds.color, letterSpacing: "0.04em" }}>
+            {memo.directional}
+          </span>
+        )}
+        {memo.reddit_gap && (
+          <span style={{ fontSize: "0.57rem", fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#0f172a", color: "#64748b", border: "1px solid #334155", marginLeft: "auto" }}>
+            Community Intelligence unavailable
+          </span>
+        )}
+      </div>
+      <p style={{ margin: "0 0 1.1rem", fontSize: "1rem", color: "#f8fafc", lineHeight: 1.75, fontWeight: 400 }}>
+        {memo.decision_summary}
+      </p>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#475569" }}>Sources</span>
+        {(memo.sources_used ?? []).map(s => <SourceTag key={s} src={s} />)}
+      </div>
+    </div>
+  );
+}
+
+// ── Confidence section (score + explanation) ──────────────────────────────────
+
+function agreeLabel(score: number): string {
+  if (score >= 81) return "Strong Consensus";
+  if (score >= 61) return "General Consensus";
+  if (score >= 31) return "Partial Consensus";
+  return "Major Disagreement";
+}
+
+function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
+  const score = memo.confidence_score;
+  const bd    = memo.confidence_breakdown;
+  const density = memo.insight_density;
+  const agreeScore = memo.consensus.agreement_score;
+
+  const color = score >= 72 ? "#10b981" : score >= 48 ? "#f59e0b" : "#ef4444";
+  const agreeColor = agreeScore >= 65 ? "#10b981" : agreeScore >= 40 ? "#f59e0b" : "#ef4444";
+
+  // Weighted contributions (sum ≈ confidence_score)
+  const contributions = [
+    { label: "Agreement Strength", value: Math.round(bd.agreement * 0.40), max: 40, color: "#10b981" },
+    { label: "Source Coverage",    value: Math.round(bd.sourceCoverage * 0.25), max: 25, color: "#3b82f6" },
+    { label: "Signal Density",     value: Math.round(bd.signalDensity * 0.15), max: 15, color: "#f59e0b" },
   ];
+  const penalty = Math.round(bd.contradictionPenalty * 0.10);
 
   return (
-    <section>
-      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-        Source Signals
-      </h2>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
-        {sources.map(({ key, icon, label, accent }) => {
-          const data = memo.source_breakdown[key];
-          return (
-            <div key={key} style={{ background: "white", border: "1px solid #e2e8f0", borderTop: `3px solid ${accent}`, borderRadius: 10, padding: "0.85rem 1rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.5rem" }}>
-                <span style={{ fontSize: "0.8rem", color: accent }}>{icon}</span>
-                <span style={{ fontSize: "0.68rem", fontWeight: 800, color: "#0f172a" }}>{label}</span>
-                {data.count > 0 && (
-                  <span style={{ fontSize: "0.6rem", color: "#94a3b8", marginLeft: "auto" }}>{data.count} pts</span>
-                )}
+    <section style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.9rem 1.1rem" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "1.5rem", flexWrap: "wrap" }}>
+
+        {/* Score */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.2rem", minWidth: 60 }}>
+          <span style={{ fontSize: "2rem", fontWeight: 900, color, lineHeight: 1 }}>{score}</span>
+          <span style={{ fontSize: "0.57rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>Confidence</span>
+        </div>
+
+        {/* Contribution breakdown */}
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <p style={{ margin: "0 0 0.4rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
+            Confidence Breakdown
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+            {contributions.map(({ label, value, max, color: c }) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "0.6rem", color: "#64748b", width: 130, flexShrink: 0 }}>{label}</span>
+                <div style={{ flex: 1, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ width: `${(value / max) * 100}%`, height: "100%", background: c, borderRadius: 2 }} />
+                </div>
+                <span style={{ fontSize: "0.6rem", fontWeight: 700, color: c, width: 24, textAlign: "right" }}>+{value}</span>
               </div>
-              {data.key_signals.length > 0
-                ? (
-                  <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-                    {data.key_signals.map((s, i) => (
-                      <li key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
-                        <span style={{ color: accent, fontSize: "0.65rem", paddingTop: 2, flexShrink: 0 }}>›</span>
-                        <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.45 }}>{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )
-                : key === "reddit"
-                  ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
-                      <p style={{ margin: 0, fontSize: "0.68rem", color: "#64748b" }}>
-                        No community signals available for this query.
-                      </p>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-                        {["Hacker News", "Founder discussions", "Startup communities", "Additional public sources"].map(src => (
-                          <span key={src} style={{ fontSize: "0.62rem", color: "#94a3b8" }}>• {src}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                  : <p style={{ margin: 0, fontSize: "0.68rem", color: "#94a3b8", fontStyle: "italic" }}>No signals available</p>
-              }
+            ))}
+            {penalty > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "0.6rem", color: "#64748b", width: 130, flexShrink: 0 }}>Contradiction Penalty</span>
+                <div style={{ flex: 1, height: 4, background: "#f1f5f9", borderRadius: 2 }} />
+                <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "#ef4444", width: 24, textAlign: "right" }}>−{penalty}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Agreement + density */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", minWidth: 140 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            <div style={{ width: 60, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ width: `${agreeScore}%`, height: "100%", background: agreeColor, borderRadius: 2 }} />
             </div>
-          );
-        })}
+            <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>{agreeLabel(agreeScore)}</span>
+          </div>
+          {density && (
+            <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>
+              {density.total_signals} signals · {density.unique_insights} unique insight{density.unique_insights !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
       </div>
     </section>
   );
 }
 
-// ── Insight clusters (synthesized themes, not raw excerpts) ───────────────────
+// ── Highest confidence evidence ───────────────────────────────────────────────
+
+function HighestConfidenceEvidence({ ranking }: { ranking: string[] }) {
+  if (!ranking.length) return null;
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Highest Confidence Evidence
+      </h2>
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.9rem 1.1rem" }}>
+        <ol style={{ margin: 0, paddingLeft: "1.3rem", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+          {ranking.map((r, i) => (
+            <li key={i} style={{ fontSize: "0.78rem", color: "#0f172a", lineHeight: 1.6, fontWeight: 500 }}>
+              {r}
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
+// ── Evidence themes (insight clusters) ───────────────────────────────────────
 
 const CLUSTER_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#3b82f6"];
 
@@ -142,36 +177,30 @@ function InsightClusters({ clusters }: { clusters: IntelligenceMemo["insight_clu
   return (
     <section>
       <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-        Evidence Themes
+        Reasoning
       </h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "0.75rem" }}>
         {clusters.map((c, ci) => {
-          const accent = CLUSTER_COLORS[ci % CLUSTER_COLORS.length];
+          const accent  = CLUSTER_COLORS[ci % CLUSTER_COLORS.length];
           const confMeta = CONFIDENCE_META[c.confidence];
           return (
             <div key={ci} style={{ background: "white", border: "1px solid #e2e8f0", borderLeft: `3px solid ${accent}`, borderRadius: 10, padding: "0.85rem 1rem" }}>
-              {/* Theme + signal count + confidence */}
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem", marginBottom: "0.45rem" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem", marginBottom: "0.35rem" }}>
                 <p style={{ margin: 0, fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: accent, lineHeight: 1.3 }}>
                   {c.theme}
                 </p>
-                <span style={{
-                  flexShrink: 0, fontSize: "0.53rem", fontWeight: 800,
-                  padding: "1px 6px", borderRadius: 4,
-                  background: confMeta.bg, color: confMeta.color,
-                }}>
+                <span style={{ flexShrink: 0, fontSize: "0.53rem", fontWeight: 800, padding: "1px 6px", borderRadius: 4, background: confMeta.bg, color: confMeta.color }}>
                   {c.confidence}
                 </span>
               </div>
-              <p style={{ margin: "0 0 0.5rem", fontSize: "0.6rem", color: "#94a3b8" }}>
-                {c.signal_count} supporting signal{c.signal_count !== 1 ? "s" : ""}
+              <p style={{ margin: "0 0 0.45rem", fontSize: "0.6rem", color: "#94a3b8" }}>
+                {c.signal_count} signal{c.signal_count !== 1 ? "s" : ""}
               </p>
-              {/* Synthesized theme bullets */}
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
                 {c.key_themes.map((t, i) => (
                   <li key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
                     <span style={{ color: accent, fontSize: "0.7rem", paddingTop: 1, flexShrink: 0 }}>•</span>
-                    <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{t}</span>
+                    <span style={{ fontSize: "0.73rem", color: "#374151", lineHeight: 1.5 }}>{t}</span>
                   </li>
                 ))}
               </ul>
@@ -183,136 +212,38 @@ function InsightClusters({ clusters }: { clusters: IntelligenceMemo["insight_clu
   );
 }
 
-// ── Highest confidence evidence (synthesized claims) ──────────────────────────
+// ── Priority actions (with evidence strength per action) ──────────────────────
 
-function HighestConfidenceEvidence({ ranking }: { ranking: string[] }) {
-  if (!ranking.length) return null;
-  return (
-    <section>
-      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-        Highest Confidence Evidence
-      </h2>
-      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1.1rem" }}>
-        <ol style={{ margin: 0, paddingLeft: "1.3rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          {ranking.map((r, i) => (
-            <li key={i} style={{ fontSize: "0.76rem", color: "#0f172a", lineHeight: 1.55, fontWeight: 500 }}>
-              {r}
-            </li>
-          ))}
-        </ol>
-      </div>
-    </section>
-  );
-}
+const STRENGTH_META = {
+  High:   { bg: "#dcfce7", color: "#15803d", bar: "#22c55e" },
+  Medium: { bg: "#fef3c7", color: "#b45309", bar: "#f59e0b" },
+  Low:    { bg: "#f1f5f9", color: "#64748b", bar: "#94a3b8" },
+};
 
-// ── Stage-based actions ───────────────────────────────────────────────────────
-
-function StageActions({ rec }: { rec: IntelligenceMemo["decision_recommendation"] }) {
-  const stages = [
-    { key: "pre_product"  as const, label: "Pre-Product",  sub: "0–10 customers",   color: "#6b21a8", bg: "#f3e8ff", border: "#d8b4fe" },
-    { key: "early_stage"  as const, label: "Early Stage",  sub: "10–100 customers",  color: "#1d4ed8", bg: "#eff6ff", border: "#bfdbfe" },
-    { key: "growth_stage" as const, label: "Growth Stage", sub: "100+ customers",    color: "#166534", bg: "#f0fdf4", border: "#86efac" },
-  ];
-
-  const hasAny = stages.some(s => rec.stage_based_actions[s.key].length > 0);
-  if (!hasAny) return null;
-
-  return (
-    <section>
-      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-        Stage-Based Playbook
-      </h2>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
-        {stages.map(({ key, label, sub, color, bg, border }) => {
-          const actions = rec.stage_based_actions[key];
-          if (!actions.length) return null;
-          return (
-            <div key={key} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: "0.85rem 1rem" }}>
-              <p style={{ margin: "0 0 0.1rem", fontSize: "0.65rem", fontWeight: 800, color }}>{label}</p>
-              <p style={{ margin: "0 0 0.5rem", fontSize: "0.57rem", color, opacity: 0.7 }}>{sub}</p>
-              <ol style={{ margin: 0, paddingLeft: "1.1rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                {actions.map((a, i) => (
-                  <li key={i} style={{ fontSize: "0.72rem", color, lineHeight: 1.5 }}>{a}</li>
-                ))}
-              </ol>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-// ── Priority actions ──────────────────────────────────────────────────────────
-
-function PriorityActions({ actions }: { actions: string[] }) {
+function PriorityActions({ actions }: { actions: IntelligenceMemo["decision_recommendation"]["priority_actions"] }) {
   if (!actions.length) return null;
   return (
     <section style={{ background: "#0f172a", borderRadius: 10, padding: "1rem 1.25rem" }}>
-      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#475569" }}>
+      <h2 style={{ margin: "0 0 0.75rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#475569" }}>
         Priority Actions
       </h2>
-      <ol style={{ margin: 0, paddingLeft: "1.25rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-        {actions.map((a, i) => (
-          <li key={i} style={{ fontSize: "0.78rem", color: "#f1f5f9", lineHeight: 1.65 }}>
-            <strong style={{ color: "#a78bfa" }}>#{i + 1}</strong>{" "}{a}
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-// ── Contradictions ────────────────────────────────────────────────────────────
-
-const CONFLICT_STYLE = {
-  direct:      { bg: "#fee2e2", color: "#991b1b", label: "Direct conflict" },
-  partial:     { bg: "#fff7ed", color: "#c2410c", label: "Partial conflict" },
-  contextual:  { bg: "#eff6ff", color: "#1d4ed8", label: "Context-dependent" },
-};
-
-function Contradictions({ items }: { items: IntelligenceMemo["contradictions"] }) {
-  if (!items.length) return (
-    <section>
-      <h2 style={{ margin: "0 0 0.5rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-        Contradictions
-      </h2>
-      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        <span style={{ fontSize: "0.85rem" }}>✓</span>
-        <p style={{ margin: 0, fontSize: "0.72rem", color: "#64748b" }}>
-          No meaningful disagreements found. Sources are largely aligned on this topic.
-        </p>
-      </div>
-    </section>
-  );
-  return (
-    <section>
-      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-        Contradictions ({items.length})
-      </h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {items.map((c, i) => {
-          const style = CONFLICT_STYLE[c.conflict_type ?? "direct"];
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+        {actions.map((a, i) => {
+          const sm = STRENGTH_META[a.evidence_strength] ?? STRENGTH_META.Medium;
           return (
-            <div key={i} style={{ background: "white", border: "1px solid #fde68a", borderRadius: 10, padding: "0.85rem 1rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-                <span style={{ fontSize: "0.55rem", fontWeight: 800, padding: "1px 7px", borderRadius: 20, background: style.bg, color: style.color }}>
-                  {style.label}
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "28px 1fr auto", gap: "0.7rem", alignItems: "start" }}>
+              {/* Number */}
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: "0.65rem", fontWeight: 900, color: "#a78bfa" }}>{i + 1}</span>
+              </div>
+              {/* Action text */}
+              <p style={{ margin: 0, fontSize: "0.79rem", color: "#f1f5f9", lineHeight: 1.65 }}>{a.action}</p>
+              {/* Evidence strength */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.2rem", minWidth: 90, paddingTop: 2 }}>
+                <span style={{ fontSize: "0.55rem", fontWeight: 800, padding: "1px 6px", borderRadius: 4, background: sm.bg, color: sm.color }}>
+                  {a.evidence_strength}
                 </span>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem", marginBottom: "0.65rem" }}>
-                <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "0.55rem 0.7rem" }}>
-                  <p style={{ margin: "0 0 0.15rem", fontSize: "0.57rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#166534" }}>Claim A</p>
-                  <p style={{ margin: 0, fontSize: "0.74rem", color: "#166534", lineHeight: 1.45 }}>{c.claim_a}</p>
-                </div>
-                <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: 8, padding: "0.55rem 0.7rem" }}>
-                  <p style={{ margin: "0 0 0.15rem", fontSize: "0.57rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#991b1b" }}>Claim B</p>
-                  <p style={{ margin: 0, fontSize: "0.74rem", color: "#991b1b", lineHeight: 1.45 }}>{c.claim_b}</p>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
-                <span style={{ fontSize: "0.8rem", flexShrink: 0 }}>⚡</span>
-                <p style={{ margin: 0, fontSize: "0.72rem", color: "#78350f", lineHeight: 1.5 }}>{c.why_it_matters}</p>
+                <span style={{ fontSize: "0.55rem", color: "#475569" }}>{a.supporting_signals} signal{a.supporting_signals !== 1 ? "s" : ""}</span>
               </div>
             </div>
           );
@@ -324,29 +255,24 @@ function Contradictions({ items }: { items: IntelligenceMemo["contradictions"] }
 
 // ── Consensus section ─────────────────────────────────────────────────────────
 
-function agreeLabel(score: number): string {
-  if (score >= 81) return "Strong Consensus";
-  if (score >= 61) return "General Agreement";
-  if (score >= 31) return "Mixed Evidence";
-  return "Major Disagreement";
-}
-
 function ConsensusSection({ consensus }: { consensus: IntelligenceMemo["consensus"] }) {
   const score = consensus.agreement_score;
   const agreeColor = score >= 65 ? "#10b981" : score >= 40 ? "#f59e0b" : "#ef4444";
-  const label = agreeLabel(score);
+
+  if (!consensus.shared_insights.length && !consensus.disagreements.length) return null;
+
   return (
     <section style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1.1rem" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "0.65rem", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.65rem", flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
           Consensus
         </h2>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginLeft: "auto" }}>
-          <div style={{ width: 100, height: 5, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
-            <div style={{ width: `${score}%`, height: "100%", background: agreeColor, borderRadius: 3 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginLeft: "auto" }}>
+          <div style={{ width: 80, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ width: `${score}%`, height: "100%", background: agreeColor, borderRadius: 2 }} />
           </div>
-          <span style={{ fontSize: "0.68rem", fontWeight: 900, color: agreeColor }}>{label}</span>
-          <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>({score}%)</span>
+          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>{agreeLabel(score)}</span>
+          <span style={{ fontSize: "0.58rem", color: "#94a3b8" }}>({score}%)</span>
         </div>
       </div>
       {consensus.shared_insights.length > 0 && (
@@ -369,6 +295,88 @@ function ConsensusSection({ consensus }: { consensus: IntelligenceMemo["consensu
           </ul>
         </div>
       )}
+    </section>
+  );
+}
+
+// ── Contradictions ────────────────────────────────────────────────────────────
+
+const CONFLICT_STYLE = {
+  direct:     { bg: "#fee2e2", color: "#991b1b", label: "Direct conflict" },
+  partial:    { bg: "#fff7ed", color: "#c2410c", label: "Partial conflict" },
+  contextual: { bg: "#eff6ff", color: "#1d4ed8", label: "Context-dependent" },
+};
+
+function Contradictions({ items }: { items: IntelligenceMemo["contradictions"] }) {
+  if (!items.length) return null;
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Contradictions ({items.length})
+      </h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        {items.map((c, i) => {
+          const style = CONFLICT_STYLE[c.conflict_type ?? "direct"];
+          return (
+            <div key={i} style={{ background: "white", border: "1px solid #fde68a", borderRadius: 10, padding: "0.85rem 1rem" }}>
+              <span style={{ fontSize: "0.55rem", fontWeight: 800, padding: "1px 7px", borderRadius: 20, background: style.bg, color: style.color }}>
+                {style.label}
+              </span>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem", margin: "0.5rem 0 0.65rem" }}>
+                <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "0.55rem 0.7rem" }}>
+                  <p style={{ margin: "0 0 0.1rem", fontSize: "0.57rem", fontWeight: 800, textTransform: "uppercase", color: "#166534" }}>Claim A</p>
+                  <p style={{ margin: 0, fontSize: "0.74rem", color: "#166534", lineHeight: 1.45 }}>{c.claim_a}</p>
+                </div>
+                <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: 8, padding: "0.55rem 0.7rem" }}>
+                  <p style={{ margin: "0 0 0.1rem", fontSize: "0.57rem", fontWeight: 800, textTransform: "uppercase", color: "#991b1b" }}>Claim B</p>
+                  <p style={{ margin: 0, fontSize: "0.74rem", color: "#991b1b", lineHeight: 1.45 }}>{c.claim_b}</p>
+                </div>
+              </div>
+              <p style={{ margin: 0, fontSize: "0.72rem", color: "#78350f", lineHeight: 1.5 }}>⚡ {c.why_it_matters}</p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ── Evidence used (compact, replaces raw Source Signals) ──────────────────────
+
+function EvidenceUsed({ memo }: { memo: IntelligenceMemo }) {
+  const eu = memo.evidence_used;
+  const density = memo.insight_density;
+  if (!eu) return null;
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Evidence Used
+      </h2>
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1.1rem" }}>
+        <div style={{ display: "flex", gap: "1.25rem", alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div>
+            <span style={{ fontSize: "1.5rem", fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>{eu.total_signals}</span>
+            <p style={{ margin: "0.1rem 0 0", fontSize: "0.6rem", color: "#64748b" }}>supporting signals</p>
+            {density && (
+              <p style={{ margin: "0.2rem 0 0", fontSize: "0.6rem", color: "#94a3b8" }}>
+                {density.unique_insights} unique insight{density.unique_insights !== 1 ? "s" : ""}
+              </p>
+            )}
+          </div>
+          {eu.primary_themes.length > 0 && (
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
+                Primary themes
+              </p>
+              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                {eu.primary_themes.map(t => (
+                  <li key={t} style={{ fontSize: "0.7rem", color: "#374151" }}>• {t}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -401,11 +409,7 @@ function EvidenceQualityPanel({ scores }: {
           return (
             <div key={key} style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
               <span style={{ fontSize: "0.75rem", color: q.excluded ? "#cbd5e1" : accent, flexShrink: 0, width: 14 }}>{icon}</span>
-              <span style={{
-                fontSize: "0.65rem", fontWeight: 600,
-                color: q.excluded ? "#94a3b8" : "#374151",
-                width: 160, flexShrink: 0,
-              }}>
+              <span style={{ fontSize: "0.65rem", fontWeight: 600, color: q.excluded ? "#94a3b8" : "#374151", width: 160, flexShrink: 0 }}>
                 {label}
               </span>
               {q.excluded ? (
@@ -413,19 +417,9 @@ function EvidenceQualityPanel({ scores }: {
               ) : (
                 <>
                   <div style={{ flex: 1, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
-                    <div style={{
-                      width: `${q.score}%`, height: "100%",
-                      background: LEVEL_META[q.level].bar,
-                      borderRadius: 2, transition: "width 0.5s ease",
-                    }} />
+                    <div style={{ width: `${q.score}%`, height: "100%", background: LEVEL_META[q.level].bar, borderRadius: 2, transition: "width 0.5s ease" }} />
                   </div>
-                  <span style={{
-                    fontSize: "0.58rem", fontWeight: 700,
-                    padding: "1px 7px", borderRadius: 4,
-                    background: LEVEL_META[q.level].pill.bg,
-                    color: LEVEL_META[q.level].pill.color,
-                    minWidth: 42, textAlign: "center",
-                  }}>
+                  <span style={{ fontSize: "0.58rem", fontWeight: 700, padding: "1px 7px", borderRadius: 4, background: LEVEL_META[q.level].pill.bg, color: LEVEL_META[q.level].pill.color, minWidth: 42, textAlign: "center" }}>
                     {q.level}
                   </span>
                   <span style={{ fontSize: "0.6rem", color: "#94a3b8", width: 22, textAlign: "right" }}>{q.score}</span>
@@ -439,53 +433,77 @@ function EvidenceQualityPanel({ scores }: {
   );
 }
 
-// ── Coverage section ──────────────────────────────────────────────────────────
+// ── Evidence gaps ─────────────────────────────────────────────────────────────
 
-function CoverageSection({ coverage }: { coverage: IntelligenceMemo["coverage"] }) {
+function EvidenceGaps({ coverage }: { coverage: IntelligenceMemo["coverage"] }) {
+  if (!coverage?.missing?.length) return null;
   return (
     <section>
       <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-        Coverage Sources
+        Evidence Gaps
       </h2>
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
-          <div style={{ flex: 1, height: 6, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
-            <div style={{ width: `${coverage.score}%`, height: "100%", background: coverage.score >= 60 ? "#10b981" : coverage.score >= 40 ? "#f59e0b" : "#ef4444", borderRadius: 3, transition: "width 0.5s ease" }} />
-          </div>
-          <span style={{ fontSize: "0.68rem", fontWeight: 800, color: "#0f172a", minWidth: 36 }}>{coverage.score}%</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: coverage.gap_impact?.length ? "1fr 1fr" : "1fr", gap: "0.75rem" }}>
           <div>
-            {coverage.active.length > 0 && (
-              <>
-                <p style={{ margin: "0 0 0.25rem", fontSize: "0.57rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10b981" }}>
-                  Active
-                </p>
-                {coverage.active.map(s => (
-                  <div key={s} style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.15rem" }}>
-                    <span style={{ fontSize: "0.65rem", color: "#10b981" }}>✓</span>
-                    <span style={{ fontSize: "0.65rem", color: "#374151" }}>{s}</span>
-                  </div>
-                ))}
-              </>
-            )}
+            <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#ef4444" }}>
+              Unavailable
+            </p>
+            {coverage.missing.map(s => (
+              <div key={s} style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.15rem" }}>
+                <span style={{ fontSize: "0.65rem", color: "#fca5a5" }}>✗</span>
+                <span style={{ fontSize: "0.65rem", color: "#64748b" }}>{s}</span>
+              </div>
+            ))}
           </div>
-          <div>
-            {coverage.missing.length > 0 && (
-              <>
-                <p style={{ margin: "0 0 0.25rem", fontSize: "0.57rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
-                  Missing
-                </p>
-                {coverage.missing.map(s => (
-                  <div key={s} style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.15rem" }}>
-                    <span style={{ fontSize: "0.65rem", color: "#cbd5e1" }}>○</span>
-                    <span style={{ fontSize: "0.65rem", color: "#94a3b8" }}>{s}</span>
-                  </div>
+          {coverage.gap_impact?.length > 0 && (
+            <div>
+              <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
+                Confidence would increase with
+              </p>
+              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                {coverage.gap_impact.map(g => (
+                  <li key={g} style={{ fontSize: "0.65rem", color: "#64748b" }}>• {g}</li>
                 ))}
-              </>
-            )}
-          </div>
+              </ul>
+            </div>
+          )}
         </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Stage-based actions ───────────────────────────────────────────────────────
+
+function StageActions({ rec }: { rec: IntelligenceMemo["decision_recommendation"] }) {
+  const stages = [
+    { key: "pre_product"  as const, label: "Pre-Product",  sub: "0–10 customers",   color: "#6b21a8", bg: "#f3e8ff", border: "#d8b4fe" },
+    { key: "early_stage"  as const, label: "Early Stage",  sub: "10–100 customers",  color: "#1d4ed8", bg: "#eff6ff", border: "#bfdbfe" },
+    { key: "growth_stage" as const, label: "Growth Stage", sub: "100+ customers",    color: "#166534", bg: "#f0fdf4", border: "#86efac" },
+  ];
+  const hasAny = stages.some(s => rec.stage_based_actions[s.key].length > 0);
+  if (!hasAny) return null;
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Stage-Based Playbook
+      </h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
+        {stages.map(({ key, label, sub, color, bg, border }) => {
+          const actions = rec.stage_based_actions[key];
+          if (!actions.length) return null;
+          return (
+            <div key={key} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: "0.85rem 1rem" }}>
+              <p style={{ margin: "0 0 0.1rem", fontSize: "0.65rem", fontWeight: 800, color }}>{label}</p>
+              <p style={{ margin: "0 0 0.5rem", fontSize: "0.57rem", color, opacity: 0.7 }}>{sub}</p>
+              <ol style={{ margin: 0, paddingLeft: "1.1rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                {actions.map((a, i) => (
+                  <li key={i} style={{ fontSize: "0.72rem", color, lineHeight: 1.5 }}>{a}</li>
+                ))}
+              </ol>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -503,7 +521,7 @@ function AgentLog({ entries, running }: { entries: LogEntry[]; running: boolean 
   return (
     <div style={{ background: "#0f172a", borderRadius: 10, padding: "1rem 1.25rem", minHeight: 64 }}>
       {entries.map((e, i) => {
-        const icon = e.source ? SRC_ICON[e.source] ?? "◆" : "◆";
+        const icon  = e.source ? SRC_ICON[e.source] ?? "◆" : "◆";
         const color = e.source ? SRC_COLOR[e.source] ?? "#94a3b8" : "#a78bfa";
         return (
           <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", marginBottom: i < entries.length - 1 ? "0.3rem" : 0 }}>
@@ -536,11 +554,7 @@ const RESOLUTION_META: Record<string, { icon: string; color: string; bg: string;
 };
 
 function relevanceScore(pred: PredictionRow, words: string[]): number {
-  const corpus = [
-    pred.normalized_statement ?? pred.prediction_text,
-    pred.domain ?? "",
-    pred.topic,
-  ].join(" ").toLowerCase();
+  const corpus = [pred.normalized_statement ?? pred.prediction_text, pred.domain ?? "", pred.topic].join(" ").toLowerCase();
   return words.filter(w => corpus.includes(w)).length;
 }
 
@@ -564,7 +578,6 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
 
         const words = query.toLowerCase().split(/\W+/).filter(w => w.length >= 3);
         const wordCount = words.length;
-
         const resolved = all.filter(p => ["correct", "incorrect", "mixed"].includes(p.status));
         const pending  = all.filter(p => !["correct", "incorrect", "mixed"].includes(p.status));
         const score    = (p: PredictionRow) => relevanceScore(p, words);
@@ -572,15 +585,10 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
         const topResolved = [...resolved].sort((a, b) => score(b) - score(a)).slice(0, 5);
         const shown = topResolved.length >= 3
           ? topResolved
-          : [
-              ...topResolved,
-              ...[...pending].sort((a, b) => score(b) - score(a)).slice(0, 3 - topResolved.length),
-            ];
+          : [...topResolved, ...[...pending].sort((a, b) => score(b) - score(a)).slice(0, 3 - topResolved.length)];
 
-        // Gate: only show if predictions are meaningfully relevant to this query
-        const relevanceThreshold = 0.70;
         const relevantShown = wordCount > 0
-          ? shown.filter(p => score(p) / wordCount >= relevanceThreshold)
+          ? shown.filter(p => score(p) / wordCount >= 0.70)
           : shown;
 
         setRelevant(relevantShown.length > 0);
@@ -592,7 +600,6 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
     return () => { cancelled = true; };
   }, [query]);
 
-  // Hide entirely when no relevant predictions found
   if (!loading && relevant === false) return null;
 
   const resolvedCount = preds.filter(p => ["correct", "incorrect", "mixed"].includes(p.status)).length;
@@ -602,9 +609,7 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
       <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
         Prediction Intelligence
       </h2>
-
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderTop: "3px solid #6366f1", borderRadius: 10, overflow: "hidden" }}>
-
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1rem", borderBottom: "1px solid #f1f5f9" }}>
           <span style={{ fontSize: "0.85rem", color: "#6366f1" }}>◈</span>
           <span style={{ fontSize: "0.68rem", fontWeight: 800, color: "#0f172a" }}>Prediction Intelligence</span>
@@ -612,16 +617,11 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
             {loading ? "Loading…" : `${total} tracked · ${resolvedCount} verified`}
           </span>
         </div>
-
         {loading ? (
-          <div style={{ padding: "1.25rem 1rem", fontSize: "0.7rem", color: "#94a3b8" }}>
-            Loading predictions…
-          </div>
+          <div style={{ padding: "1.25rem 1rem", fontSize: "0.7rem", color: "#94a3b8" }}>Loading predictions…</div>
         ) : preds.length === 0 ? (
           <div style={{ padding: "1rem" }}>
-            <p style={{ margin: 0, fontSize: "0.68rem", color: "#64748b" }}>
-              No predictions tracked for this topic yet.
-            </p>
+            <p style={{ margin: 0, fontSize: "0.68rem", color: "#64748b" }}>No predictions tracked for this topic yet.</p>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column" }}>
@@ -629,36 +629,14 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
               const meta = RESOLUTION_META[p.status] ?? RESOLUTION_META.pending;
               const isResolved = ["correct", "incorrect", "mixed"].includes(p.status);
               const text = p.normalized_statement ?? p.prediction_text;
-              const horizon = p.time_horizon?.timeframe_text ?? null;
-
               return (
-                <div
-                  key={p.prediction_id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "72px 1fr auto",
-                    gap: "0.75rem",
-                    alignItems: "start",
-                    padding: "0.75rem 1rem",
-                    borderBottom: i < preds.length - 1 ? "1px solid #f8fafc" : "none",
-                    background: i % 2 === 0 ? "white" : "#fafcff",
-                  }}
-                >
+                <div key={p.prediction_id} style={{ display: "grid", gridTemplateColumns: "72px 1fr auto", gap: "0.75rem", alignItems: "start", padding: "0.75rem 1rem", borderBottom: i < preds.length - 1 ? "1px solid #f8fafc" : "none", background: i % 2 === 0 ? "white" : "#fafcff" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", paddingTop: 1 }}>
-                    <span style={{
-                      display: "inline-flex", alignItems: "center", gap: "0.2rem",
-                      padding: "2px 6px", borderRadius: 4,
-                      fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.04em",
-                      background: meta.bg, color: meta.color, whiteSpace: "nowrap",
-                    }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.2rem", padding: "2px 6px", borderRadius: 4, fontSize: "0.58rem", fontWeight: 800, background: meta.bg, color: meta.color, whiteSpace: "nowrap" }}>
                       {meta.icon} {meta.label}
                     </span>
                   </div>
-                  <p style={{
-                    margin: 0, fontSize: "0.73rem",
-                    color: isResolved ? "#0f172a" : "#374151",
-                    lineHeight: 1.5, fontWeight: isResolved ? 500 : 400,
-                  }}>
+                  <p style={{ margin: 0, fontSize: "0.73rem", color: isResolved ? "#0f172a" : "#374151", lineHeight: 1.5, fontWeight: isResolved ? 500 : 400 }}>
                     "{text.length > 120 ? text.slice(0, 120) + "…" : text}"
                   </p>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.2rem", minWidth: 100 }}>
@@ -666,12 +644,10 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
                       {p.creator.split(" ").slice(0, 2).join(" ")}
                     </span>
                     {p.domain && (
-                      <span style={{ fontSize: "0.57rem", padding: "1px 5px", borderRadius: 3, background: "#eff6ff", color: "#1d4ed8", fontWeight: 700 }}>
-                        {p.domain}
-                      </span>
+                      <span style={{ fontSize: "0.57rem", padding: "1px 5px", borderRadius: 3, background: "#eff6ff", color: "#1d4ed8", fontWeight: 700 }}>{p.domain}</span>
                     )}
-                    {horizon && (
-                      <span style={{ fontSize: "0.57rem", color: "#94a3b8" }}>{horizon}</span>
+                    {p.time_horizon?.timeframe_text && (
+                      <span style={{ fontSize: "0.57rem", color: "#94a3b8" }}>{p.time_horizon.timeframe_text}</span>
                     )}
                   </div>
                 </div>
@@ -679,12 +655,11 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
             })}
           </div>
         )}
-
         {!loading && total > 0 && (
           <div style={{ padding: "0.5rem 1rem", borderTop: "1px solid #f1f5f9" }}>
             <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>
               {resolvedCount > 0
-                ? `${resolvedCount} prediction${resolvedCount !== 1 ? "s" : ""} verified · ${total - resolvedCount} pending resolution`
+                ? `${resolvedCount} prediction${resolvedCount !== 1 ? "s" : ""} verified · ${total - resolvedCount} pending`
                 : `${total} prediction${total !== 1 ? "s" : ""} being tracked — none resolved yet`}
             </span>
           </div>
@@ -694,85 +669,46 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
   );
 }
 
-// ── Full report — Consensus → Evidence → Action framework ─────────────────────
+// ── Full report — Decision → Evidence → Reasoning → Actions → Confidence → Gaps ─
 
 function IntelligenceReport({ memo, query }: { memo: IntelligenceMemo; query: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
-      {/* 1. Decision Summary */}
-      <div style={{ background: "#0f172a", borderRadius: 12, padding: "1.25rem 1.5rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.6rem", flexWrap: "wrap" }}>
-          <p style={{ margin: 0, fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "#475569" }}>
-            Decision Intelligence
-          </p>
-          {memo.directional && (() => {
-            const DIRECTIONAL_STYLE: Record<string, { bg: string; color: string }> = {
-              "Strong YES (conditional)": { bg: "#14532d", color: "#86efac" },
-              "Lean YES":                 { bg: "#166534", color: "#bbf7d0" },
-              "Neutral / Tradeoff":       { bg: "#292524", color: "#d6d3d1" },
-              "Lean NO":                  { bg: "#7c2d12", color: "#fdba74" },
-              "Strong NO (conditional)":  { bg: "#7f1d1d", color: "#fca5a5" },
-            };
-            const s = DIRECTIONAL_STYLE[memo.directional] ?? { bg: "#1e293b", color: "#94a3b8" };
-            return (
-              <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 9px", borderRadius: 20, background: s.bg, color: s.color, letterSpacing: "0.04em" }}>
-                {memo.directional}
-              </span>
-            );
-          })()}
-          {memo.reddit_gap && (
-            <span style={{ fontSize: "0.58rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "#0f172a", color: "#64748b", border: "1px solid #334155" }}>
-              Community Intelligence unavailable — confidence calculated from available sources
-            </span>
-          )}
-        </div>
-        <p style={{ margin: "0 0 1rem", fontSize: "0.92rem", color: "#f1f5f9", lineHeight: 1.7, fontWeight: 400 }}>
-          {memo.decision_summary}
-        </p>
-        <div style={{ display: "flex", gap: "1.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          <ScoreRing score={memo.confidence_score} label="Confidence" />
-          <ScoreRing score={memo.consensus.agreement_score} label="Agreement" />
-          {memo.confidence_breakdown && <ConfidenceBreakdown bd={memo.confidence_breakdown} />}
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginLeft: "auto", alignItems: "center" }}>
-            <span style={{ fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#475569", marginRight: 2 }}>Sources used</span>
-            {(memo.sources_used ?? (["youtube", "reddit", "web"] as const).filter(s => memo.evidence_count[s] > 0)).map(s => (
-              <SourceTag key={s} src={s} />
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* 1. Decision */}
+      <DecisionCard memo={memo} />
 
-      {/* 2. Consensus */}
-      <ConsensusSection consensus={memo.consensus} />
-
-      {/* 3. Highest Confidence Evidence */}
+      {/* 2. Highest Confidence Evidence */}
       <HighestConfidenceEvidence ranking={memo.best_evidence_ranking ?? []} />
 
-      {/* 4. Evidence Themes (Insight Clusters) */}
+      {/* 3. Reasoning (Evidence Themes) */}
       <InsightClusters clusters={memo.insight_clusters} />
 
-      {/* 5. Priority Actions */}
+      {/* 4. Priority Actions */}
       <PriorityActions actions={memo.decision_recommendation.priority_actions} />
 
-      {/* 6. Contradictions */}
+      {/* 5. Confidence */}
+      <ConfidenceSection memo={memo} />
+
+      {/* 6. Evidence Gaps */}
+      {memo.coverage && <EvidenceGaps coverage={memo.coverage} />}
+
+      {/* 7. Consensus */}
+      <ConsensusSection consensus={memo.consensus} />
+
+      {/* 8. Contradictions */}
       <Contradictions items={memo.contradictions} />
 
-      {/* 7. Evidence Quality */}
-      {memo.source_quality_scores && (
-        <EvidenceQualityPanel scores={memo.source_quality_scores} />
-      )}
+      {/* 9. Evidence Quality */}
+      {memo.source_quality_scores && <EvidenceQualityPanel scores={memo.source_quality_scores} />}
 
-      {/* 8. Coverage */}
-      {memo.coverage && <CoverageSection coverage={memo.coverage} />}
+      {/* 10. Evidence Used */}
+      <EvidenceUsed memo={memo} />
 
-      {/* 9. Stage-Based Playbook */}
+      {/* 11. Stage Playbook */}
       <StageActions rec={memo.decision_recommendation} />
 
-      {/* 10. Source Signals */}
-      <SourceBreakdown memo={memo} />
-
-      {/* 11. Prediction Intelligence (only if relevant predictions exist) */}
+      {/* 12. Prediction Intelligence (conditional on relevance) */}
       <PredictionIntelligenceCard query={query} />
 
     </div>
@@ -857,7 +793,7 @@ export function IntelligenceView() {
           WatchFilter Intelligence
         </h1>
         <p style={{ margin: 0, fontSize: "0.8rem", color: "#64748b" }}>
-          Evidence → Claims → Reasoning → Conclusions → Actions
+          Evidence → Claims → Reasoning → Decision → Actions
         </p>
       </div>
 
