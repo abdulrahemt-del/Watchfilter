@@ -115,9 +115,6 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
                           <span key={src} style={{ fontSize: "0.62rem", color: "#94a3b8" }}>• {src}</span>
                         ))}
                       </div>
-                      <p style={{ margin: 0, fontSize: "0.6rem", color: "#94a3b8", fontStyle: "italic" }}>
-                        Community coverage is expanding.
-                      </p>
                     </div>
                   )
                   : <p style={{ margin: 0, fontSize: "0.68rem", color: "#94a3b8", fontStyle: "italic" }}>No signals available</p>
@@ -130,36 +127,79 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
   );
 }
 
-// ── Insight clusters ──────────────────────────────────────────────────────────
+// ── Insight clusters (synthesized themes, not raw excerpts) ───────────────────
 
 const CLUSTER_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#3b82f6"];
+
+const CONFIDENCE_META = {
+  High:   { bg: "#dcfce7", color: "#15803d" },
+  Medium: { bg: "#fef3c7", color: "#b45309" },
+  Low:    { bg: "#f1f5f9", color: "#64748b" },
+};
 
 function InsightClusters({ clusters }: { clusters: IntelligenceMemo["insight_clusters"] }) {
   if (!clusters.length) return null;
   return (
     <section>
       <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-        Insight Clusters
+        Evidence Themes
       </h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "0.75rem" }}>
         {clusters.map((c, ci) => {
           const accent = CLUSTER_COLORS[ci % CLUSTER_COLORS.length];
+          const confMeta = CONFIDENCE_META[c.confidence];
           return (
             <div key={ci} style={{ background: "white", border: "1px solid #e2e8f0", borderLeft: `3px solid ${accent}`, borderRadius: 10, padding: "0.85rem 1rem" }}>
-              <p style={{ margin: "0 0 0.5rem", fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: accent }}>
-                {c.theme}
+              {/* Theme + signal count + confidence */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem", marginBottom: "0.45rem" }}>
+                <p style={{ margin: 0, fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: accent, lineHeight: 1.3 }}>
+                  {c.theme}
+                </p>
+                <span style={{
+                  flexShrink: 0, fontSize: "0.53rem", fontWeight: 800,
+                  padding: "1px 6px", borderRadius: 4,
+                  background: confMeta.bg, color: confMeta.color,
+                }}>
+                  {c.confidence}
+                </span>
+              </div>
+              <p style={{ margin: "0 0 0.5rem", fontSize: "0.6rem", color: "#94a3b8" }}>
+                {c.signal_count} supporting signal{c.signal_count !== 1 ? "s" : ""}
               </p>
-              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                {c.insights.map((ins, i) => (
+              {/* Synthesized theme bullets */}
+              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                {c.key_themes.map((t, i) => (
                   <li key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
-                    <span style={{ color: "#94a3b8", fontSize: "0.65rem", paddingTop: 2, flexShrink: 0 }}>•</span>
-                    <span style={{ fontSize: "0.74rem", color: "#374151", lineHeight: 1.5 }}>{ins}</span>
+                    <span style={{ color: accent, fontSize: "0.7rem", paddingTop: 1, flexShrink: 0 }}>•</span>
+                    <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{t}</span>
                   </li>
                 ))}
               </ul>
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+// ── Highest confidence evidence (synthesized claims) ──────────────────────────
+
+function HighestConfidenceEvidence({ ranking }: { ranking: string[] }) {
+  if (!ranking.length) return null;
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Highest Confidence Evidence
+      </h2>
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1.1rem" }}>
+        <ol style={{ margin: 0, paddingLeft: "1.3rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {ranking.map((r, i) => (
+            <li key={i} style={{ fontSize: "0.76rem", color: "#0f172a", lineHeight: 1.55, fontWeight: 500 }}>
+              {r}
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   );
@@ -210,11 +250,11 @@ function PriorityActions({ actions }: { actions: string[] }) {
   return (
     <section style={{ background: "#0f172a", borderRadius: 10, padding: "1rem 1.25rem" }}>
       <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#475569" }}>
-        Priority Actions — Do Within 24 Hours
+        Priority Actions
       </h2>
-      <ol style={{ margin: 0, paddingLeft: "1.25rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+      <ol style={{ margin: 0, paddingLeft: "1.25rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
         {actions.map((a, i) => (
-          <li key={i} style={{ fontSize: "0.78rem", color: "#f1f5f9", lineHeight: 1.55 }}>
+          <li key={i} style={{ fontSize: "0.78rem", color: "#f1f5f9", lineHeight: 1.65 }}>
             <strong style={{ color: "#a78bfa" }}>#{i + 1}</strong>{" "}{a}
           </li>
         ))}
@@ -284,24 +324,34 @@ function Contradictions({ items }: { items: IntelligenceMemo["contradictions"] }
 
 // ── Consensus section ─────────────────────────────────────────────────────────
 
+function agreeLabel(score: number): string {
+  if (score >= 81) return "Strong Consensus";
+  if (score >= 61) return "General Agreement";
+  if (score >= 31) return "Mixed Evidence";
+  return "Major Disagreement";
+}
+
 function ConsensusSection({ consensus }: { consensus: IntelligenceMemo["consensus"] }) {
-  const agreeColor = consensus.agreement_score >= 65 ? "#10b981" : consensus.agreement_score >= 40 ? "#f59e0b" : "#ef4444";
+  const score = consensus.agreement_score;
+  const agreeColor = score >= 65 ? "#10b981" : score >= 40 ? "#f59e0b" : "#ef4444";
+  const label = agreeLabel(score);
   return (
     <section style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1.1rem" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "0.65rem", flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-          Consensus Analysis
+          Consensus
         </h2>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginLeft: "auto" }}>
           <div style={{ width: 100, height: 5, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
-            <div style={{ width: `${consensus.agreement_score}%`, height: "100%", background: agreeColor, borderRadius: 3 }} />
+            <div style={{ width: `${score}%`, height: "100%", background: agreeColor, borderRadius: 3 }} />
           </div>
-          <span style={{ fontSize: "0.72rem", fontWeight: 900, color: agreeColor }}>{consensus.agreement_score}% agree</span>
+          <span style={{ fontSize: "0.68rem", fontWeight: 900, color: agreeColor }}>{label}</span>
+          <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>({score}%)</span>
         </div>
       </div>
       {consensus.shared_insights.length > 0 && (
-        <div style={{ marginBottom: "0.65rem" }}>
-          <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10b981" }}>All sources agree</p>
+        <div style={{ marginBottom: consensus.disagreements.length > 0 ? "0.65rem" : 0 }}>
+          <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10b981" }}>Sources agree</p>
           <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
             {consensus.shared_insights.map((s, i) => (
               <li key={i} style={{ fontSize: "0.74rem", color: "#374151", marginBottom: "0.2rem", lineHeight: 1.5 }}>{s}</li>
@@ -323,42 +373,7 @@ function ConsensusSection({ consensus }: { consensus: IntelligenceMemo["consensu
   );
 }
 
-// ── Agent log ─────────────────────────────────────────────────────────────────
-
-type LogEntry = { source?: string; agent?: string; message: string; count?: number };
-const SRC_ICON: Record<string, string>  = { youtube: "▶", reddit: "▲", hn: "▲", web: "⬡" };
-const SRC_COLOR: Record<string, string> = { youtube: "#ef4444", reddit: "#10b981", hn: "#10b981", web: "#3b82f6" };
-const SRC_LABEL: Record<string, string> = { youtube: "creator", reddit: "community", hn: "community", web: "web" };
-
-function AgentLog({ entries, running }: { entries: LogEntry[]; running: boolean }) {
-  if (!entries.length && !running) return null;
-  return (
-    <div style={{ background: "#0f172a", borderRadius: 10, padding: "1rem 1.25rem", minHeight: 64 }}>
-      {entries.map((e, i) => {
-        const icon = e.source ? SRC_ICON[e.source] ?? "◆" : "◆";
-        const color = e.source ? SRC_COLOR[e.source] ?? "#94a3b8" : "#a78bfa";
-        return (
-          <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", marginBottom: i < entries.length - 1 ? "0.3rem" : 0 }}>
-            <span style={{ color, fontWeight: 800, fontSize: "0.68rem", flexShrink: 0, paddingTop: 2 }}>{icon}</span>
-            <span style={{ fontSize: "0.7rem", color: "#94a3b8" }}>
-              <span style={{ color: "#64748b" }}>{e.source ? (SRC_LABEL[e.source] ?? e.source) : (e.agent ?? "sys")}</span>{" "}
-              <span style={{ color: "#e2e8f0" }}>{e.message}</span>
-              {e.count != null && <span style={{ color: "#6366f1", fontWeight: 700 }}> ({e.count})</span>}
-            </span>
-          </div>
-        );
-      })}
-      {running && (
-        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginTop: entries.length ? "0.45rem" : 0 }}>
-          <span className="spinner" style={{ borderTopColor: "#6366f1" }} />
-          <span style={{ fontSize: "0.66rem", color: "#64748b" }}>Working…</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Evidence Quality panel ────────────────────────────────────────────────────
+// ── Evidence quality panel ────────────────────────────────────────────────────
 
 const QUALITY_SOURCES = [
   { key: "youtube" as const, label: "Creator Intelligence",   icon: "▶", accent: "#ef4444" },
@@ -372,9 +387,8 @@ const LEVEL_META = {
   Low:    { bar: "#ef4444", pill: { bg: "#fee2e2", color: "#dc2626" } },
 };
 
-function EvidenceQualityPanel({ scores, ranking }: {
-  scores:  IntelligenceMemo["source_quality_scores"];
-  ranking: IntelligenceMemo["best_evidence_ranking"];
+function EvidenceQualityPanel({ scores }: {
+  scores: IntelligenceMemo["source_quality_scores"];
 }) {
   return (
     <section>
@@ -420,20 +434,95 @@ function EvidenceQualityPanel({ scores, ranking }: {
             </div>
           );
         })}
-        {ranking.length > 0 && (
-          <div style={{ marginTop: "0.4rem", paddingTop: "0.5rem", borderTop: "1px solid #f1f5f9" }}>
-            <p style={{ margin: "0 0 0.3rem", fontSize: "0.57rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
-              Highest Confidence Evidence
-            </p>
-            <ol style={{ margin: 0, paddingLeft: "1.1rem", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-              {ranking.map((r, i) => (
-                <li key={i} style={{ fontSize: "0.65rem", color: "#475569" }}>{r}</li>
-              ))}
-            </ol>
-          </div>
-        )}
       </div>
     </section>
+  );
+}
+
+// ── Coverage section ──────────────────────────────────────────────────────────
+
+function CoverageSection({ coverage }: { coverage: IntelligenceMemo["coverage"] }) {
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Coverage Sources
+      </h2>
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
+          <div style={{ flex: 1, height: 6, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
+            <div style={{ width: `${coverage.score}%`, height: "100%", background: coverage.score >= 60 ? "#10b981" : coverage.score >= 40 ? "#f59e0b" : "#ef4444", borderRadius: 3, transition: "width 0.5s ease" }} />
+          </div>
+          <span style={{ fontSize: "0.68rem", fontWeight: 800, color: "#0f172a", minWidth: 36 }}>{coverage.score}%</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+          <div>
+            {coverage.active.length > 0 && (
+              <>
+                <p style={{ margin: "0 0 0.25rem", fontSize: "0.57rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10b981" }}>
+                  Active
+                </p>
+                {coverage.active.map(s => (
+                  <div key={s} style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.15rem" }}>
+                    <span style={{ fontSize: "0.65rem", color: "#10b981" }}>✓</span>
+                    <span style={{ fontSize: "0.65rem", color: "#374151" }}>{s}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+          <div>
+            {coverage.missing.length > 0 && (
+              <>
+                <p style={{ margin: "0 0 0.25rem", fontSize: "0.57rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
+                  Missing
+                </p>
+                {coverage.missing.map(s => (
+                  <div key={s} style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.15rem" }}>
+                    <span style={{ fontSize: "0.65rem", color: "#cbd5e1" }}>○</span>
+                    <span style={{ fontSize: "0.65rem", color: "#94a3b8" }}>{s}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Agent log ─────────────────────────────────────────────────────────────────
+
+type LogEntry = { source?: string; agent?: string; message: string; count?: number };
+const SRC_ICON: Record<string, string>  = { youtube: "▶", reddit: "▲", hn: "▲", web: "⬡" };
+const SRC_COLOR: Record<string, string> = { youtube: "#ef4444", reddit: "#10b981", hn: "#10b981", web: "#3b82f6" };
+const SRC_LABEL: Record<string, string> = { youtube: "creator", reddit: "community", hn: "community", web: "web" };
+
+function AgentLog({ entries, running }: { entries: LogEntry[]; running: boolean }) {
+  if (!entries.length && !running) return null;
+  return (
+    <div style={{ background: "#0f172a", borderRadius: 10, padding: "1rem 1.25rem", minHeight: 64 }}>
+      {entries.map((e, i) => {
+        const icon = e.source ? SRC_ICON[e.source] ?? "◆" : "◆";
+        const color = e.source ? SRC_COLOR[e.source] ?? "#94a3b8" : "#a78bfa";
+        return (
+          <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", marginBottom: i < entries.length - 1 ? "0.3rem" : 0 }}>
+            <span style={{ color, fontWeight: 800, fontSize: "0.68rem", flexShrink: 0, paddingTop: 2 }}>{icon}</span>
+            <span style={{ fontSize: "0.7rem", color: "#94a3b8" }}>
+              <span style={{ color: "#64748b" }}>{e.source ? (SRC_LABEL[e.source] ?? e.source) : (e.agent ?? "sys")}</span>{" "}
+              <span style={{ color: "#e2e8f0" }}>{e.message}</span>
+              {e.count != null && <span style={{ color: "#6366f1", fontWeight: 700 }}> ({e.count})</span>}
+            </span>
+          </div>
+        );
+      })}
+      {running && (
+        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginTop: entries.length ? "0.45rem" : 0 }}>
+          <span className="spinner" style={{ borderTopColor: "#6366f1" }} />
+          <span style={{ fontSize: "0.66rem", color: "#64748b" }}>Working…</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -459,10 +548,12 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
   const [preds, setPreds]   = useState<PredictionRow[]>([]);
   const [total, setTotal]   = useState(0);
   const [loading, setLoading] = useState(true);
+  const [relevant, setRelevant] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setRelevant(null);
 
     fetch("/api/predictions?limit=120")
       .then(r => r.json() as Promise<{ predictions: PredictionRow[]; count: number }>)
@@ -471,14 +562,13 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
         const all = data.predictions ?? [];
         setTotal(all.length);
 
-        // Score each prediction for relevance to the current query
         const words = query.toLowerCase().split(/\W+/).filter(w => w.length >= 3);
+        const wordCount = words.length;
+
         const resolved = all.filter(p => ["correct", "incorrect", "mixed"].includes(p.status));
         const pending  = all.filter(p => !["correct", "incorrect", "mixed"].includes(p.status));
+        const score    = (p: PredictionRow) => relevanceScore(p, words);
 
-        const score = (p: PredictionRow) => relevanceScore(p, words);
-
-        // Show resolved first sorted by relevance, fill with recent pending if short
         const topResolved = [...resolved].sort((a, b) => score(b) - score(a)).slice(0, 5);
         const shown = topResolved.length >= 3
           ? topResolved
@@ -487,13 +577,23 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
               ...[...pending].sort((a, b) => score(b) - score(a)).slice(0, 3 - topResolved.length),
             ];
 
-        setPreds(shown);
+        // Gate: only show if predictions are meaningfully relevant to this query
+        const relevanceThreshold = 0.70;
+        const relevantShown = wordCount > 0
+          ? shown.filter(p => score(p) / wordCount >= relevanceThreshold)
+          : shown;
+
+        setRelevant(relevantShown.length > 0);
+        setPreds(relevantShown);
       })
-      .catch(() => { if (!cancelled) setPreds([]); })
+      .catch(() => { if (!cancelled) { setPreds([]); setRelevant(false); } })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
   }, [query]);
+
+  // Hide entirely when no relevant predictions found
+  if (!loading && relevant === false) return null;
 
   const resolvedCount = preds.filter(p => ["correct", "incorrect", "mixed"].includes(p.status)).length;
 
@@ -505,7 +605,6 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
 
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderTop: "3px solid #6366f1", borderRadius: 10, overflow: "hidden" }}>
 
-        {/* Header bar */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1rem", borderBottom: "1px solid #f1f5f9" }}>
           <span style={{ fontSize: "0.85rem", color: "#6366f1" }}>◈</span>
           <span style={{ fontSize: "0.68rem", fontWeight: 800, color: "#0f172a" }}>Prediction Intelligence</span>
@@ -519,12 +618,9 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
             Loading predictions…
           </div>
         ) : preds.length === 0 ? (
-          <div style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+          <div style={{ padding: "1rem" }}>
             <p style={{ margin: 0, fontSize: "0.68rem", color: "#64748b" }}>
               No predictions tracked for this topic yet.
-            </p>
-            <p style={{ margin: 0, fontSize: "0.62rem", color: "#94a3b8" }}>
-              Predictions are extracted from creator content and manually verified over time.
             </p>
           </div>
         ) : (
@@ -548,37 +644,23 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
                     background: i % 2 === 0 ? "white" : "#fafcff",
                   }}
                 >
-                  {/* Status badge */}
                   <div style={{ display: "flex", alignItems: "flex-start", paddingTop: 1 }}>
                     <span style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.2rem",
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      fontSize: "0.58rem",
-                      fontWeight: 800,
-                      letterSpacing: "0.04em",
-                      background: meta.bg,
-                      color: meta.color,
-                      whiteSpace: "nowrap",
+                      display: "inline-flex", alignItems: "center", gap: "0.2rem",
+                      padding: "2px 6px", borderRadius: 4,
+                      fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.04em",
+                      background: meta.bg, color: meta.color, whiteSpace: "nowrap",
                     }}>
                       {meta.icon} {meta.label}
                     </span>
                   </div>
-
-                  {/* Prediction text */}
                   <p style={{
-                    margin: 0,
-                    fontSize: "0.73rem",
+                    margin: 0, fontSize: "0.73rem",
                     color: isResolved ? "#0f172a" : "#374151",
-                    lineHeight: 1.5,
-                    fontWeight: isResolved ? 500 : 400,
+                    lineHeight: 1.5, fontWeight: isResolved ? 500 : 400,
                   }}>
                     "{text.length > 120 ? text.slice(0, 120) + "…" : text}"
                   </p>
-
-                  {/* Creator + metadata */}
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.2rem", minWidth: 100 }}>
                     <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#0f172a", textAlign: "right" }}>
                       {p.creator.split(" ").slice(0, 2).join(" ")}
@@ -598,9 +680,8 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
           </div>
         )}
 
-        {/* Footer */}
         {!loading && total > 0 && (
-          <div style={{ padding: "0.5rem 1rem", borderTop: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ padding: "0.5rem 1rem", borderTop: "1px solid #f1f5f9" }}>
             <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>
               {resolvedCount > 0
                 ? `${resolvedCount} prediction${resolvedCount !== 1 ? "s" : ""} verified · ${total - resolvedCount} pending resolution`
@@ -613,13 +694,13 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
   );
 }
 
-// ── Full report ───────────────────────────────────────────────────────────────
+// ── Full report — Consensus → Evidence → Action framework ─────────────────────
 
 function IntelligenceReport({ memo, query }: { memo: IntelligenceMemo; query: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
-      {/* Decision Summary */}
+      {/* 1. Decision Summary */}
       <div style={{ background: "#0f172a", borderRadius: 12, padding: "1.25rem 1.5rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.6rem", flexWrap: "wrap" }}>
           <p style={{ margin: 0, fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "#475569" }}>
@@ -662,34 +743,37 @@ function IntelligenceReport({ memo, query }: { memo: IntelligenceMemo; query: st
         </div>
       </div>
 
-      {/* Consensus */}
+      {/* 2. Consensus */}
       <ConsensusSection consensus={memo.consensus} />
 
-      {/* Source Signals */}
-      <SourceBreakdown memo={memo} />
+      {/* 3. Highest Confidence Evidence */}
+      <HighestConfidenceEvidence ranking={memo.best_evidence_ranking ?? []} />
 
-      {/* Evidence Quality */}
-      {memo.source_quality_scores && (
-        <EvidenceQualityPanel
-          scores={memo.source_quality_scores}
-          ranking={memo.best_evidence_ranking ?? []}
-        />
-      )}
-
-      {/* Prediction Intelligence */}
-      <PredictionIntelligenceCard query={query} />
-
-      {/* Insight Clusters */}
+      {/* 4. Evidence Themes (Insight Clusters) */}
       <InsightClusters clusters={memo.insight_clusters} />
 
-      {/* Stage-Based Playbook */}
-      <StageActions rec={memo.decision_recommendation} />
-
-      {/* Priority Actions */}
+      {/* 5. Priority Actions */}
       <PriorityActions actions={memo.decision_recommendation.priority_actions} />
 
-      {/* Contradictions */}
+      {/* 6. Contradictions */}
       <Contradictions items={memo.contradictions} />
+
+      {/* 7. Evidence Quality */}
+      {memo.source_quality_scores && (
+        <EvidenceQualityPanel scores={memo.source_quality_scores} />
+      )}
+
+      {/* 8. Coverage */}
+      {memo.coverage && <CoverageSection coverage={memo.coverage} />}
+
+      {/* 9. Stage-Based Playbook */}
+      <StageActions rec={memo.decision_recommendation} />
+
+      {/* 10. Source Signals */}
+      <SourceBreakdown memo={memo} />
+
+      {/* 11. Prediction Intelligence (only if relevant predictions exist) */}
+      <PredictionIntelligenceCard query={query} />
 
     </div>
   );
@@ -773,7 +857,7 @@ export function IntelligenceView() {
           WatchFilter Intelligence
         </h1>
         <p style={{ margin: 0, fontSize: "0.8rem", color: "#64748b" }}>
-          Decision intelligence powered by Creator, Community, and Web Intelligence layers — not summarization.
+          Evidence → Claims → Reasoning → Conclusions → Actions
         </p>
       </div>
 

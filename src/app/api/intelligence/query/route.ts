@@ -21,13 +21,13 @@ export type IntelligenceMemo = {
   reddit_gap: boolean;
   confidence_score: number;
   confidence_breakdown: {
-    agreement: number;
-    sourceCoverage: number;
-    contradictionPenalty: number;
-    signalDensity: number;
+    agreement: number;       // 0-100
+    sourceCoverage: number;  // 0-100
+    contradictionPenalty: number; // 0-100
+    signalDensity: number;   // 0-100
   };
   consensus: {
-    agreement_score: number;
+    agreement_score: number; // 0-100
     shared_insights: string[];
     disagreements: string[];
   };
@@ -52,7 +52,9 @@ export type IntelligenceMemo = {
   };
   insight_clusters: Array<{
     theme: string;
-    insights: string[];
+    signal_count: number;
+    confidence: "High" | "Medium" | "Low";
+    key_themes: string[];
   }>;
   evidence_count: {
     youtube: number;
@@ -72,8 +74,13 @@ export type IntelligenceMemo = {
     reddit:  { score: number; level: "High" | "Medium" | "Low"; excluded: boolean };
     web:     { score: number; level: "High" | "Medium" | "Low"; excluded: boolean };
   };
-  sources_used:          Array<"youtube" | "reddit" | "web">;
+  sources_used: Array<"youtube" | "reddit" | "web">;
   best_evidence_ranking: string[];
+  coverage: {
+    score: number;
+    active: string[];
+    missing: string[];
+  };
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -87,6 +94,7 @@ type NormalizedClaim = {
   specificity: number;
   recency: number;
   engagement: number;
+  queryRelevance: number; // 0–100 — scored against current query keywords
 };
 
 type ClaimCluster = {
@@ -95,12 +103,12 @@ type ClaimCluster = {
 };
 
 type ConfidenceResult = {
-  confidence: number;
+  confidence: number; // 0-1
   breakdown: {
-    agreement: number;
-    sourceCoverage: number;
-    contradictionPenalty: number;
-    signalDensity: number;
+    agreement: number;            // 0-100
+    sourceCoverage: number;       // 0-100
+    contradictionPenalty: number; // 0-100
+    signalDensity: number;        // 0-100
   };
 };
 
@@ -117,6 +125,7 @@ type ExtractorOutput = {
     theme: string;
     claims: string[];
     summary: string;
+    key_themes?: string[];
   }>;
   contradictions: Array<{
     claim_a: string;
@@ -149,9 +158,18 @@ function extractKeywords(q: string): string[] {
   )].slice(0, 8);
 }
 
-// ── Source → NormalizedClaim converters ───────────────────────────────────────
+// Score how relevant a claim's text is to the current query (0–100)
+function scoreClaimRelevance(text: string, keywords: string[]): number {
+  if (!keywords.length) return 60;
+  const lower = text.toLowerCase();
+  const matched = keywords.filter(kw => lower.includes(kw)).length;
+  return Math.round((matched / keywords.length) * 100);
+}
 
-function ytToNormalizedClaims(rows: DeepResearchRow[]): NormalizedClaim[] {
+// ── Source → NormalizedClaim converters ───────────────────────────────────────
+// Note: queryRelevance is added externally after construction
+
+function ytToNormalizedClaims(rows: DeepResearchRow[]): Omit<NormalizedClaim, "queryRelevance">[] {
   return rows.slice(0, 40).map((r, i) => {
     const base = r.signal_strength === "HIGH" ? 0.85 : r.signal_strength === "MEDIUM" ? 0.6 : 0.35;
     const text = String(r.insight ?? r.quote ?? "").slice(0, 220);
@@ -168,7 +186,7 @@ function ytToNormalizedClaims(rows: DeepResearchRow[]): NormalizedClaim[] {
   }).filter(c => c.claim.length > 10);
 }
 
-function hnToNormalizedClaims(claims: HNClaim[]): NormalizedClaim[] {
+function hnToNormalizedClaims(claims: HNClaim[]): Omit<NormalizedClaim, "queryRelevance">[] {
   const maxScore = Math.max(...claims.map(c => c.post_score), 1);
   return claims.map((c, i) => {
     const age = c.created_at
@@ -189,7 +207,7 @@ function hnToNormalizedClaims(claims: HNClaim[]): NormalizedClaim[] {
   });
 }
 
-function webToNormalizedClaims(articles: IntelligenceArticle[]): NormalizedClaim[] {
+function webToNormalizedClaims(articles: IntelligenceArticle[]): Omit<NormalizedClaim, "queryRelevance">[] {
   return articles.filter(a => a.content.length > 80).map((a, i) => {
     const age = a.published_date
       ? clamp(1 - (Date.now() - new Date(a.published_date).getTime()) / (365 * 86400 * 1000), 0, 1)
@@ -245,48 +263,49 @@ const BASE_AUTHORITY: Record<NormalizedClaim["source"], number> = {
   web:     72,
 };
 
+// Scores source quality using per-claim queryRelevance (claims are pre-filtered for strength >= 0.3)
+// Formula: authority*0.25 + evidenceStrength*0.25 + queryRelevance*0.50
 function scoreSourceQuality(
   claims: NormalizedClaim[],
   source: NormalizedClaim["source"],
-  keywords: string[],
 ): SourceQualityResult {
   const sc = claims.filter(c => c.source === source);
   if (sc.length < 2) return { score: 0, level: "Low", excluded: true };
 
-  const relevance = sc.filter(c =>
-    keywords.some(kw => c.claim.toLowerCase().includes(kw))
-  ).length / sc.length * 100;
-
-  const avgStrength = sc.reduce((s, c) => s + computeClaimStrength(c), 0) / sc.length;
-  const evidenceStrength = Math.min(100, avgStrength * 100);
-
-  const recency = Math.min(100, (sc.reduce((s, c) => s + c.recency, 0) / sc.length) * 100);
-
-  const authority = Math.min(100, BASE_AUTHORITY[source] + Math.min(15, sc.length * 1.5));
-
-  const typeVariety = new Set(sc.map(c => c.type)).size;
-  const uniqueness = Math.min(100, (typeVariety / 6) * 80 + 20);
+  const avgRelevance    = sc.reduce((s, c) => s + c.queryRelevance, 0) / sc.length;
+  const avgStrengthPct  = sc.reduce((s, c) => s + computeClaimStrength(c) * 100, 0) / sc.length;
+  const authority       = Math.min(100, BASE_AUTHORITY[source] + Math.min(15, sc.length * 1.5));
 
   const composite =
-    relevance        * 0.35 +
-    evidenceStrength * 0.25 +
-    authority        * 0.20 +
-    uniqueness       * 0.10 +
-    recency          * 0.10;
+    authority       * 0.25 +
+    avgStrengthPct  * 0.25 +
+    avgRelevance    * 0.50;
 
   const score = Math.round(composite);
   const level: "High" | "Medium" | "Low" = score >= 70 ? "High" : score >= 50 ? "Medium" : "Low";
   return { score, level, excluded: score < 60 };
 }
 
-// ── Scoring (user-defined formulas) ───────────────────────────────────────────
+// ── Scoring ───────────────────────────────────────────────────────────────────
 
-function computeClaimStrength(c: NormalizedClaim): number {
-  // Creator (youtube) outranks web which outranks community for startup/SaaS queries
+function computeClaimStrength(c: Omit<NormalizedClaim, "queryRelevance"> & { queryRelevance?: number }): number {
   const w = c.source === "youtube" ? 0.95 : c.source === "web" ? 0.80 : 0.70;
   return w * 0.4 + c.specificity * 0.3 + c.engagement * 0.2 + c.recency * 0.1;
 }
 
+// Global agreement: supportedClaims / totalClaims
+// A claim is "supported" if its cluster has 2+ different sources (cross-source corroboration)
+function computeClaimAgreement(clusters: ClaimCluster[]): number {
+  const total = clusters.reduce((s, c) => s + c.claims.length, 0);
+  if (!total) return 0;
+  const supported = clusters.reduce((s, c) => {
+    const srcs = new Set(c.claims.map(cl => cl.source));
+    return s + (srcs.size >= 2 ? c.claims.length : 0);
+  }, 0);
+  return Math.round((supported / total) * 100); // 0–100
+}
+
+// Per-cluster agreement (used for contradiction penalty weighting only)
 function computeClusterAgreement(cluster: ClaimCluster): number {
   if (!cluster.claims.length) return 0;
   const diversity = new Set(cluster.claims.map(c => c.source)).size / 3;
@@ -331,37 +350,52 @@ function contradictionPenalty(clusters: ClaimCluster[]): number {
 }
 
 function computeFinalConfidence(
-  clusters:      ClaimCluster[],
-  qualityScores: Record<string, SourceQualityResult>,
+  clusters:            ClaimCluster[],
+  qualityScores:       Record<string, SourceQualityResult>,
+  extractorHasContrad: boolean,
 ): ConfidenceResult {
-  if (!clusters.length) return { confidence: 0, breakdown: { agreement: 0, sourceCoverage: 0, contradictionPenalty: 0, signalDensity: 0 } };
+  if (!clusters.length) return {
+    confidence: 0,
+    breakdown: { agreement: 0, sourceCoverage: 0, contradictionPenalty: 0, signalDensity: 0 },
+  };
 
-  const agreements = clusters.map(computeClusterAgreement);
-  const agreement = agreements.reduce((a, b) => a + b, 0) / agreements.length;
+  const rawAgreementPct = computeClaimAgreement(clusters);
+  // Only treat contradictions as real if agreement is genuinely low
+  const hasRealContrad  = extractorHasContrad && rawAgreementPct < 70;
+  // When no real contradictions, sources are largely aligned — floor agreement at 60
+  const agreementPct    = hasRealContrad ? rawAgreementPct : Math.max(60, rawAgreementPct);
+  const agreement       = agreementPct / 100;
 
   const gated = new Set(
     Object.entries(qualityScores).filter(([, q]) => !q.excluded).map(([k]) => k)
   );
   const sourceCoverage = computeSourceCoverage(clusters, gated);
 
-  const penalty = contradictionPenalty(clusters);
-  const totalClaims = clusters.reduce((s, c) => s + c.claims.length, 0);
-  const optimalCount = Math.min(5, Math.ceil(totalClaims / 6));
+  const penalty = hasRealContrad ? contradictionPenalty(clusters) : 0;
+  const totalClaims   = clusters.reduce((s, c) => s + c.claims.length, 0);
+  const optimalCount  = Math.min(5, Math.ceil(totalClaims / 6));
   const signalDensity = Math.min(1, clusters.length / Math.max(1, optimalCount));
 
-  // Quality boost: avg quality of active sources, scaled to 0-0.1 bonus
   const gatedArr = [...gated];
   const qualityBonus = gatedArr.length
     ? (gatedArr.reduce((s, k) => s + qualityScores[k].score, 0) / gatedArr.length / 100) * 0.10
     : 0;
 
   return {
-    confidence: clamp(agreement * 0.40 + sourceCoverage * 0.25 + signalDensity * 0.15 + qualityBonus - penalty * 0.10, 0, 1),
-    breakdown: { agreement, sourceCoverage, contradictionPenalty: penalty, signalDensity },
+    confidence: clamp(
+      agreement * 0.40 + sourceCoverage * 0.25 + signalDensity * 0.15 + qualityBonus - penalty * 0.10,
+      0, 1,
+    ),
+    breakdown: {
+      agreement:            agreementPct,
+      sourceCoverage:       Math.round(sourceCoverage * 100),
+      contradictionPenalty: Math.round(penalty * 100),
+      signalDensity:        Math.round(signalDensity * 100),
+    },
   };
 }
 
-// ── Extractor LLM (claim normalization + clustering — no scoring) ─────────────
+// ── Extractor LLM ─────────────────────────────────────────────────────────────
 
 const EXTRACTOR_PROMPT = `You are WatchFilter Intelligence Synthesizer.
 
@@ -382,7 +416,7 @@ All scoring, confidence, and ranking is computed externally by a deterministic s
 Given multi-source input, your job is to produce:
 
 1. Normalized claims
-2. Insight clusters
+2. Insight clusters with synthesized key_themes
 3. Contradictions
 4. Source-aligned evidence structure
 5. Stage-based strategic interpretations (non-scored)
@@ -445,7 +479,8 @@ Return ONLY valid JSON:
     {
       "theme": string,
       "claims": [string],
-      "summary": string
+      "summary": string,
+      "key_themes": [string]
     }
   ],
 
@@ -492,6 +527,29 @@ DO NOT:
 - merge unrelated ideas
 - infer missing facts
 - generalize across sources
+
+---
+
+# 🎯 KEY_THEMES RULE (CRITICAL)
+
+For each insight cluster, key_themes must contain 2–4 synthesized insight bullets.
+
+REQUIRED: Each bullet is a standalone finding synthesized from the cluster's claims — NOT a quote or excerpt.
+REQUIRED: Written as a present-tense factual statement ("Founder outreach drives early customer acquisition").
+REQUIRED: Specific — mentions mechanisms, tactics, or measurable outcomes where available.
+REQUIRED: Each bullet adds distinct information; do not repeat the theme in different words.
+
+FORBIDDEN: Copying raw claim text verbatim.
+FORBIDDEN: Generic statements that apply to any topic ("it is important to understand your customer").
+FORBIDDEN: Motivational framing ("this is key", "you should focus on").
+
+GOOD: "Founder-led outreach converts at 3× the rate of agency-led campaigns in sub-100-customer stage"
+GOOD: "Early adopters tolerate product roughness when core value proposition is immediately clear"
+GOOD: "Community-led growth (referrals, forums, open source) reduces CAC by eliminating cold outreach"
+BAD: "outreach is important for startups"
+BAD: "it's good to talk to customers early"
+
+The summary field is one sentence synthesizing the cluster's entire finding.
 
 ---
 
@@ -631,7 +689,7 @@ function buildClusters(extractor: ExtractorOutput, claimIndex: Map<string, Norma
     .filter(c => c.claims.length >= 2);
 }
 
-// ── Decision LLM (v4 — source-split input, directional label, Reddit gap) ─────
+// ── Decision LLM ──────────────────────────────────────────────────────────────
 
 async function generateDecision(
   query: string,
@@ -658,7 +716,7 @@ async function generateDecision(
   const res = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.3,
-    max_tokens: 1000,
+    max_tokens: 1400,
     response_format: { type: "json_object" },
     messages: [
       {
@@ -678,7 +736,15 @@ You do NOT browse, search, or invent facts. Work only from provided signals.
 
 4. Source fidelity: every insight must trace to at least one provided signal. No hallucinated synthesis.
 
-5. Priority actions: max 3. Each must be grounded in a specific provided signal. No generic advice.
+5. Priority actions: generate 3–5 actions. Each action MUST:
+   - Map directly to a specific provided signal (name the tactic, mechanism, or finding)
+   - Be immediately actionable with a specific next step (not a general strategy)
+   - Include the evidence that supports it, woven naturally into the action
+
+   GOOD: "Reach out personally to 50 ideal customers this week — evidence shows founder-led outreach at this stage converts at far higher rates than agency-driven campaigns."
+   GOOD: "Set up a weekly customer interview cadence (aim for 3–5 per week) — multiple signals confirm that early feedback loops are the primary driver of product-market fit."
+   BAD: "Develop clearly defined marketing campaigns."
+   BAD: "Build relationships with your target audience."
 
 6. Directional must be EXACTLY one of:
    "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)"
@@ -694,8 +760,8 @@ You do NOT browse, search, or invent facts. Work only from provided signals.
 Return ONLY valid JSON:
 {
   "directional": "one of the five allowed labels",
-  "decision_summary": "2–3 sentences: what evidence shows, what is genuinely disputed, what matters most for this decision.",
-  "priority_actions": ["action grounded in signal 1", "action grounded in signal 2"]
+  "decision_summary": "2–3 sentences: what the evidence shows, what is genuinely disputed, what matters most for this decision.",
+  "priority_actions": ["specific action with evidence basis", "specific action...", "specific action...", "specific action...", "specific action..."]
 }`,
       },
       { role: "user", content: JSON.stringify(input) },
@@ -713,7 +779,7 @@ Return ONLY valid JSON:
     return {
       directional:      VALID_DIRECTIONALS.has(p.directional ?? "") ? p.directional! : "Neutral / Tradeoff",
       decision_summary: p.decision_summary ?? "Insufficient evidence to synthesize a decision.",
-      priority_actions: Array.isArray(p.priority_actions) ? p.priority_actions.slice(0, 3) : [],
+      priority_actions: Array.isArray(p.priority_actions) ? p.priority_actions.slice(0, 5) : [],
     };
   } catch {
     return {
@@ -724,7 +790,56 @@ Return ONLY valid JSON:
   }
 }
 
-// ── Best evidence ranking ─────────────────────────────────────────────────────
+// ── Best evidence ranking — synthesized claims from cluster summaries ──────────
+
+function buildBestEvidenceRanking(
+  gatedClaims: NormalizedClaim[],
+  extractor:   ExtractorOutput,
+): string[] {
+  // Prefer cluster summaries — these are synthesized findings, not raw excerpts
+  const fromSummaries = extractor.insight_clusters
+    .filter(c => c.summary && c.summary.length > 15)
+    .map(c => c.summary)
+    .slice(0, 4);
+
+  if (fromSummaries.length >= 3) return fromSummaries;
+
+  // Fill with top-scored claims (strength × relevance)
+  const top = [...gatedClaims]
+    .sort((a, b) =>
+      (computeClaimStrength(b) * b.queryRelevance) -
+      (computeClaimStrength(a) * a.queryRelevance)
+    )
+    .slice(0, 4 - fromSummaries.length)
+    .map(c => c.claim.length > 150 ? c.claim.slice(0, 150) + "…" : c.claim);
+
+  return [...new Set([...fromSummaries, ...top])].slice(0, 4);
+}
+
+// ── Coverage: 5-layer model (youtube, reddit, web, research, predictions) ─────
+
+const COVERAGE_LAYERS = [
+  { key: "youtube",     label: "Creator Intelligence" },
+  { key: "reddit",      label: "Community Intelligence" },
+  { key: "web",         label: "Web Intelligence" },
+  { key: "research",    label: "Research Intelligence" },
+  { key: "predictions", label: "Prediction Intelligence" },
+];
+
+function computeCoverage(sourcesUsed: Array<"youtube" | "reddit" | "web">): {
+  score: number; active: string[]; missing: string[];
+} {
+  const used = new Set<string>(sourcesUsed);
+  const active  = COVERAGE_LAYERS.filter(l => used.has(l.key)).map(l => l.label);
+  const missing = COVERAGE_LAYERS.filter(l => !used.has(l.key)).map(l => l.label);
+  return {
+    score: Math.round((active.length / COVERAGE_LAYERS.length) * 100),
+    active,
+    missing,
+  };
+}
+
+// ── Source friendly names ─────────────────────────────────────────────────────
 
 const SOURCE_FRIENDLY: Record<string, string> = {
   youtube: "Creator Intelligence",
@@ -732,54 +847,59 @@ const SOURCE_FRIENDLY: Record<string, string> = {
   web:     "Web Intelligence",
 };
 
-function buildBestEvidenceRanking(
-  allClaims:     NormalizedClaim[],
-  qualityScores: Record<string, SourceQualityResult>,
-  sourcesUsed:   string[],
-): string[] {
-  return sourcesUsed
-    .sort((a, b) => qualityScores[b].score - qualityScores[a].score)
-    .slice(0, 4)
-    .map(src => {
-      const count = allClaims.filter(c => c.source === src).length;
-      const q = qualityScores[src];
-      return `${SOURCE_FRIENDLY[src] ?? src} — ${count} signals, ${q.level} quality`;
-    });
-}
-
 // ── Memo assembly (pure, no LLM) ──────────────────────────────────────────────
 
 function assembleMemo(
-  query: string,
-  allClaims: NormalizedClaim[],
-  clusters: ClaimCluster[],
-  extractor: ExtractorOutput,
+  query:            string,
+  gatedClaims:      NormalizedClaim[],
+  clusters:         ClaimCluster[],
+  extractor:        ExtractorOutput,
   confidenceResult: ConfidenceResult,
-  decision: { directional: string; decision_summary: string; priority_actions: string[] },
-  rawCounts: { youtube: number; reddit: number; web: number },
-  redditDiag: IntelligenceMemo["reddit_diagnostics"],
-  qualityScores: Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+  decision:         { directional: string; decision_summary: string; priority_actions: string[] },
+  rawCounts:        { youtube: number; reddit: number; web: number },
+  redditDiag:       IntelligenceMemo["reddit_diagnostics"],
+  qualityScores:    Record<"youtube" | "reddit" | "web", SourceQualityResult>,
 ): IntelligenceMemo {
   const bySource = (src: NormalizedClaim["source"]) =>
-    allClaims.filter(c => c.source === src).sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a));
+    gatedClaims.filter(c => c.source === src)
+      .sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a));
 
+  // Shared insights = top claims from multi-source clusters
   const sharedInsights = clusters
     .filter(c => new Set(c.claims.map(cl => cl.source)).size >= 2)
     .flatMap(c => c.claims.sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a)).slice(0, 1).map(cl => cl.claim))
     .slice(0, 4);
 
-  const agreementScore = confidenceResult.breakdown.agreement;
+  const agreementScore = confidenceResult.breakdown.agreement; // already 0-100
   const sourcesUsed = (["youtube", "reddit", "web"] as const).filter(s => !qualityScores[s].excluded);
 
-  // Suppress contradictions when sources largely agree — avoids manufactured disagreements
-  const filteredContradictions = agreementScore > 0.70
-    ? []
-    : extractor.contradictions.slice(0, 3).map(c => ({
+  // Suppress contradictions when sources are largely aligned
+  const hasRealContrad = agreementScore < 70 && extractor.contradictions.length > 0;
+  const filteredContradictions = hasRealContrad
+    ? extractor.contradictions.slice(0, 3).map(c => ({
         claim_a: c.claim_a,
         claim_b: c.claim_b,
         why_it_matters: c.explanation,
         conflict_type: c.conflict_type ?? "direct" as const,
-      }));
+      }))
+    : [];
+
+  // Build new insight clusters format: synthesized themes, not raw excerpts
+  const clusterByTheme = new Map(clusters.map(c => [c.theme, c]));
+  const newClusters: IntelligenceMemo["insight_clusters"] = extractor.insight_clusters
+    .filter(ec => clusterByTheme.has(ec.theme))
+    .slice(0, 5)
+    .map(ec => {
+      const mc = clusterByTheme.get(ec.theme)!;
+      const signal_count = mc.claims.length;
+      const confidence: "High" | "Medium" | "Low" =
+        signal_count >= 5 ? "High" : signal_count >= 3 ? "Medium" : "Low";
+      const key_themes = (ec.key_themes ?? []).filter(t => t.length > 5).slice(0, 4);
+      // Fallback to summary if key_themes absent
+      const finalThemes = key_themes.length > 0 ? key_themes : ec.summary ? [ec.summary] : [];
+      return { theme: ec.theme, signal_count, confidence, key_themes: finalThemes };
+    })
+    .filter(c => c.key_themes.length > 0);
 
   return {
     query,
@@ -789,15 +909,17 @@ function assembleMemo(
     reddit_gap: qualityScores.reddit.excluded,
     confidence_score: Math.round(confidenceResult.confidence * 100),
     confidence_breakdown: {
-      agreement:            Math.round(agreementScore * 100),
-      sourceCoverage:       Math.round(confidenceResult.breakdown.sourceCoverage * 100),
-      contradictionPenalty: Math.round(confidenceResult.breakdown.contradictionPenalty * 100),
-      signalDensity:        Math.round(confidenceResult.breakdown.signalDensity * 100),
+      agreement:            agreementScore,
+      sourceCoverage:       confidenceResult.breakdown.sourceCoverage,
+      contradictionPenalty: confidenceResult.breakdown.contradictionPenalty,
+      signalDensity:        confidenceResult.breakdown.signalDensity,
     },
     consensus: {
-      agreement_score: Math.round(agreementScore * 100),
+      agreement_score: agreementScore,
       shared_insights: sharedInsights,
-      disagreements: agreementScore > 0.70 ? [] : extractor.contradictions.slice(0, 3).map(c => c.explanation),
+      disagreements: hasRealContrad
+        ? extractor.contradictions.slice(0, 3).map(c => c.explanation)
+        : [],
     },
     source_breakdown: {
       youtube: { count: rawCounts.youtube, key_signals: bySource("youtube").slice(0, 4).map(c => c.claim) },
@@ -813,22 +935,17 @@ function assembleMemo(
       },
       priority_actions: decision.priority_actions,
     },
-    insight_clusters: clusters.slice(0, 5).map(c => ({
-      theme: c.theme,
-      insights: c.claims
-        .sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a))
-        .slice(0, 4)
-        .map(cl => cl.claim),
-    })),
+    insight_clusters: newClusters,
     evidence_count: rawCounts,
     reddit_diagnostics: redditDiag,
     source_quality_scores: qualityScores,
     sources_used: sourcesUsed,
-    best_evidence_ranking: buildBestEvidenceRanking(allClaims, qualityScores, sourcesUsed),
+    best_evidence_ranking: buildBestEvidenceRanking(gatedClaims, extractor),
+    coverage: computeCoverage(sourcesUsed),
   };
 }
 
-// ── Domain synonym map (improves Reddit expansion coverage) ──────────────────
+// ── Domain synonym map ────────────────────────────────────────────────────────
 
 const DOMAIN_SYNONYMS: Record<string, string[]> = {
   "seo":              ["content marketing", "blogging", "organic traffic", "inbound marketing", "search traffic", "programmatic SEO"],
@@ -853,7 +970,7 @@ function detectDomainSynonyms(query: string): string[] {
   return [...new Set(synonyms)];
 }
 
-// ── Reddit Query Expansion Engine v1 ──────────────────────────────────────────
+// ── HN Query Expansion ────────────────────────────────────────────────────────
 
 const HN_EXPANSION_PROMPT = `You are a Hacker News retrieval optimization engine for WatchFilter.
 
@@ -1011,26 +1128,41 @@ export async function POST(req: NextRequest) {
         emit({ type: "stage", source: "web", message: `Web search unavailable: ${err instanceof Error ? err.message : "error"}` });
       }
 
-      // Normalize + strength filter
-      const allClaims = [
-        ...ytToNormalizedClaims(ytRows),
-        ...hnToNormalizedClaims(hnClaims),
-        ...webToNormalizedClaims(articles),
+      // Normalize → add queryRelevance → strength filter
+      const addRelevance = (c: Omit<NormalizedClaim, "queryRelevance">): NormalizedClaim => ({
+        ...c,
+        queryRelevance: scoreClaimRelevance(c.claim, keywords),
+      });
+      const rawClaims: NormalizedClaim[] = [
+        ...ytToNormalizedClaims(ytRows).map(addRelevance),
+        ...hnToNormalizedClaims(hnClaims).map(addRelevance),
+        ...webToNormalizedClaims(articles).map(addRelevance),
       ].filter(c => computeClaimStrength(c) >= 0.3);
 
-      if (!allClaims.length) {
+      if (!rawClaims.length) {
         emit({ type: "error", message: "No evidence found. Try a more specific query or analyze relevant videos first." });
         close();
         return;
       }
 
-      // Stage 4: Source quality scoring + gating
+      // Relevance gate: filter out claims that don't discuss the query topic
+      const relevantClaims = rawClaims.filter(c => c.queryRelevance >= 50);
+      const filteredOut = rawClaims.length - relevantClaims.length;
+      console.log(`[Relevance] ${rawClaims.length} claims → ${relevantClaims.length} relevant (${filteredOut} off-topic filtered)`);
+
+      if (!relevantClaims.length) {
+        emit({ type: "error", message: "No on-topic evidence found for this query. Try a more specific question or analyze relevant creator content first." });
+        close();
+        return;
+      }
+
+      // Stage 4: Source quality scoring + gating (on relevant claims only)
       const qualityScores = {
-        youtube: scoreSourceQuality(allClaims, "youtube", keywords),
-        reddit:  scoreSourceQuality(allClaims, "reddit",  keywords),
-        web:     scoreSourceQuality(allClaims, "web",     keywords),
+        youtube: scoreSourceQuality(relevantClaims, "youtube"),
+        reddit:  scoreSourceQuality(relevantClaims, "reddit"),
+        web:     scoreSourceQuality(relevantClaims, "web"),
       };
-      const gatedClaims = allClaims.filter(c => !qualityScores[c.source].excluded);
+      const gatedClaims = relevantClaims.filter(c => !qualityScores[c.source].excluded);
       const gatedSourceNames = (["youtube", "reddit", "web"] as const)
         .filter(s => !qualityScores[s].excluded)
         .map(s => SOURCE_FRIENDLY[s]);
@@ -1057,15 +1189,16 @@ export async function POST(req: NextRequest) {
       const clusters = buildClusters(extractor, claimIndex);
       emit({ type: "stage", agent: "Extractor", message: `Formed ${clusters.length} insight clusters` });
 
-      // Stage 6: Score (deterministic, quality-weighted)
-      const confidenceResult = computeFinalConfidence(clusters, qualityScores);
+      // Stage 6: Score (deterministic, contradiction-aware)
+      const extractorHasContrad = extractor.contradictions.length > 0;
+      const confidenceResult = computeFinalConfidence(clusters, qualityScores, extractorHasContrad);
 
       // Stage 7: Decision
       emit({ type: "stage", agent: "Decision", message: "Generating decision intelligence…" });
       const decision = await generateDecision(query, clusters, extractor.stage_interpretation);
 
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
-      const memo = assembleMemo(query, allClaims, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores);
+      const memo = assembleMemo(query, gatedClaims, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores);
 
       emit({ type: "complete", memo });
 
