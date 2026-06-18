@@ -144,6 +144,23 @@ async function ensureSchema(): Promise<void> {
     )`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_predictions_creator ON creator_predictions (creator)`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_predictions_status  ON creator_predictions (status)`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS creator_accuracy (
+      creator                TEXT PRIMARY KEY,
+      predictions_total      INTEGER NOT NULL DEFAULT 0,
+      predictions_resolved   INTEGER NOT NULL DEFAULT 0,
+      predictions_correct    INTEGER NOT NULL DEFAULT 0,
+      predictions_incorrect  INTEGER NOT NULL DEFAULT 0,
+      predictions_mixed      INTEGER NOT NULL DEFAULT 0,
+      accuracy_score         REAL NOT NULL DEFAULT 0,
+      updated_at             TEXT NOT NULL
+    )`, args: [] },
+    { sql: `CREATE TABLE IF NOT EXISTS domain_accuracy (
+      domain               TEXT PRIMARY KEY,
+      predictions_total    INTEGER NOT NULL DEFAULT 0,
+      predictions_resolved INTEGER NOT NULL DEFAULT 0,
+      accuracy_score       REAL NOT NULL DEFAULT 0,
+      updated_at           TEXT NOT NULL
+    )`, args: [] },
   ], "write");
 
   for (const sql of [
@@ -164,6 +181,30 @@ async function ensureSchema(): Promise<void> {
     `ALTER TABLE creator_predictions ADD COLUMN attribution_strength TEXT NOT NULL DEFAULT 'IMPLIED'`,
     `ALTER TABLE creator_predictions ADD COLUMN outcome_tier INTEGER`,
     `ALTER TABLE creator_predictions ADD COLUMN is_evaluable INTEGER NOT NULL DEFAULT 0`,
+    // v1 prediction engine fields
+    `ALTER TABLE creator_predictions ADD COLUMN normalized_statement TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN prediction_type TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN domain TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN time_horizon_json TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN resolution_json TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN falsifiability_score REAL`,
+    `ALTER TABLE creator_predictions ADD COLUMN specificity_score REAL`,
+    `ALTER TABLE creator_predictions ADD COLUMN importance_score REAL`,
+    `ALTER TABLE creator_predictions ADD COLUMN trackable INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE creator_predictions ADD COLUMN evidence_quote TEXT`,
+    // v2 intelligence engine fields
+    `ALTER TABLE creator_predictions ADD COLUMN forecast_json TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN relationships_json TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN market_consensus_position TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN calibration_confidence_style TEXT`,
+    // v2.1 prediction engine fields
+    `ALTER TABLE creator_predictions ADD COLUMN prediction_key TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN resolver_priority TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN creator_confidence_signal_json TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN evaluation_json TEXT`,
+    // v3 resolver fields
+    `ALTER TABLE creator_predictions ADD COLUMN resolved_at TEXT`,
+    `ALTER TABLE creator_predictions ADD COLUMN resolver_notes TEXT`,
     // Cloud pipeline cache — stores AI scores + consensus per user
     `ALTER TABLE intelligence_snapshot ADD COLUMN ai_scores_cache TEXT`,
     `ALTER TABLE intelligence_snapshot ADD COLUMN consensus_cache TEXT`,
@@ -964,7 +1005,31 @@ export type PredictionRow = {
   prediction_accuracy_score: number | null;
   evaluation_evidence: string | null;
   evaluated_at: string | null;
-  status: "pending" | "accurate" | "inaccurate" | "unknown" | "unlinked";
+  status: "pending" | "accurate" | "inaccurate" | "unknown" | "unlinked" | "correct" | "incorrect" | "mixed";
+  // resolver fields
+  resolved_at: string | null;
+  resolver_notes: string | null;
+  // v1 engine fields
+  normalized_statement: string | null;
+  prediction_type: string | null;
+  domain: string | null;
+  time_horizon: { explicit: boolean; target_date: string | null; timeframe_text: string | null } | null;
+  resolution: { metric: string | null; threshold: string | null; resolution_method: string; resolver_sources?: string[] } | null;
+  falsifiability_score: number | null;
+  specificity_score: number | null;
+  importance_score: number | null;
+  trackable: boolean;
+  evidence_quote: string | null;
+  // v2 intelligence engine fields
+  forecast: { direction: string; estimated_probability: number } | null;
+  relationships: Array<{ type: "supports" | "contradicts" | "depends_on"; target_prediction: string; confidence: number }> | null;
+  market_consensus_position: "supportive" | "contrarian" | "neutral" | null;
+  calibration_confidence_style: "low" | "medium" | "high" | null;
+  // v2.1 fields
+  prediction_key: string | null;
+  resolver_priority: "low" | "medium" | "high" | null;
+  creator_confidence_signal: { explicit_confidence: boolean; language_strength: number } | null;
+  evaluation: { status: string; last_checked_at: string | null; resolver_confidence: number | null } | null;
 };
 
 export type PredictionAccuracyStat = {
@@ -983,8 +1048,16 @@ export async function upsertPrediction(p: PredictionRow): Promise<void> {
              speaker_name, speaker_role, speaker_confidence,
              entity_name, entity_type, attribution_strength,
              outcome_tier, is_evaluable,
-             prediction_accuracy_score, evaluation_evidence, evaluated_at, status)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             prediction_accuracy_score, evaluation_evidence, evaluated_at, status,
+             normalized_statement, prediction_type, domain,
+             time_horizon_json, resolution_json,
+             falsifiability_score, specificity_score, importance_score,
+             trackable, evidence_quote,
+             forecast_json, relationships_json,
+             market_consensus_position, calibration_confidence_style,
+             prediction_key, resolver_priority,
+             creator_confidence_signal_json, evaluation_json)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
           ON CONFLICT(prediction_id) DO UPDATE SET
             speaker_name              = excluded.speaker_name,
             speaker_role              = excluded.speaker_role,
@@ -997,7 +1070,25 @@ export async function upsertPrediction(p: PredictionRow): Promise<void> {
             prediction_accuracy_score = excluded.prediction_accuracy_score,
             evaluation_evidence       = excluded.evaluation_evidence,
             evaluated_at              = excluded.evaluated_at,
-            status                    = excluded.status`,
+            status                    = excluded.status,
+            normalized_statement      = excluded.normalized_statement,
+            prediction_type           = excluded.prediction_type,
+            domain                    = excluded.domain,
+            time_horizon_json         = excluded.time_horizon_json,
+            resolution_json           = excluded.resolution_json,
+            falsifiability_score      = excluded.falsifiability_score,
+            specificity_score         = excluded.specificity_score,
+            importance_score          = excluded.importance_score,
+            trackable                 = excluded.trackable,
+            evidence_quote            = excluded.evidence_quote,
+            forecast_json             = excluded.forecast_json,
+            relationships_json        = excluded.relationships_json,
+            market_consensus_position = excluded.market_consensus_position,
+            calibration_confidence_style = excluded.calibration_confidence_style,
+            prediction_key               = excluded.prediction_key,
+            resolver_priority            = excluded.resolver_priority,
+            creator_confidence_signal_json = excluded.creator_confidence_signal_json,
+            evaluation_json              = excluded.evaluation_json`,
     args: [
       p.prediction_id, p.creator, p.topic, p.prediction_text, p.created_at,
       p.confidence, p.measurable_outcome ?? null, p.evidence_source ?? null,
@@ -1006,6 +1097,17 @@ export async function upsertPrediction(p: PredictionRow): Promise<void> {
       p.outcome_tier ?? null, p.is_evaluable ? 1 : 0,
       p.prediction_accuracy_score ?? null, p.evaluation_evidence ?? null,
       p.evaluated_at ?? null, p.status,
+      p.normalized_statement ?? null, p.prediction_type ?? null, p.domain ?? null,
+      p.time_horizon ? JSON.stringify(p.time_horizon) : null,
+      p.resolution ? JSON.stringify(p.resolution) : null,
+      p.falsifiability_score ?? null, p.specificity_score ?? null, p.importance_score ?? null,
+      p.trackable ? 1 : 0, p.evidence_quote ?? null,
+      p.forecast ? JSON.stringify(p.forecast) : null,
+      p.relationships ? JSON.stringify(p.relationships) : null,
+      p.market_consensus_position ?? null, p.calibration_confidence_style ?? null,
+      p.prediction_key ?? null, p.resolver_priority ?? null,
+      p.creator_confidence_signal ? JSON.stringify(p.creator_confidence_signal) : null,
+      p.evaluation ? JSON.stringify(p.evaluation) : null,
     ],
   });
 }
@@ -1032,6 +1134,26 @@ function rowToPrediction(r: Record<string, unknown>): PredictionRow {
     evaluation_evidence:      r.evaluation_evidence as string | null,
     evaluated_at:             r.evaluated_at as string | null,
     status:                   (r.status as PredictionRow["status"]) ?? "pending",
+    normalized_statement:     r.normalized_statement as string | null,
+    prediction_type:          r.prediction_type as string | null,
+    domain:                   r.domain as string | null,
+    time_horizon:             r.time_horizon_json ? (() => { try { return JSON.parse(r.time_horizon_json as string) as PredictionRow["time_horizon"]; } catch { return null; } })() : null,
+    resolution:               r.resolution_json ? (() => { try { return JSON.parse(r.resolution_json as string) as PredictionRow["resolution"]; } catch { return null; } })() : null,
+    falsifiability_score:     r.falsifiability_score as number | null,
+    specificity_score:        r.specificity_score as number | null,
+    importance_score:         r.importance_score as number | null,
+    trackable:                Boolean(r.trackable),
+    evidence_quote:           r.evidence_quote as string | null,
+    forecast:                 r.forecast_json ? (() => { try { return JSON.parse(r.forecast_json as string) as PredictionRow["forecast"]; } catch { return null; } })() : null,
+    relationships:            r.relationships_json ? (() => { try { return JSON.parse(r.relationships_json as string) as PredictionRow["relationships"]; } catch { return null; } })() : null,
+    market_consensus_position: (r.market_consensus_position as PredictionRow["market_consensus_position"]) ?? null,
+    calibration_confidence_style: (r.calibration_confidence_style as PredictionRow["calibration_confidence_style"]) ?? null,
+    prediction_key:               r.prediction_key as string | null,
+    resolver_priority:            (r.resolver_priority as PredictionRow["resolver_priority"]) ?? null,
+    creator_confidence_signal:    r.creator_confidence_signal_json ? (() => { try { return JSON.parse(r.creator_confidence_signal_json as string) as PredictionRow["creator_confidence_signal"]; } catch { return null; } })() : null,
+    evaluation:                   r.evaluation_json ? (() => { try { return JSON.parse(r.evaluation_json as string) as PredictionRow["evaluation"]; } catch { return null; } })() : null,
+    resolved_at:                  r.resolved_at as string | null,
+    resolver_notes:               r.resolver_notes as string | null,
   };
 }
 
@@ -1180,6 +1302,256 @@ export async function getCreatorPredictionStats(creators?: string[]): Promise<Pr
     total: r.total as number,
     evaluated: r.evaluated as number,
     accuracy_score: Math.round(r.accuracy_score as number),
+  }));
+}
+
+export type DomainAccuracyStat = {
+  domain: string;
+  total: number;
+  evaluated: number;
+  accuracy_score: number;
+  supporting: number;
+  opposing: number;
+};
+
+export async function getCreatorAccuracyByDomain(): Promise<DomainAccuracyStat[]> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT
+            COALESCE(domain, topic, 'General') AS domain,
+            COUNT(*) AS total,
+            COUNT(CASE WHEN evaluated_at IS NOT NULL THEN 1 END) AS evaluated,
+            COALESCE(AVG(CASE WHEN prediction_accuracy_score IS NOT NULL THEN prediction_accuracy_score END), 0) AS accuracy_score,
+            COUNT(CASE WHEN confidence >= 0.55 THEN 1 END) AS supporting,
+            COUNT(CASE WHEN confidence < 0.45 THEN 1 END) AS opposing
+          FROM creator_predictions
+          GROUP BY COALESCE(domain, topic, 'General')
+          HAVING COUNT(*) >= 2
+          ORDER BY total DESC
+          LIMIT 10`,
+    args: [],
+  });
+  return rows.map(r => ({
+    domain: r.domain as string,
+    total: r.total as number,
+    evaluated: r.evaluated as number,
+    accuracy_score: Math.round(r.accuracy_score as number),
+    supporting: r.supporting as number,
+    opposing: r.opposing as number,
+  }));
+}
+
+// ── Prediction Resolver ───────────────────────────────────────────────────────
+
+export type ResolutionStatus = "correct" | "incorrect" | "mixed";
+
+export type CreatorAccuracyRow = {
+  creator: string;
+  predictions_total: number;
+  predictions_resolved: number;
+  predictions_correct: number;
+  predictions_incorrect: number;
+  predictions_mixed: number;
+  accuracy_score: number;
+  leaderboard_score: number;
+  updated_at: string;
+};
+
+export type DomainAccuracyTableRow = {
+  domain: string;
+  predictions_total: number;
+  predictions_resolved: number;
+  accuracy_score: number;
+  updated_at: string;
+};
+
+export async function listPredictionsFiltered(opts: {
+  status?: string;
+  creator?: string;
+  domain?: string;
+  priority?: string;
+  limit?: number;
+} = {}): Promise<PredictionRow[]> {
+  const c = await db();
+  const conditions: string[] = [];
+  const args: (string | number)[] = [];
+
+  if (opts.status) {
+    if (opts.status === "unresolved") {
+      conditions.push(`(status = 'pending' OR status IS NULL)`);
+    } else {
+      conditions.push(`status = ?`);
+      args.push(opts.status);
+    }
+  }
+  if (opts.creator) { conditions.push(`creator = ?`); args.push(opts.creator); }
+  if (opts.domain) { conditions.push(`COALESCE(domain, topic) = ?`); args.push(opts.domain); }
+  if (opts.priority) { conditions.push(`resolver_priority = ?`); args.push(opts.priority); }
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const limit = opts.limit ?? 200;
+  args.push(limit);
+
+  const { rows } = await c.execute({
+    sql: `SELECT * FROM creator_predictions ${where}
+          ORDER BY
+            CASE resolver_priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+            created_at DESC
+          LIMIT ?`,
+    args,
+  });
+  return rows.map(r => rowToPrediction(r as Record<string, unknown>));
+}
+
+export async function resolvePrediction(
+  predictionId: string,
+  resolution: {
+    status: ResolutionStatus;
+    resolver_notes: string | null;
+    resolver_confidence: number | null;
+  },
+): Promise<void> {
+  const c = await db();
+  const now = new Date().toISOString();
+
+  // Fetch the prediction to get creator + domain for accuracy recalculation
+  const pred = await getPredictionById(predictionId);
+  if (!pred) throw new Error(`Prediction not found: ${predictionId}`);
+
+  await c.execute({
+    sql: `UPDATE creator_predictions SET
+            status         = ?,
+            resolved_at    = ?,
+            resolver_notes = ?,
+            evaluation_json = ?
+          WHERE prediction_id = ?`,
+    args: [
+      resolution.status,
+      now,
+      resolution.resolver_notes ?? null,
+      JSON.stringify({
+        status: resolution.status,
+        last_checked_at: now,
+        resolver_confidence: resolution.resolver_confidence ?? null,
+      }),
+      predictionId,
+    ],
+  });
+
+  await recalculateCreatorAccuracy(pred.creator);
+  const domain = pred.domain ?? pred.topic;
+  if (domain) await recalculateDomainAccuracy(domain);
+}
+
+async function recalculateCreatorAccuracy(creator: string): Promise<void> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT status FROM creator_predictions WHERE creator = ?`,
+    args: [creator],
+  });
+
+  let correct = 0, incorrect = 0, mixed = 0;
+  for (const r of rows) {
+    const s = r.status as string;
+    if (s === "correct") correct++;
+    else if (s === "incorrect") incorrect++;
+    else if (s === "mixed") mixed++;
+  }
+
+  const total = rows.length;
+  const resolved = correct + incorrect + mixed;
+  const accuracyScore = resolved > 0 ? (correct + mixed * 0.5) / resolved : 0;
+  const leaderboardScore = accuracyScore * Math.log(resolved + 1);
+  const now = new Date().toISOString();
+
+  await c.execute({
+    sql: `INSERT INTO creator_accuracy
+            (creator, predictions_total, predictions_resolved, predictions_correct,
+             predictions_incorrect, predictions_mixed, accuracy_score, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(creator) DO UPDATE SET
+            predictions_total     = excluded.predictions_total,
+            predictions_resolved  = excluded.predictions_resolved,
+            predictions_correct   = excluded.predictions_correct,
+            predictions_incorrect = excluded.predictions_incorrect,
+            predictions_mixed     = excluded.predictions_mixed,
+            accuracy_score        = excluded.accuracy_score,
+            updated_at            = excluded.updated_at`,
+    args: [creator, total, resolved, correct, incorrect, mixed, accuracyScore, now],
+  });
+
+  void leaderboardScore; // used in getCreatorAccuracyLeaderboard, computed on read
+}
+
+async function recalculateDomainAccuracy(domain: string): Promise<void> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT status FROM creator_predictions WHERE COALESCE(domain, topic) = ?`,
+    args: [domain],
+  });
+
+  let correct = 0, incorrect = 0, mixed = 0;
+  for (const r of rows) {
+    const s = r.status as string;
+    if (s === "correct") correct++;
+    else if (s === "incorrect") incorrect++;
+    else if (s === "mixed") mixed++;
+  }
+
+  const total = rows.length;
+  const resolved = correct + incorrect + mixed;
+  const accuracyScore = resolved > 0 ? (correct + mixed * 0.5) / resolved : 0;
+
+  await c.execute({
+    sql: `INSERT INTO domain_accuracy
+            (domain, predictions_total, predictions_resolved, accuracy_score, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(domain) DO UPDATE SET
+            predictions_total    = excluded.predictions_total,
+            predictions_resolved = excluded.predictions_resolved,
+            accuracy_score       = excluded.accuracy_score,
+            updated_at           = excluded.updated_at`,
+    args: [domain, total, resolved, accuracyScore, new Date().toISOString()],
+  });
+}
+
+export async function getCreatorAccuracyLeaderboard(limit = 20): Promise<CreatorAccuracyRow[]> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT * FROM creator_accuracy
+          WHERE predictions_resolved >= 3
+          ORDER BY (accuracy_score * log(predictions_resolved + 1)) DESC
+          LIMIT ?`,
+    args: [limit],
+  });
+  return rows.map(r => ({
+    creator:               r.creator as string,
+    predictions_total:     r.predictions_total as number,
+    predictions_resolved:  r.predictions_resolved as number,
+    predictions_correct:   r.predictions_correct as number,
+    predictions_incorrect: r.predictions_incorrect as number,
+    predictions_mixed:     r.predictions_mixed as number,
+    accuracy_score:        r.accuracy_score as number,
+    leaderboard_score:     (r.accuracy_score as number) * Math.log((r.predictions_resolved as number) + 1),
+    updated_at:            r.updated_at as string,
+  }));
+}
+
+export async function getDomainAccuracyLeaderboard(limit = 20): Promise<DomainAccuracyTableRow[]> {
+  const c = await db();
+  const { rows } = await c.execute({
+    sql: `SELECT * FROM domain_accuracy
+          WHERE predictions_resolved >= 2
+          ORDER BY accuracy_score DESC, predictions_resolved DESC
+          LIMIT ?`,
+    args: [limit],
+  });
+  return rows.map(r => ({
+    domain:               r.domain as string,
+    predictions_total:    r.predictions_total as number,
+    predictions_resolved: r.predictions_resolved as number,
+    accuracy_score:       r.accuracy_score as number,
+    updated_at:           r.updated_at as string,
   }));
 }
 

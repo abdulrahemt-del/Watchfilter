@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import OpenAI from "openai";
 import { getDeepResearchEvidence, type DeepResearchRow } from "@/lib/db";
-import { searchReddit, extractRedditClaims, type RedditClaim } from "@/lib/redditSkill";
+import { searchHN, extractHNClaims, type HNClaim } from "@/lib/hnSkill";
 import { intelligenceWebSearch, type IntelligenceArticle } from "@/lib/webSearch";
 
 export const runtime = "nodejs";
@@ -16,8 +16,16 @@ const openai = new OpenAI();
 export type IntelligenceMemo = {
   query: string;
   generated_at: string;
+  directional: string;
   decision_summary: string;
+  reddit_gap: boolean;
   confidence_score: number;
+  confidence_breakdown: {
+    agreement: number;
+    sourceCoverage: number;
+    contradictionPenalty: number;
+    signalDensity: number;
+  };
   consensus: {
     agreement_score: number;
     shared_insights: string[];
@@ -32,6 +40,7 @@ export type IntelligenceMemo = {
     claim_a: string;
     claim_b: string;
     why_it_matters: string;
+    conflict_type: "direct" | "partial" | "contextual";
   }>;
   decision_recommendation: {
     stage_based_actions: {
@@ -50,18 +59,86 @@ export type IntelligenceMemo = {
     reddit:  number;
     web:     number;
   };
+  reddit_diagnostics: {
+    queries_generated: number;
+    posts_retrieved: number;
+    posts_after_dedupe: number;
+    posts_submitted: number;
+    comments_retrieved: number;
+    claims_extracted: number;
+  } | null;
+  source_quality_scores: {
+    youtube: { score: number; level: "High" | "Medium" | "Low"; excluded: boolean };
+    reddit:  { score: number; level: "High" | "Medium" | "Low"; excluded: boolean };
+    web:     { score: number; level: "High" | "Medium" | "Low"; excluded: boolean };
+  };
+  sources_used:          Array<"youtube" | "reddit" | "web">;
+  best_evidence_ranking: string[];
 };
 
-// ── Internal structured claim (synthesizer input) ─────────────────────────────
+// ── Internal types ────────────────────────────────────────────────────────────
 
-type StructuredClaim = {
-  type: string;
+type NormalizedClaim = {
+  id: string;
+  source: "youtube" | "reddit" | "web";
   claim: string;
-  evidence: string;
-  confidence: number;
+  type: "pain_point" | "success" | "failure" | "opinion" | "statistic" | "recommendation";
+  strength: number;
+  specificity: number;
+  recency: number;
+  engagement: number;
 };
 
-// ── Keyword extractor ─────────────────────────────────────────────────────────
+type ClaimCluster = {
+  theme: string;
+  claims: NormalizedClaim[];
+};
+
+type ConfidenceResult = {
+  confidence: number;
+  breakdown: {
+    agreement: number;
+    sourceCoverage: number;
+    contradictionPenalty: number;
+    signalDensity: number;
+  };
+};
+
+type ExtractorOutput = {
+  normalized_claims: Array<{
+    id: string;
+    source: string;
+    type: string;
+    claim: string;
+    evidence: string;
+    tags: string[];
+  }>;
+  insight_clusters: Array<{
+    theme: string;
+    claims: string[];
+    summary: string;
+  }>;
+  contradictions: Array<{
+    claim_a: string;
+    claim_b: string;
+    conflict_type: "direct" | "partial" | "contextual";
+    explanation: string;
+  }>;
+  source_map: {
+    youtube: { claims: number };
+    reddit:  { claims: number; signal_status: "strong" | "weak" | "missing" };
+    web:     { claims: number };
+  };
+  stage_interpretation: {
+    pre_product:  { observations: string[] };
+    early_stage:  { observations: string[] };
+    growth_stage: { observations: string[] };
+  };
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
 
 const STOP = new Set(["that","this","with","from","what","about","have","which","been","were","they","their","there","when","then","than","also","into","through","during","before","after","above","below","more","most","some","such","like","just","over","very","will","would","could","should","does","make","made","take","know","look","come","year","time","want","need","good","best","work","used","for","the","and","are","but","not","you","all","can","her","was","one","our","out","day","get","has","him","his","how","its","let","man","new","now","old","see","two","way","who","boy","did","put","say","she","too","use","why","your","have","that"]);
 
@@ -72,236 +149,766 @@ function extractKeywords(q: string): string[] {
   )].slice(0, 8);
 }
 
-// ── Evidence → structured claim converters ────────────────────────────────────
+// ── Source → NormalizedClaim converters ───────────────────────────────────────
 
-function ytToStructuredClaims(rows: DeepResearchRow[]): StructuredClaim[] {
-  return rows.slice(0, 40)
-    .map(r => ({
-      type: r.type ?? "opinion",
-      claim: String(r.insight ?? r.quote ?? "").slice(0, 220),
-      evidence: `Creator: ${r.channel_name}${r.video_title ? ` | "${String(r.video_title).slice(0, 80)}"` : ""} | "${String(r.quote ?? "").slice(0, 140)}"`,
-      confidence: r.signal_strength === "HIGH" ? 0.9 : r.signal_strength === "MEDIUM" ? 0.65 : 0.4,
-    }))
-    .filter(c => c.claim.length > 10);
+function ytToNormalizedClaims(rows: DeepResearchRow[]): NormalizedClaim[] {
+  return rows.slice(0, 40).map((r, i) => {
+    const base = r.signal_strength === "HIGH" ? 0.85 : r.signal_strength === "MEDIUM" ? 0.6 : 0.35;
+    const text = String(r.insight ?? r.quote ?? "").slice(0, 220);
+    return {
+      id: `yt-${i}`,
+      source: "youtube" as const,
+      claim: text,
+      type: (r.type as NormalizedClaim["type"]) ?? "opinion",
+      strength: base,
+      specificity: clamp(text.length / 200, 0, 1),
+      recency: 0.5,
+      engagement: base,
+    };
+  }).filter(c => c.claim.length > 10);
 }
 
-function redditToStructuredClaims(claims: RedditClaim[]): StructuredClaim[] {
-  return claims.map(c => ({
-    type: c.claim_type,
-    claim: c.text,
-    evidence: `r/${c.subreddit} | "${c.source_title.slice(0, 80)}" (upvotes: ${c.post_score})`,
-    confidence: Math.min(0.95, 0.35 + Math.log1p(Math.max(0, c.post_score)) / 10),
-  }));
+function hnToNormalizedClaims(claims: HNClaim[]): NormalizedClaim[] {
+  const maxScore = Math.max(...claims.map(c => c.post_score), 1);
+  return claims.map((c, i) => {
+    const age = c.created_at
+      ? clamp(1 - (Date.now() / 1000 - Number(c.created_at)) / (365 * 86400), 0, 1)
+      : 0.5;
+    const commentBoost = c.source_type === "comment" ? 1.5 : 1.0;
+    const supportBonus = Math.min(((c.support_count ?? 1) - 1) * 0.1, 0.3);
+    return {
+      id: `rd-${i}`,
+      source: "reddit" as const,
+      claim: c.text,
+      type: (c.claim_type as NormalizedClaim["type"]) ?? "opinion",
+      strength: clamp(0.35 + Math.log1p(Math.max(0, c.post_score)) / 10, 0, 0.95),
+      specificity: clamp(c.text.length / 300 + supportBonus, 0, 1),
+      recency: age,
+      engagement: clamp((c.post_score / maxScore) * commentBoost, 0, 1),
+    };
+  });
 }
 
-function webToStructuredClaims(articles: IntelligenceArticle[]): StructuredClaim[] {
-  return articles
-    .filter(a => a.content.length > 80)
-    .map(a => ({
-      type: "statistic",
+function webToNormalizedClaims(articles: IntelligenceArticle[]): NormalizedClaim[] {
+  return articles.filter(a => a.content.length > 80).map((a, i) => {
+    const age = a.published_date
+      ? clamp(1 - (Date.now() - new Date(a.published_date).getTime()) / (365 * 86400 * 1000), 0, 1)
+      : 0.5;
+    return {
+      id: `web-${i}`,
+      source: "web" as const,
       claim: a.content.slice(0, 220),
-      evidence: `${a.domain} | "${a.title}"${a.published_date ? ` | ${a.published_date.slice(0, 10)}` : ""}`,
-      confidence: Math.min(0.9, a.relevance_score ?? 0.65),
-    }));
+      type: "statistic" as const,
+      strength: clamp(a.relevance_score ?? 0.65, 0, 0.9),
+      specificity: clamp(a.content.length / 500, 0, 1),
+      recency: age,
+      engagement: a.relevance_score ?? 0.65,
+    };
+  });
 }
 
-// ── Synthesizer ───────────────────────────────────────────────────────────────
+// ── Evidence map (source metadata for extractor input) ────────────────────────
 
-async function synthesize(
-  query: string,
+function buildEvidenceMap(
   ytRows: DeepResearchRow[],
-  redditClaims: RedditClaim[],
+  hnClaims: HNClaim[],
   articles: IntelligenceArticle[],
-): Promise<IntelligenceMemo> {
-  const ytClaims     = ytToStructuredClaims(ytRows);
-  const redditInput  = redditToStructuredClaims(redditClaims);
-  const webInput     = webToStructuredClaims(articles);
+): Map<string, string> {
+  const m = new Map<string, string>();
+  ytRows.slice(0, 40).forEach((r, i) => {
+    m.set(`yt-${i}`, `Creator: ${r.channel_name ?? "unknown"}${r.video_title ? ` | "${String(r.video_title).slice(0, 80)}"` : ""}`);
+  });
+  hnClaims.forEach((c, i) => {
+    const quote = c.evidence ? ` | "${c.evidence.slice(0, 120)}"` : "";
+    const srcTag = c.source_type === "comment" ? " [comment]" : " [post]";
+    const supportTag = (c.support_count ?? 1) > 1 ? ` ×${c.support_count} corroborated` : "";
+    m.set(`rd-${i}`, `HN${srcTag}${supportTag} | "${c.source_title.slice(0, 80)}"${quote} (${c.post_score} pts)`);
+  });
+  articles.filter(a => a.content.length > 80).forEach((a, i) => {
+    m.set(`web-${i}`, `${a.domain} | "${a.title}"${a.published_date ? ` | ${a.published_date.slice(0, 10)}` : ""}`);
+  });
+  return m;
+}
 
-  const inputPayload = JSON.stringify({
-    query,
-    youtube: ytClaims,
-    reddit:  redditInput,
-    web:     webInput,
-  }, null, 0);
+// ── Source quality scoring ────────────────────────────────────────────────────
+
+type SourceQualityResult = {
+  score:    number;
+  level:    "High" | "Medium" | "Low";
+  excluded: boolean;
+};
+
+// Authority base: YouTube creators are most authoritative for startup/SaaS queries
+const BASE_AUTHORITY: Record<NormalizedClaim["source"], number> = {
+  youtube: 85,
+  reddit:  65,
+  web:     72,
+};
+
+function scoreSourceQuality(
+  claims: NormalizedClaim[],
+  source: NormalizedClaim["source"],
+  keywords: string[],
+): SourceQualityResult {
+  const sc = claims.filter(c => c.source === source);
+  if (sc.length < 2) return { score: 0, level: "Low", excluded: true };
+
+  const relevance = sc.filter(c =>
+    keywords.some(kw => c.claim.toLowerCase().includes(kw))
+  ).length / sc.length * 100;
+
+  const avgStrength = sc.reduce((s, c) => s + computeClaimStrength(c), 0) / sc.length;
+  const evidenceStrength = Math.min(100, avgStrength * 100);
+
+  const recency = Math.min(100, (sc.reduce((s, c) => s + c.recency, 0) / sc.length) * 100);
+
+  const authority = Math.min(100, BASE_AUTHORITY[source] + Math.min(15, sc.length * 1.5));
+
+  const typeVariety = new Set(sc.map(c => c.type)).size;
+  const uniqueness = Math.min(100, (typeVariety / 6) * 80 + 20);
+
+  const composite =
+    relevance        * 0.35 +
+    evidenceStrength * 0.25 +
+    authority        * 0.20 +
+    uniqueness       * 0.10 +
+    recency          * 0.10;
+
+  const score = Math.round(composite);
+  const level: "High" | "Medium" | "Low" = score >= 70 ? "High" : score >= 50 ? "Medium" : "Low";
+  return { score, level, excluded: score < 60 };
+}
+
+// ── Scoring (user-defined formulas) ───────────────────────────────────────────
+
+function computeClaimStrength(c: NormalizedClaim): number {
+  // Creator (youtube) outranks web which outranks community for startup/SaaS queries
+  const w = c.source === "youtube" ? 0.95 : c.source === "web" ? 0.80 : 0.70;
+  return w * 0.4 + c.specificity * 0.3 + c.engagement * 0.2 + c.recency * 0.1;
+}
+
+function computeClusterAgreement(cluster: ClaimCluster): number {
+  if (!cluster.claims.length) return 0;
+  const diversity = new Set(cluster.claims.map(c => c.source)).size / 3;
+  const avgStrength = cluster.claims.reduce((s, c) => s + computeClaimStrength(c), 0) / cluster.claims.length;
+  return Math.min(1, avgStrength * diversity);
+}
+
+function computeSourceCoverage(clusters: ClaimCluster[], gatedSources: Set<string>): number {
+  if (!gatedSources.size) return 0;
+  const used = new Set<string>();
+  clusters.forEach(c => c.claims.forEach(cl => {
+    if (gatedSources.has(cl.source)) used.add(cl.source);
+  }));
+  return used.size / gatedSources.size;
+}
+
+const OPPOSING: Array<[NormalizedClaim["type"], NormalizedClaim["type"]]> = [
+  ["success", "failure"], ["success", "pain_point"],
+  ["recommendation", "failure"], ["recommendation", "pain_point"],
+];
+
+function dominantType(c: ClaimCluster): NormalizedClaim["type"] {
+  const m = new Map<string, number>();
+  c.claims.forEach(cl => m.set(cl.type, (m.get(cl.type) ?? 0) + 1));
+  let max = 0, dom: NormalizedClaim["type"] = "opinion";
+  m.forEach((n, t) => { if (n > max) { max = n; dom = t as NormalizedClaim["type"]; } });
+  return dom;
+}
+
+function areContradictory(a: ClaimCluster, b: ClaimCluster): boolean {
+  const [da, db] = [dominantType(a), dominantType(b)];
+  return OPPOSING.some(([x, y]) => (da === x && db === y) || (da === y && db === x));
+}
+
+function contradictionPenalty(clusters: ClaimCluster[]): number {
+  let p = 0;
+  for (let i = 0; i < clusters.length; i++)
+    for (let j = i + 1; j < clusters.length; j++)
+      if (areContradictory(clusters[i], clusters[j]))
+        p += Math.min(computeClusterAgreement(clusters[i]), computeClusterAgreement(clusters[j])) * 0.3;
+  return Math.min(0.5, p);
+}
+
+function computeFinalConfidence(
+  clusters:      ClaimCluster[],
+  qualityScores: Record<string, SourceQualityResult>,
+): ConfidenceResult {
+  if (!clusters.length) return { confidence: 0, breakdown: { agreement: 0, sourceCoverage: 0, contradictionPenalty: 0, signalDensity: 0 } };
+
+  const agreements = clusters.map(computeClusterAgreement);
+  const agreement = agreements.reduce((a, b) => a + b, 0) / agreements.length;
+
+  const gated = new Set(
+    Object.entries(qualityScores).filter(([, q]) => !q.excluded).map(([k]) => k)
+  );
+  const sourceCoverage = computeSourceCoverage(clusters, gated);
+
+  const penalty = contradictionPenalty(clusters);
+  const totalClaims = clusters.reduce((s, c) => s + c.claims.length, 0);
+  const optimalCount = Math.min(5, Math.ceil(totalClaims / 6));
+  const signalDensity = Math.min(1, clusters.length / Math.max(1, optimalCount));
+
+  // Quality boost: avg quality of active sources, scaled to 0-0.1 bonus
+  const gatedArr = [...gated];
+  const qualityBonus = gatedArr.length
+    ? (gatedArr.reduce((s, k) => s + qualityScores[k].score, 0) / gatedArr.length / 100) * 0.10
+    : 0;
+
+  return {
+    confidence: clamp(agreement * 0.40 + sourceCoverage * 0.25 + signalDensity * 0.15 + qualityBonus - penalty * 0.10, 0, 1),
+    breakdown: { agreement, sourceCoverage, contradictionPenalty: penalty, signalDensity },
+  };
+}
+
+// ── Extractor LLM (claim normalization + clustering — no scoring) ─────────────
+
+const EXTRACTOR_PROMPT = `You are WatchFilter Intelligence Synthesizer.
+
+You convert multi-source research data into decision-grade intelligence for startup and AI growth strategy.
+
+You do NOT summarize.
+You do NOT estimate confidence.
+You do NOT generate scores.
+
+You ONLY extract structured claims, clusters, and contradictions.
+
+All scoring, confidence, and ranking is computed externally by a deterministic scoring engine.
+
+---
+
+# 🎯 CORE OBJECTIVE
+
+Given multi-source input, your job is to produce:
+
+1. Normalized claims
+2. Insight clusters
+3. Contradictions
+4. Source-aligned evidence structure
+5. Stage-based strategic interpretations (non-scored)
+
+You are building the "belief graph input layer", NOT the final decision.
+
+---
+
+# 📥 INPUT FORMAT
+
+You will receive:
+
+{
+  "query": string,
+  "youtube": [RawCreatorSignals],
+  "reddit": [RedditClaims],
+  "web": [WebClaims]
+}
+
+Each item contains:
+- id (preserve exactly in output)
+- claim text
+- evidence snippet
+- type (pain_point, success, failure, opinion, statistic, recommendation)
+
+---
+
+# ⚠️ CRITICAL RULES
+
+DO NOT OUTPUT:
+- confidence scores
+- agreement percentages
+- rankings
+- numeric evaluations
+- final recommendations with priority ordering
+
+These are computed externally.
+
+MUST: preserve the exact input id in normalized_claims.id and reference those ids in insight_clusters.claims.
+
+---
+
+# 🧠 REQUIRED OUTPUT FORMAT (STRICT JSON)
+
+Return ONLY valid JSON:
+
+{
+  "normalized_claims": [
+    {
+      "id": string,
+      "source": "youtube" | "reddit" | "web",
+      "type": string,
+      "claim": string,
+      "evidence": string,
+      "tags": [string]
+    }
+  ],
+
+  "insight_clusters": [
+    {
+      "theme": string,
+      "claims": [string],
+      "summary": string
+    }
+  ],
+
+  "contradictions": [
+    {
+      "claim_a": string,
+      "claim_b": string,
+      "conflict_type": "direct" | "partial" | "contextual",
+      "explanation": string
+    }
+  ],
+
+  "source_map": {
+    "youtube": { "claims": number },
+    "reddit": { "claims": number, "signal_status": "strong" | "weak" | "missing" },
+    "web": { "claims": number }
+  },
+
+  "stage_interpretation": {
+    "pre_product": {
+      "observations": [string]
+    },
+    "early_stage": {
+      "observations": [string]
+    },
+    "growth_stage": {
+      "observations": [string]
+    }
+  }
+}
+
+---
+
+# 🧩 CLAIM NORMALIZATION RULES
+
+Each claim must be:
+- atomic (one idea per claim)
+- non-duplicated
+- grounded in evidence
+- source-preserving
+- id-preserving (use the exact id from input, do not generate new IDs)
+
+DO NOT:
+- merge unrelated ideas
+- infer missing facts
+- generalize across sources
+
+---
+
+# 🔍 SOURCE HANDLING RULE
+
+Each source layer (Creator, Community, Web) contributes evidence of varying quality.
+
+If a source layer has no input:
+- Set its signal_status to "missing" in source_map
+- Do NOT manufacture claims from absent sources
+
+Weight claims by specificity and grounding — anecdotal claims need explicit evidence, statistics need attribution.
+
+---
+
+# ⚖️ CONTRADICTION RULES
+
+ONLY extract contradictions when:
+- Two or more claims from HIGH-quality inputs directly oppose each other
+- The disagreement would materially change the decision
+
+DO NOT extract contradictions for:
+- Wording differences
+- Framing differences ("hard" vs "very hard")
+- Context differences (different company stages)
+- Weak-source disagreements
+
+If sources largely agree: return an empty contradictions array.
+
+Classify:
+- direct → explicit contradiction
+- partial → same theme, meaningfully different conditions
+- contextual → differs by stage, scale, or audience
+
+DO NOT resolve contradictions. DO NOT choose sides.
+
+---
+
+# 🧠 TAGGING RULES
+
+Each claim may include tags like:
+- acquisition, referral, cold_outreach, ai_tools, branding, pricing, conversion, retention
+
+Tags must be minimal, consistent, and reusable across sources.
+
+---
+
+# 📊 SOURCE MAP RULE
+
+Count claims per source. Set Reddit signal_status (strong/weak/missing).
+DO NOT interpret or weight sources.
+
+---
+
+# 📈 STAGE INTERPRETATION RULE
+
+Infer stage-based implications as observations only:
+- pre_product (0–10 users)
+- early_stage (10–100 users)
+- growth_stage (100+ users)
+
+DO NOT prioritize actions, rank strategies, or suggest "best" option.
+
+---
+
+# 🚫 FORBIDDEN BEHAVIOR
+
+NEVER:
+- compute confidence
+- compute agreement
+- assign scores
+- rank strategies
+- generate priority actions
+- output "best strategy"
+- provide executive recommendations
+
+---
+
+# 🎯 FINAL GOAL
+
+Your output must be: structured, source-faithful, contradiction-aware, clustering-ready, scoring-neutral.
+
+You are building the INPUT GRAPH for a deterministic intelligence system. Not the conclusion.`;
+
+const EXTRACTOR_EMPTY: ExtractorOutput = {
+  normalized_claims: [],
+  insight_clusters: [],
+  contradictions: [],
+  source_map: { youtube: { claims: 0 }, reddit: { claims: 0, signal_status: "missing" }, web: { claims: 0 } },
+  stage_interpretation: { pre_product: { observations: [] }, early_stage: { observations: [] }, growth_stage: { observations: [] } },
+};
+
+async function runExtractor(
+  query: string,
+  claims: NormalizedClaim[],
+  evidenceMap: Map<string, string>,
+): Promise<ExtractorOutput> {
+  const toInput = (c: NormalizedClaim) => ({
+    id: c.id,
+    type: c.type,
+    claim: c.claim,
+    evidence: evidenceMap.get(c.id) ?? "",
+  });
 
   const res = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    temperature: 0.2,
+    temperature: 0.1,
     max_tokens: 5000,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: EXTRACTOR_PROMPT },
+      {
+        role: "user",
+        content: JSON.stringify({
+          query,
+          youtube: claims.filter(c => c.source === "youtube").map(toInput),
+          reddit:  claims.filter(c => c.source === "reddit").map(toInput),
+          web:     claims.filter(c => c.source === "web").map(toInput),
+        }),
+      },
+    ],
+  });
+
+  try {
+    return { ...EXTRACTOR_EMPTY, ...JSON.parse(res.choices[0]?.message?.content ?? "{}") as Partial<ExtractorOutput> };
+  } catch { return EXTRACTOR_EMPTY; }
+}
+
+// ── Build ClaimClusters from extractor output ─────────────────────────────────
+
+function buildClusters(extractor: ExtractorOutput, claimIndex: Map<string, NormalizedClaim>): ClaimCluster[] {
+  return extractor.insight_clusters
+    .map(ec => ({
+      theme: ec.theme,
+      claims: ec.claims.map(id => claimIndex.get(id)).filter((c): c is NormalizedClaim => c != null),
+    }))
+    .filter(c => c.claims.length >= 2);
+}
+
+// ── Decision LLM (v4 — source-split input, directional label, Reddit gap) ─────
+
+async function generateDecision(
+  query: string,
+  clusters: ClaimCluster[],
+  stageInterpretation: ExtractorOutput["stage_interpretation"],
+): Promise<{ directional: string; decision_summary: string; priority_actions: string[] }> {
+  const allFlat = clusters.flatMap(c => c.claims);
+  const topBySource = (src: NormalizedClaim["source"]) =>
+    allFlat
+      .filter(c => c.source === src)
+      .sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a))
+      .slice(0, 8)
+      .map(c => ({ claim: c.claim, type: c.type }));
+
+  const input = {
+    question: query,
+    creator_signals:   topBySource("youtube"),
+    community_signals: topBySource("reddit"),
+    web_signals:       topBySource("web"),
+    precomputed: { agreement_score: null, confidence: null },
+    stage_observations: stageInterpretation,
+  };
+
+  const res = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.3,
+    max_tokens: 1000,
     response_format: { type: "json_object" },
     messages: [
       {
         role: "system",
-        content: `You are WatchFilter Intelligence Synthesizer.
+        content: `You are the Decision Intelligence Synthesizer for WatchFilter.
 
-You transform multi-source research data into structured decision intelligence for startups and builders.
+Transform clustered evidence (Creator, Community, Web) into a structured decision intelligence report.
+You do NOT browse, search, or invent facts. Work only from provided signals.
 
-You will receive structured inputs from up to 3 sources:
-1. YouTube creators (behavioral + opinion signals)
-2. Reddit (real user + founder experiences)
-3. Web articles (general industry + statistical claims)
+# HARD RULES
 
-Your job is NOT to summarize. Your job is to generate decision-grade intelligence.
+1. Never output confidence scores, agreement percentages, rankings, or numeric probabilities — computed externally.
 
----
+2. Source agnosticism: do NOT name specific platforms (YouTube, Reddit, HN, Twitter) in your output. Refer only to signal content, not signal origin.
 
-## CORE OBJECTIVE
+3. Consensus first: lead with what high-quality sources agree on. Only surface disagreements if they materially change the decision — do not manufacture conflict from framing differences.
 
-Given a query, produce a structured IntelligenceMemo that answers:
-→ What is true?
-→ What is disputed?
-→ What should the user do next?
+4. Source fidelity: every insight must trace to at least one provided signal. No hallucinated synthesis.
 
-You must prioritize:
-- real-world experience (Reddit) — strongest for real-world constraints
-- then creator insights (YouTube) — strongest for heuristics and tactics
-- then web consensus — strongest for statistics
+5. Priority actions: max 3. Each must be grounded in a specific provided signal. No generic advice.
 
----
+6. Directional must be EXACTLY one of:
+   "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)"
 
-## RULES
+# STYLE
+- Precise, not conversational
+- Preserve genuine uncertainty — do NOT smooth ambiguity
+- Only name contradictions that materially change the decision
+- Avoid motivational language and "best practice" framing
 
-### 1. No generic advice
-Do NOT output vague statements like:
-- "use AI tools" / "focus on marketing" / "analyze customers"
+# OUTPUT
 
-All outputs must be specific, actionable, and behavior-driven.
-
-BAD: "Use referrals to grow"
-GOOD: "Implement post-purchase referral email with 10–20% incentive and track CAC reduction per cohort"
-
-### 2. Contradictions are REQUIRED
-If sources disagree, explicitly list both sides and explain why the disagreement matters.
-Never hide conflicts. Never manufacture fake tension.
-
-### 3. Confidence scoring rules
-confidence_score must reflect:
-- agreement across sources (higher agreement → higher score)
-- strength of individual evidence items
-- diversity of sources (single-source → cap at 55)
-Do NOT output arbitrary numbers.
-
-### 4. Stage-aware reasoning
-Always segment decision_recommendation into:
-- pre_product (0–10 customers)
-- early_stage (10–100 customers)
-- growth_stage (100+ customers)
-
-### 5. Insight clustering
-Group insights into meaningful themes: acquisition channels, pricing, conversion, retention, positioning.
-Do not mix unrelated ideas in one cluster.
-
-### 6. No hallucination
-Only use evidence explicitly provided in input data.
-If missing data → state uncertainty in shared_insights / disagreements fields.
-Do not invent evidence.
-
----
-
-## REQUIRED OUTPUT FORMAT (STRICT JSON)
-
-Return ONLY valid JSON matching this exact structure:
-
+Return ONLY valid JSON:
 {
-  "decision_summary": "2-3 sentences. Answer the query directly. What is true, what is disputed, what matters most for decision-making.",
-  "confidence_score": 0-100,
-
-  "consensus": {
-    "agreement_score": 0-100,
-    "shared_insights": ["specific finding all/most sources agree on", "..."],
-    "disagreements": ["specific claim source A makes that source B disputes", "..."]
-  },
-
-  "source_breakdown": {
-    "youtube": { "count": 0, "key_signals": ["signal 1", "signal 2", "signal 3"] },
-    "reddit":  { "count": 0, "key_signals": ["signal 1", "signal 2", "signal 3"] },
-    "web":     { "count": 0, "key_signals": ["signal 1", "signal 2", "signal 3"] }
-  },
-
-  "contradictions": [
-    {
-      "claim_a": "specific claim from one source",
-      "claim_b": "specific opposing claim from another source",
-      "why_it_matters": "Why this disagreement matters for the decision at hand."
-    }
-  ],
-
-  "decision_recommendation": {
-    "stage_based_actions": {
-      "pre_product":  ["specific action 1", "specific action 2"],
-      "early_stage":  ["specific action 1", "specific action 2"],
-      "growth_stage": ["specific action 1", "specific action 2"]
-    },
-    "priority_actions": ["#1 highest-leverage action", "#2", "#3"]
-  },
-
-  "insight_clusters": [
-    {
-      "theme": "Acquisition Channels",
-      "insights": ["specific insight 1", "specific insight 2"]
-    }
-  ]
-}
-
-Limits: key_signals max 4 per source, shared_insights max 4, disagreements max 3, contradictions max 3, insight_clusters max 5 with max 4 insights each, stage actions max 3 each, priority_actions max 5.`,
+  "directional": "one of the five allowed labels",
+  "decision_summary": "2–3 sentences: what evidence shows, what is genuinely disputed, what matters most for this decision.",
+  "priority_actions": ["action grounded in signal 1", "action grounded in signal 2"]
+}`,
       },
-      { role: "user", content: inputPayload },
+      { role: "user", content: JSON.stringify(input) },
     ],
   });
 
-  type RawMemo = Omit<IntelligenceMemo, "query" | "generated_at" | "evidence_count">;
-  let raw: Partial<RawMemo> = {};
-  try {
-    raw = JSON.parse(res.choices[0]?.message?.content ?? "{}") as Partial<RawMemo>;
-  } catch { /* fall through to defaults */ }
+  const VALID_DIRECTIONALS = new Set([
+    "Strong YES (conditional)", "Lean YES", "Neutral / Tradeoff", "Lean NO", "Strong NO (conditional)",
+  ]);
 
-  const sb = raw.source_breakdown;
-  const dr = raw.decision_recommendation;
+  try {
+    const p = JSON.parse(res.choices[0]?.message?.content ?? "{}") as {
+      directional?: string; decision_summary?: string; priority_actions?: string[];
+    };
+    return {
+      directional:      VALID_DIRECTIONALS.has(p.directional ?? "") ? p.directional! : "Neutral / Tradeoff",
+      decision_summary: p.decision_summary ?? "Insufficient evidence to synthesize a decision.",
+      priority_actions: Array.isArray(p.priority_actions) ? p.priority_actions.slice(0, 3) : [],
+    };
+  } catch {
+    return {
+      directional:      "Neutral / Tradeoff",
+      decision_summary: "Insufficient evidence to synthesize a decision.",
+      priority_actions: [],
+    };
+  }
+}
+
+// ── Best evidence ranking ─────────────────────────────────────────────────────
+
+const SOURCE_FRIENDLY: Record<string, string> = {
+  youtube: "Creator Intelligence",
+  reddit:  "Community Intelligence",
+  web:     "Web Intelligence",
+};
+
+function buildBestEvidenceRanking(
+  allClaims:     NormalizedClaim[],
+  qualityScores: Record<string, SourceQualityResult>,
+  sourcesUsed:   string[],
+): string[] {
+  return sourcesUsed
+    .sort((a, b) => qualityScores[b].score - qualityScores[a].score)
+    .slice(0, 4)
+    .map(src => {
+      const count = allClaims.filter(c => c.source === src).length;
+      const q = qualityScores[src];
+      return `${SOURCE_FRIENDLY[src] ?? src} — ${count} signals, ${q.level} quality`;
+    });
+}
+
+// ── Memo assembly (pure, no LLM) ──────────────────────────────────────────────
+
+function assembleMemo(
+  query: string,
+  allClaims: NormalizedClaim[],
+  clusters: ClaimCluster[],
+  extractor: ExtractorOutput,
+  confidenceResult: ConfidenceResult,
+  decision: { directional: string; decision_summary: string; priority_actions: string[] },
+  rawCounts: { youtube: number; reddit: number; web: number },
+  redditDiag: IntelligenceMemo["reddit_diagnostics"],
+  qualityScores: Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+): IntelligenceMemo {
+  const bySource = (src: NormalizedClaim["source"]) =>
+    allClaims.filter(c => c.source === src).sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a));
+
+  const sharedInsights = clusters
+    .filter(c => new Set(c.claims.map(cl => cl.source)).size >= 2)
+    .flatMap(c => c.claims.sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a)).slice(0, 1).map(cl => cl.claim))
+    .slice(0, 4);
+
+  const agreementScore = confidenceResult.breakdown.agreement;
+  const sourcesUsed = (["youtube", "reddit", "web"] as const).filter(s => !qualityScores[s].excluded);
+
+  // Suppress contradictions when sources largely agree — avoids manufactured disagreements
+  const filteredContradictions = agreementScore > 0.70
+    ? []
+    : extractor.contradictions.slice(0, 3).map(c => ({
+        claim_a: c.claim_a,
+        claim_b: c.claim_b,
+        why_it_matters: c.explanation,
+        conflict_type: c.conflict_type ?? "direct" as const,
+      }));
 
   return {
     query,
     generated_at: new Date().toISOString(),
-    decision_summary: raw.decision_summary ?? "Insufficient evidence to synthesize an answer.",
-    confidence_score: Math.max(0, Math.min(100, raw.confidence_score ?? 50)),
+    directional: decision.directional,
+    decision_summary: decision.decision_summary,
+    reddit_gap: qualityScores.reddit.excluded,
+    confidence_score: Math.round(confidenceResult.confidence * 100),
+    confidence_breakdown: {
+      agreement:            Math.round(agreementScore * 100),
+      sourceCoverage:       Math.round(confidenceResult.breakdown.sourceCoverage * 100),
+      contradictionPenalty: Math.round(confidenceResult.breakdown.contradictionPenalty * 100),
+      signalDensity:        Math.round(confidenceResult.breakdown.signalDensity * 100),
+    },
     consensus: {
-      agreement_score: Math.max(0, Math.min(100, raw.consensus?.agreement_score ?? 50)),
-      shared_insights: raw.consensus?.shared_insights ?? [],
-      disagreements: raw.consensus?.disagreements ?? [],
+      agreement_score: Math.round(agreementScore * 100),
+      shared_insights: sharedInsights,
+      disagreements: agreementScore > 0.70 ? [] : extractor.contradictions.slice(0, 3).map(c => c.explanation),
     },
     source_breakdown: {
-      youtube: { count: ytRows.length,     key_signals: sb?.youtube?.key_signals ?? [] },
-      reddit:  { count: redditClaims.length, key_signals: sb?.reddit?.key_signals ?? [] },
-      web:     { count: articles.length,   key_signals: sb?.web?.key_signals ?? [] },
+      youtube: { count: rawCounts.youtube, key_signals: bySource("youtube").slice(0, 4).map(c => c.claim) },
+      reddit:  { count: rawCounts.reddit,  key_signals: bySource("reddit").slice(0, 4).map(c => c.claim) },
+      web:     { count: rawCounts.web,     key_signals: bySource("web").slice(0, 4).map(c => c.claim) },
     },
-    contradictions: (raw.contradictions ?? []).map(c => ({
-      claim_a: c.claim_a ?? "",
-      claim_b: c.claim_b ?? "",
-      why_it_matters: c.why_it_matters ?? "",
-    })),
+    contradictions: filteredContradictions,
     decision_recommendation: {
       stage_based_actions: {
-        pre_product:  dr?.stage_based_actions?.pre_product ?? [],
-        early_stage:  dr?.stage_based_actions?.early_stage ?? [],
-        growth_stage: dr?.stage_based_actions?.growth_stage ?? [],
+        pre_product:  extractor.stage_interpretation.pre_product?.observations?.slice(0, 3) ?? [],
+        early_stage:  extractor.stage_interpretation.early_stage?.observations?.slice(0, 3) ?? [],
+        growth_stage: extractor.stage_interpretation.growth_stage?.observations?.slice(0, 3) ?? [],
       },
-      priority_actions: dr?.priority_actions ?? [],
+      priority_actions: decision.priority_actions,
     },
-    insight_clusters: (raw.insight_clusters ?? []).map(c => ({
-      theme: c.theme ?? "",
-      insights: c.insights ?? [],
+    insight_clusters: clusters.slice(0, 5).map(c => ({
+      theme: c.theme,
+      insights: c.claims
+        .sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a))
+        .slice(0, 4)
+        .map(cl => cl.claim),
     })),
-    evidence_count: {
-      youtube: ytRows.length,
-      reddit:  redditClaims.length,
-      web:     articles.length,
-    },
+    evidence_count: rawCounts,
+    reddit_diagnostics: redditDiag,
+    source_quality_scores: qualityScores,
+    sources_used: sourcesUsed,
+    best_evidence_ranking: buildBestEvidenceRanking(allClaims, qualityScores, sourcesUsed),
   };
+}
+
+// ── Domain synonym map (improves Reddit expansion coverage) ──────────────────
+
+const DOMAIN_SYNONYMS: Record<string, string[]> = {
+  "seo":              ["content marketing", "blogging", "organic traffic", "inbound marketing", "search traffic", "programmatic SEO"],
+  "content marketing":["blogging", "SEO", "organic traffic", "inbound leads"],
+  "ai":               ["LLMs", "agents", "automation", "machine learning", "GPT"],
+  "pricing":          ["monetization", "subscriptions", "revenue model", "freemium", "billing"],
+  "growth":           ["acquisition", "traction", "user growth", "customer acquisition", "distribution"],
+  "acquisition":      ["growth", "traction", "customers", "signups", "leads"],
+  "saas":             ["B2B software", "subscription software", "SaaS startup"],
+  "outbound":         ["cold email", "cold outreach", "sales", "prospecting"],
+  "inbound":          ["content marketing", "SEO", "organic", "referrals"],
+  "retention":        ["churn", "engagement", "activation", "onboarding"],
+  "funding":          ["venture capital", "investors", "seed round", "fundraising"],
+};
+
+function detectDomainSynonyms(query: string): string[] {
+  const lower = query.toLowerCase();
+  const synonyms: string[] = [];
+  for (const [keyword, terms] of Object.entries(DOMAIN_SYNONYMS)) {
+    if (lower.includes(keyword)) synonyms.push(...terms);
+  }
+  return [...new Set(synonyms)];
+}
+
+// ── Reddit Query Expansion Engine v1 ──────────────────────────────────────────
+
+const HN_EXPANSION_PROMPT = `You are a Hacker News retrieval optimization engine for WatchFilter.
+
+Transform the user question into high-signal Hacker News search queries that maximize retrieval of founder experiences, startup lessons, and operator insights.
+
+Hacker News users are technical founders, operators, and engineers. Generate queries that match how they write Ask HN threads and comments.
+
+Rules:
+1. Generate 10–15 queries.
+2. Rewrite into founder language: "first customers", "first users", "traction", "paying customers", "growth", "customer acquisition"
+3. Include synonyms: customers ↔ users ↔ clients ↔ signups, acquisition ↔ growth ↔ traction
+4. Prefer question-style and experiential framing: "how did you", "what worked", "lessons from", "experience with"
+5. Include tactical terms: cold email, outbound, content marketing, SEO, founder-led sales, referrals, communities
+6. Avoid generic queries. BAD: "startup customers". GOOD: "how did you get your first paying customers"
+7. Optimize for: Ask HN threads, YC founder discussions, technical founder experiences, Show HN posts
+
+Return ONLY valid JSON:
+{ "queries": [{ "query": "...", "intent": "customer_acquisition", "priority": "high" | "medium" }] }`;
+
+async function expandHNQueries(query: string): Promise<string[]> {
+  try {
+    const res = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.4,
+      max_tokens: 800,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: HN_EXPANSION_PROMPT },
+        {
+          role: "user",
+          content: (() => {
+            const hints = detectDomainSynonyms(query);
+            return hints.length > 0
+              ? `Question:\n${query}\n\nDomain synonyms to include in queries: ${hints.join(", ")}`
+              : `Question:\n${query}`;
+          })(),
+        },
+      ],
+    });
+
+    type ExpandedQuery = { query?: string; priority?: string };
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as { queries?: ExpandedQuery[] };
+    const queries = Array.isArray(parsed.queries) ? parsed.queries : [];
+    const high   = queries.filter(q => q.priority === "high"   && q.query).slice(0, 3).map(q => q.query!);
+    const medium = queries.filter(q => q.priority !== "high"   && q.query).slice(0, 1).map(q => q.query!);
+    return [...high, ...medium];
+  } catch {
+    return [];
+  }
 }
 
 // ── SSE helpers ───────────────────────────────────────────────────────────────
 
 type SSEPayload =
-  | { type: "stage"; source?: string; agent?: string; message: string; count?: number }
+  | { type: "stage"; source?: string; agent?: string; message: string; count?: number; diagnostics?: Record<string, number> }
   | { type: "complete"; memo: IntelligenceMemo }
   | { type: "error"; message: string };
 
@@ -309,7 +916,7 @@ function makeStream() {
   let ctrl: ReadableStreamDefaultController<Uint8Array>;
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({ start(c) { ctrl = c; } });
-  const emit = (payload: SSEPayload) => ctrl.enqueue(enc.encode(`data: ${JSON.stringify(payload)}\n\n`));
+  const emit = (p: SSEPayload) => ctrl.enqueue(enc.encode(`data: ${JSON.stringify(p)}\n\n`));
   const close = () => ctrl.close();
   return { stream, emit, close };
 }
@@ -334,24 +941,67 @@ export async function POST(req: NextRequest) {
     try {
       const keywords = extractKeywords(query);
 
-      // Stage 1: YouTube library
+      // Stage 1: YouTube
       emit({ type: "stage", source: "youtube", message: "Searching creator library…" });
       const ytRows = await getDeepResearchEvidence(keywords, 50);
       emit({ type: "stage", source: "youtube", message: `Found ${ytRows.length} creator evidence points`, count: ytRows.length });
 
-      // Stage 2: Reddit
-      emit({ type: "stage", source: "reddit", message: "Searching Reddit discussions…" });
-      let redditClaims: RedditClaim[] = [];
+      // Stage 2: HN (query expansion + retrieval)
+      emit({ type: "stage", source: "reddit", message: "Expanding query for HN retrieval…" });
+      let hnClaims: HNClaim[] = [];
+      let redditDiag: IntelligenceMemo["reddit_diagnostics"] = null;
       try {
-        const posts = await searchReddit(query, { limit: 20, fetchComments: true, commentLimit: 6 });
-        emit({ type: "stage", source: "reddit", message: `Found ${posts.length} Reddit posts — extracting claims…` });
-        redditClaims = await extractRedditClaims(posts, query, openai);
-        emit({ type: "stage", source: "reddit", message: `Extracted ${redditClaims.length} Reddit claims`, count: redditClaims.length });
+        const expandedQueries = await expandHNQueries(query);
+        const queriesToRun = [query, ...expandedQueries].slice(0, 4);
+        console.log("[HN] expanded queries:", JSON.stringify({ original: query, expanded: expandedQueries }));
+        emit({ type: "stage", source: "reddit", message: `Running ${queriesToRun.length} HN queries…` });
+
+        const postSets = await Promise.allSettled(
+          queriesToRun.map(q => searchHN(q, { limit: 10, fetchComments: true, commentLimit: 8, commentedPostsLimit: 5 }))
+        );
+
+        postSets.forEach((r, i) => {
+          if (r.status === "fulfilled") {
+            const posts = r.value;
+            const totalComments = posts.reduce((s, p) => s + p.top_comments.length, 0);
+            console.log(`[HN] query[${i}] "${queriesToRun[i]}": ${posts.length} posts | ${totalComments} comments`);
+          } else {
+            console.warn(`[HN] query[${i}] "${queriesToRun[i]}" FAILED:`, r.reason);
+          }
+        });
+
+        const postsRetrieved = postSets.flatMap(r => r.status === "fulfilled" ? r.value : []);
+        const seen = new Set<string>();
+        const dedupedPosts = postsRetrieved
+          .filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true; })
+          .sort((a, b) => b.score - a.score);
+        const submittedPosts = dedupedPosts.slice(0, 20);
+        const commentsRetrieved = submittedPosts.reduce((s, p) => s + p.top_comments.length, 0);
+        console.log(`[HN] dedup: ${postsRetrieved.length} → ${dedupedPosts.length} | submitting: ${submittedPosts.length} | comments: ${commentsRetrieved}`);
+
+        emit({ type: "stage", source: "reddit", message: `Found ${submittedPosts.length} HN threads (${commentsRetrieved} comments) — extracting claims…` });
+        hnClaims = await extractHNClaims(submittedPosts, query, openai);
+        console.log(`[HN] claims extracted: ${hnClaims.length}`);
+
+        redditDiag = {
+          queries_generated: queriesToRun.length,
+          posts_retrieved: postsRetrieved.length,
+          posts_after_dedupe: dedupedPosts.length,
+          posts_submitted: submittedPosts.length,
+          comments_retrieved: commentsRetrieved,
+          claims_extracted: hnClaims.length,
+        };
+        emit({
+          type: "stage", source: "reddit",
+          message: `Extracted ${hnClaims.length} HN claims (${submittedPosts.length} threads, ${commentsRetrieved} comments)`,
+          count: hnClaims.length,
+          diagnostics: redditDiag,
+        });
       } catch (err) {
-        emit({ type: "stage", source: "reddit", message: `Reddit unavailable: ${err instanceof Error ? err.message : "error"}` });
+        emit({ type: "stage", source: "reddit", message: `HN unavailable: ${err instanceof Error ? err.message : "error"}` });
       }
 
-      // Stage 3: Web (Tavily)
+      // Stage 3: Web
       emit({ type: "stage", source: "web", message: "Searching web articles…" });
       let articles: IntelligenceArticle[] = [];
       try {
@@ -361,16 +1011,62 @@ export async function POST(req: NextRequest) {
         emit({ type: "stage", source: "web", message: `Web search unavailable: ${err instanceof Error ? err.message : "error"}` });
       }
 
-      const totalEvidence = ytRows.length + redditClaims.length + articles.length;
-      if (totalEvidence === 0) {
+      // Normalize + strength filter
+      const allClaims = [
+        ...ytToNormalizedClaims(ytRows),
+        ...hnToNormalizedClaims(hnClaims),
+        ...webToNormalizedClaims(articles),
+      ].filter(c => computeClaimStrength(c) >= 0.3);
+
+      if (!allClaims.length) {
         emit({ type: "error", message: "No evidence found. Try a more specific query or analyze relevant videos first." });
         close();
         return;
       }
 
-      // Stage 4: Synthesis
-      emit({ type: "stage", agent: "Synthesizer", message: `Synthesizing ${totalEvidence} evidence points into decision intelligence…` });
-      const memo = await synthesize(query, ytRows, redditClaims, articles);
+      // Stage 4: Source quality scoring + gating
+      const qualityScores = {
+        youtube: scoreSourceQuality(allClaims, "youtube", keywords),
+        reddit:  scoreSourceQuality(allClaims, "reddit",  keywords),
+        web:     scoreSourceQuality(allClaims, "web",     keywords),
+      };
+      const gatedClaims = allClaims.filter(c => !qualityScores[c.source].excluded);
+      const gatedSourceNames = (["youtube", "reddit", "web"] as const)
+        .filter(s => !qualityScores[s].excluded)
+        .map(s => SOURCE_FRIENDLY[s]);
+      console.log(
+        `[Quality] YT=${qualityScores.youtube.score}(${qualityScores.youtube.excluded ? "❌" : "✓"})`,
+        `HN=${qualityScores.reddit.score}(${qualityScores.reddit.excluded ? "❌" : "✓"})`,
+        `Web=${qualityScores.web.score}(${qualityScores.web.excluded ? "❌" : "✓"})`,
+        `→ ${gatedClaims.length} claims accepted`,
+      );
+      emit({ type: "stage", agent: "Quality Gate", message: `Sources accepted: ${gatedSourceNames.join(", ")} — ${gatedClaims.length} signals to synthesize` });
+
+      if (!gatedClaims.length) {
+        emit({ type: "error", message: "No high-quality evidence found for this query. Try a more specific question or analyze relevant creator content first." });
+        close();
+        return;
+      }
+
+      const evidenceMap = buildEvidenceMap(ytRows, hnClaims, articles);
+      const claimIndex = new Map(gatedClaims.map(c => [c.id, c]));
+
+      // Stage 5: Extract + cluster (only gated claims go to extractor)
+      emit({ type: "stage", agent: "Extractor", message: `Extracting and clustering ${gatedClaims.length} signals…` });
+      const extractor = await runExtractor(query, gatedClaims, evidenceMap);
+      const clusters = buildClusters(extractor, claimIndex);
+      emit({ type: "stage", agent: "Extractor", message: `Formed ${clusters.length} insight clusters` });
+
+      // Stage 6: Score (deterministic, quality-weighted)
+      const confidenceResult = computeFinalConfidence(clusters, qualityScores);
+
+      // Stage 7: Decision
+      emit({ type: "stage", agent: "Decision", message: "Generating decision intelligence…" });
+      const decision = await generateDecision(query, clusters, extractor.stage_interpretation);
+
+      const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
+      const memo = assembleMemo(query, allClaims, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores);
+
       emit({ type: "complete", memo });
 
     } catch (err) {
@@ -381,10 +1077,6 @@ export async function POST(req: NextRequest) {
   })();
 
   return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    },
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" },
   });
 }

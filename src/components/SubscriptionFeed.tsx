@@ -387,7 +387,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             if (cached.videos?.length) {
               setVideos(cached.videos);
               setCacheAge(new Date(cached.ts));
-              setError("YouTube quota exceeded — showing cached results from " + new Date(cached.ts).toLocaleString());
+              setError((e instanceof Error ? e.message : "API error") + " — showing cached results from " + new Date(cached.ts).toLocaleString());
               return;
             }
           }

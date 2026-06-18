@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { PredictionRow, PredictionAccuracyStat, AttributionContaminationReport } from "@/lib/db";
+import type { PredictionRow, PredictionAccuracyStat, DomainAccuracyStat } from "@/lib/db";
 
 // ── Accuracy meter ────────────────────────────────────────────────────────────
 
@@ -26,10 +26,10 @@ function AccuracyMeter({ score, evaluated }: { score: number; evaluated: number 
 
 function StatusBadge({ status }: { status: PredictionRow["status"] }) {
   const styles: Record<string, { bg: string; color: string; border: string; label: string }> = {
-    accurate:   { bg: "#dcfce7", color: "#166534", border: "#86efac", label: "✓ Accurate" },
-    inaccurate: { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5", label: "✗ Inaccurate" },
-    unknown:    { bg: "#fef3c7", color: "#854d0e", border: "#fde68a", label: "? Uncertain" },
-    pending:    { bg: "#f1f5f9", color: "#64748b", border: "#e2e8f0", label: "… Pending" },
+    accurate:   { bg: "#dcfce7", color: "#166534", border: "#86efac", label: "🟢 Correct" },
+    inaccurate: { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5", label: "🔴 Incorrect" },
+    unknown:    { bg: "#fef3c7", color: "#854d0e", border: "#fde68a", label: "🟡 Mixed" },
+    pending:    { bg: "#f1f5f9", color: "#64748b", border: "#e2e8f0", label: "⚪ Unresolved" },
     unlinked:   { bg: "#f3e8ff", color: "#6b21a8", border: "#d8b4fe", label: "⚡ Unlinked" },
   };
   const s = styles[status] ?? styles.pending;
@@ -40,81 +40,153 @@ function StatusBadge({ status }: { status: PredictionRow["status"] }) {
   );
 }
 
-// ── Speaker role badge ────────────────────────────────────────────────────────
+// ── Prediction type badge ─────────────────────────────────────────────────────
 
-function SpeakerRoleBadge({ role }: { role: PredictionRow["speaker_role"] }) {
-  const meta: Record<string, { bg: string; color: string; border: string }> = {
-    HOST:        { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-    GUEST:       { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
-    THIRD_PARTY: { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
-  };
-  const m = meta[role] ?? meta.HOST;
+const TYPE_COLORS: Record<string, string> = {
+  technology: "#6366f1", market: "#3b82f6", startup: "#10b981",
+  regulation: "#f59e0b", finance: "#ef4444", product: "#8b5cf6",
+  adoption: "#06b6d4", macro: "#64748b", consumer_behavior: "#f97316",
+};
+
+function TypeBadge({ type }: { type: string | null }) {
+  if (!type) return null;
+  const color = TYPE_COLORS[type] ?? "#64748b";
   return (
-    <span style={{ fontSize: "0.58rem", fontWeight: 800, padding: "1px 6px", borderRadius: 20, background: m.bg, border: `1px solid ${m.border}`, color: m.color }}>
-      {role.replace("_", " ")}
+    <span style={{ fontSize: "0.57rem", fontWeight: 800, padding: "1px 7px", borderRadius: 20, background: `${color}18`, color, border: `1px solid ${color}33` }}>
+      {type.replace("_", " ")}
     </span>
   );
 }
 
-// ── Attribution strength badge ────────────────────────────────────────────────
+// ── Forecast badge ────────────────────────────────────────────────────────────
 
-function AttributionBadge({ strength }: { strength: PredictionRow["attribution_strength"] }) {
-  const meta: Record<string, { color: string; label: string }> = {
-    EXPLICIT:    { color: "#10b981", label: "Explicit" },
-    IMPLIED:     { color: "#f59e0b", label: "Implied" },
-    PARAPHRASED: { color: "#ef4444", label: "Paraphrased" },
-  };
-  const m = meta[strength] ?? meta.IMPLIED;
+const DIRECTION_META: Record<string, { icon: string; color: string }> = {
+  increase:    { icon: "↑", color: "#10b981" },
+  adoption:    { icon: "↑", color: "#10b981" },
+  dominance:   { icon: "↑", color: "#6366f1" },
+  decrease:    { icon: "↓", color: "#ef4444" },
+  failure:     { icon: "↓", color: "#ef4444" },
+  replacement: { icon: "⇌", color: "#f59e0b" },
+  uncertain:   { icon: "~", color: "#94a3b8" },
+};
+
+function ForecastBadge({ forecast }: { forecast: PredictionRow["forecast"] }) {
+  if (!forecast) return null;
+  const meta = DIRECTION_META[forecast.direction] ?? DIRECTION_META.uncertain;
+  const prob = forecast.estimated_probability;
   return (
-    <span style={{ fontSize: "0.57rem", fontWeight: 700, color: m.color }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.2rem", fontSize: "0.6rem", fontWeight: 800, padding: "2px 7px", borderRadius: 20, background: `${meta.color}15`, color: meta.color, border: `1px solid ${meta.color}30` }}>
+      {meta.icon} {prob}%
+    </span>
+  );
+}
+
+// ── Calibration badge ─────────────────────────────────────────────────────────
+
+const CALIB_META = {
+  low:    { label: "Hedged",   color: "#94a3b8" },
+  medium: { label: "Moderate", color: "#f59e0b" },
+  high:   { label: "Certain",  color: "#ef4444" },
+};
+
+function CalibrationBadge({ style }: { style: PredictionRow["calibration_confidence_style"] }) {
+  if (!style) return null;
+  const m = CALIB_META[style];
+  return (
+    <span style={{ fontSize: "0.55rem", fontWeight: 700, color: m.color }}>{m.label}</span>
+  );
+}
+
+// ── Market consensus badge ────────────────────────────────────────────────────
+
+const CONSENSUS_META = {
+  supportive:  { label: "Mainstream", bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  contrarian:  { label: "Contrarian", bg: "#fef3c7", color: "#92400e", border: "#fde68a" },
+  neutral:     { label: "Neutral",    bg: "#f1f5f9", color: "#64748b", border: "#e2e8f0" },
+};
+
+function ConsensusBadge({ position }: { position: PredictionRow["market_consensus_position"] }) {
+  if (!position) return null;
+  const m = CONSENSUS_META[position];
+  return (
+    <span style={{ fontSize: "0.57rem", fontWeight: 800, padding: "1px 6px", borderRadius: 20, background: m.bg, border: `1px solid ${m.border}`, color: m.color }}>
       {m.label}
     </span>
   );
 }
 
-// ── Tier badge ────────────────────────────────────────────────────────────────
+// ── Score pill row (falsifiability / specificity / importance) ────────────────
 
-function TierBadge({ tier }: { tier: PredictionRow["outcome_tier"] }) {
-  if (!tier) return null;
-  const meta: Record<number, { bg: string; color: string; label: string }> = {
-    1: { bg: "#dcfce7", color: "#166534", label: "T1 · 1.0×" },
-    2: { bg: "#fef3c7", color: "#854d0e", label: "T2 · 0.6×" },
-    3: { bg: "#fee2e2", color: "#991b1b", label: "T3 · 0.3×" },
-    4: { bg: "#f3e8ff", color: "#6b21a8", label: "T4 · Excl." },
-  };
-  const m = meta[tier];
-  if (!m) return null;
+function ScorePills({ p }: { p: PredictionRow }) {
+  if (p.falsifiability_score == null && p.specificity_score == null && p.importance_score == null) return null;
+  const pills = [
+    { label: "Falsifiability", value: p.falsifiability_score, color: "#6366f1" },
+    { label: "Specificity",    value: p.specificity_score,    color: "#3b82f6" },
+    { label: "Importance",     value: p.importance_score,     color: "#f59e0b" },
+  ];
   return (
-    <span style={{ fontSize: "0.57rem", fontWeight: 800, padding: "1px 6px", borderRadius: 20, background: m.bg, color: m.color }}>
-      {m.label}
-    </span>
+    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+      {pills.map(({ label, value, color }) => {
+        if (value == null) return null;
+        const pct = Math.round(value * 100);
+        return (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <span style={{ fontSize: "0.56rem", color: "#94a3b8" }}>{label}</span>
+            <div style={{ width: 36, height: 3, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 2 }} />
+            </div>
+            <span style={{ fontSize: "0.58rem", fontWeight: 700, color }}>{pct}</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
-// ── Prediction row ────────────────────────────────────────────────────────────
+// ── Prediction card ───────────────────────────────────────────────────────────
 
-function PredictionItem({ p }: { p: PredictionRow }) {
+function PredictionItem({ p, domainAccuracy }: { p: PredictionRow; domainAccuracy: DomainAccuracyStat[] }) {
   const [expanded, setExpanded] = useState(false);
   const score = p.prediction_accuracy_score;
+  const domain = p.domain ?? p.topic;
+
+  const domainStat = domainAccuracy.find(d => d.domain === domain);
+  const supporting = domainStat?.supporting ?? null;
+  const opposing = domainStat?.opposing ?? null;
+  const weightedProbability = Math.round((p.confidence ?? 0.5) * 100);
+
+  const timeLabel = (() => {
+    if (!p.time_horizon) return null;
+    if (p.time_horizon.target_date) return `by ${p.time_horizon.target_date}`;
+    if (p.time_horizon.timeframe_text) return p.time_horizon.timeframe_text;
+    return null;
+  })();
 
   return (
     <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
       <button
         type="button"
         onClick={() => setExpanded(v => !v)}
-        style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "0.75rem 1rem", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}
+        style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "0.85rem 1rem", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.35rem", flexWrap: "wrap" }}>
+          {/* Top row: creator + badges */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.4rem", flexWrap: "wrap" }}>
             <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#0f172a" }}>{p.creator}</span>
-            {p.speaker_name && p.speaker_name !== p.creator && (
-              <span style={{ fontSize: "0.65rem", color: "#475569" }}>via {p.speaker_name}</span>
+            <TypeBadge type={p.prediction_type} />
+            {domain && (
+              <span style={{ fontSize: "0.58rem", padding: "1px 6px", borderRadius: 20, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#64748b" }}>
+                {domain}
+              </span>
             )}
-            <SpeakerRoleBadge role={p.speaker_role} />
-            <span style={{ fontSize: "0.6rem", padding: "1px 6px", borderRadius: 20, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#64748b" }}>{p.topic}</span>
+            <ForecastBadge forecast={p.forecast} />
+            <ConsensusBadge position={p.market_consensus_position} />
+            {timeLabel && (
+              <span style={{ fontSize: "0.57rem", fontWeight: 700, color: "#6366f1" }}>{timeLabel}</span>
+            )}
             <StatusBadge status={p.status} />
-            {!p.is_evaluable && (
-              <span style={{ fontSize: "0.57rem", fontWeight: 700, color: "#94a3b8" }}>chain incomplete</span>
+            {!p.trackable && (
+              <span style={{ fontSize: "0.55rem", color: "#94a3b8" }}>not trackable</span>
             )}
             {score !== null && (
               <span style={{ fontSize: "0.65rem", fontWeight: 800, color: score >= 70 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444", marginLeft: "auto" }}>
@@ -122,9 +194,29 @@ function PredictionItem({ p }: { p: PredictionRow }) {
               </span>
             )}
           </div>
-          <p style={{ margin: 0, fontSize: "0.78rem", color: "#374151", lineHeight: 1.45 }}>
-            "{p.prediction_text}"
+
+          {/* Prediction text */}
+          <p style={{ margin: "0 0 0.4rem", fontSize: "0.8rem", color: "#1e293b", lineHeight: 1.5, fontWeight: 500 }}>
+            "{p.normalized_statement ?? p.prediction_text}"
           </p>
+
+          {/* Consensus row */}
+          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+            {supporting !== null && (
+              <span style={{ fontSize: "0.62rem", color: "#10b981", fontWeight: 700 }}>
+                ▲ {supporting} supporting
+              </span>
+            )}
+            {opposing !== null && (
+              <span style={{ fontSize: "0.62rem", color: "#ef4444", fontWeight: 700 }}>
+                ▼ {opposing} opposing
+              </span>
+            )}
+            <span style={{ fontSize: "0.62rem", fontWeight: 800, color: weightedProbability >= 65 ? "#10b981" : weightedProbability >= 40 ? "#f59e0b" : "#ef4444" }}>
+              {weightedProbability}% probability
+            </span>
+            <CalibrationBadge style={p.calibration_confidence_style} />
+          </div>
         </div>
         <span style={{ color: "#94a3b8", fontSize: "0.75rem", flexShrink: 0, paddingTop: 2 }}>
           {expanded ? "▲" : "▼"}
@@ -132,179 +224,145 @@ function PredictionItem({ p }: { p: PredictionRow }) {
       </button>
 
       {expanded && (
-        <div style={{ borderTop: "1px solid #f1f5f9", padding: "0.75rem 1rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-          {/* Attribution chain */}
-          <div>
-            <p style={{ margin: "0 0 0.25rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6366f1" }}>Attribution Chain</p>
-            <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#374151" }}>
-                {p.speaker_name ?? p.creator}
-              </span>
-              <span style={{ color: "#94a3b8", fontSize: "0.7rem" }}>→</span>
-              <AttributionBadge strength={p.attribution_strength} />
-              {p.entity_name && (
-                <>
-                  <span style={{ color: "#94a3b8", fontSize: "0.7rem" }}>→</span>
-                  <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#0f172a" }}>
-                    {p.entity_name}
-                    {p.entity_type ? <span style={{ color: "#94a3b8", fontWeight: 400 }}> ({p.entity_type})</span> : null}
-                  </span>
-                </>
-              )}
-              {p.outcome_tier && (
-                <>
-                  <span style={{ color: "#94a3b8", fontSize: "0.7rem" }}>→</span>
-                  <TierBadge tier={p.outcome_tier} />
-                </>
-              )}
-            </div>
-          </div>
+        <div style={{ borderTop: "1px solid #f1f5f9", padding: "0.75rem 1rem", display: "flex", flexDirection: "column", gap: "0.65rem" }}>
 
-          {p.measurable_outcome && (
-            <div>
-              <p style={{ margin: "0 0 0.15rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b" }}>Measurable Outcome</p>
-              <p style={{ margin: 0, fontSize: "0.74rem", color: "#475569" }}>{p.measurable_outcome}</p>
+          {/* Evidence quote */}
+          {p.evidence_quote && (
+            <div style={{ background: "#f8fafc", borderLeft: "3px solid #e2e8f0", borderRadius: 4, padding: "0.4rem 0.65rem" }}>
+              <p style={{ margin: "0 0 0.1rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Evidence quote</p>
+              <p style={{ margin: 0, fontSize: "0.72rem", color: "#475569", fontStyle: "italic" }}>"{p.evidence_quote}"</p>
             </div>
           )}
 
+          {/* Score pills */}
+          <ScorePills p={p} />
+
+          {/* Resolution */}
+          {p.resolution && (
+            <div>
+              <p style={{ margin: "0 0 0.2rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b" }}>Resolution Method</p>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                {p.resolution.metric && (
+                  <span style={{ fontSize: "0.68rem", color: "#374151" }}>Metric: <strong>{p.resolution.metric}</strong></span>
+                )}
+                {p.resolution.threshold && (
+                  <span style={{ fontSize: "0.68rem", color: "#374151" }}>Threshold: <strong>{p.resolution.threshold}</strong></span>
+                )}
+              </div>
+              <p style={{ margin: "0.15rem 0 0", fontSize: "0.7rem", color: "#64748b" }}>{p.resolution.resolution_method}</p>
+              {p.resolution.resolver_sources && p.resolution.resolver_sources.length > 0 && (
+                <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap", marginTop: "0.3rem" }}>
+                  {p.resolution.resolver_sources.map((s, i) => (
+                    <span key={i} style={{ fontSize: "0.57rem", fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}>
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Relationships */}
+          {p.relationships && p.relationships.length > 0 && (() => {
+            const REL_META = [
+              { type: "supports",    label: "Supports",   color: "#10b981" },
+              { type: "contradicts", label: "Contradicts", color: "#ef4444" },
+              { type: "depends_on",  label: "Depends on",  color: "#f59e0b" },
+            ] as const;
+            return (
+              <div>
+                <p style={{ margin: "0 0 0.25rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b" }}>Relationships</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                  {REL_META.map(m => {
+                    const items = p.relationships!.filter(r => r.type === m.type);
+                    if (!items.length) return null;
+                    return (
+                      <div key={m.type}>
+                        <span style={{ fontSize: "0.57rem", fontWeight: 800, color: m.color }}>{m.label}: </span>
+                        {items.map((r, i) => (
+                          <span key={i} style={{ fontSize: "0.68rem", color: "#374151" }}>
+                            {i > 0 ? " · " : ""}"{r.target_prediction}"
+                            <span style={{ fontSize: "0.55rem", color: "#94a3b8" }}> ({Math.round(r.confidence * 100)}%)</span>
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Time horizon */}
+          {p.time_horizon && (
+            <div style={{ display: "flex", gap: "1rem" }}>
+              <div>
+                <p style={{ margin: "0 0 0.1rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Time Horizon</p>
+                <p style={{ margin: 0, fontSize: "0.7rem", color: p.time_horizon.explicit ? "#6366f1" : "#94a3b8" }}>
+                  {timeLabel ?? "No date specified"} {!p.time_horizon.explicit && <span style={{ color: "#94a3b8", fontSize: "0.6rem" }}>(implied)</span>}
+                </p>
+              </div>
+              <div>
+                <p style={{ margin: "0 0 0.1rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Stated Confidence</p>
+                <p style={{ margin: 0, fontSize: "0.7rem", fontWeight: 700, color: "#374151" }}>{Math.round((p.confidence ?? 0.5) * 100)}%</p>
+              </div>
+            </div>
+          )}
+
+          {/* Evaluation */}
           {p.evaluation_evidence && (
             <div>
-              <p style={{ margin: "0 0 0.15rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b" }}>Evaluation</p>
+              <p style={{ margin: "0 0 0.15rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b" }}>Evaluation</p>
               <p style={{ margin: 0, fontSize: "0.74rem", color: "#475569", fontStyle: "italic" }}>{p.evaluation_evidence}</p>
+              {p.evaluated_at && (
+                <p style={{ margin: "0.15rem 0 0", fontSize: "0.6rem", color: "#94a3b8" }}>
+                  Last updated: {new Date(p.evaluated_at).toLocaleDateString()}
+                </p>
+              )}
             </div>
           )}
-
-          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-            <div>
-              <p style={{ margin: "0 0 0.1rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Stated Confidence</p>
-              <p style={{ margin: 0, fontSize: "0.72rem", fontWeight: 700, color: "#374151" }}>{Math.round(p.confidence * 100)}%</p>
-            </div>
-            <div>
-              <p style={{ margin: "0 0 0.1rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Speaker Confidence</p>
-              <p style={{ margin: 0, fontSize: "0.72rem", fontWeight: 700, color: "#374151" }}>{p.speaker_confidence}</p>
-            </div>
-            {p.evaluated_at && (
-              <div>
-                <p style={{ margin: "0 0 0.1rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Evaluated</p>
-                <p style={{ margin: 0, fontSize: "0.72rem", color: "#374151" }}>{new Date(p.evaluated_at).toLocaleDateString()}</p>
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ── Contamination report ──────────────────────────────────────────────────────
+// ── Domain accuracy panel ─────────────────────────────────────────────────────
 
-function ContaminationReport({ report }: { report: AttributionContaminationReport }) {
-  if (report.total === 0) return null;
-
-  const guestPct = report.guest_contamination_pct;
-  const ambiguityPct = report.attribution_ambiguity_pct;
-  const riskColor = guestPct > 40 || ambiguityPct > 50 ? "#ef4444"
-    : guestPct > 20 || ambiguityPct > 30 ? "#f59e0b"
-    : "#10b981";
-
-  const { tier1, tier2, tier3, tier4 } = report.tier_distribution;
-  const scorable = tier1 + tier2 + tier3;
-
+function DomainAccuracyPanel({ domains }: { domains: DomainAccuracyStat[] }) {
+  if (!domains.length) return null;
+  const withData = domains.filter(d => d.evaluated > 0);
   return (
     <section>
-      <h2 style={{ margin: "0 0 0.75rem", fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-        Structural Attribution Report
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Creator Accuracy by Domain
       </h2>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem" }}>
-        {/* Attribution breakdown */}
-        <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.75rem 1rem" }}>
-          <p style={{ margin: "0 0 0.6rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#94a3b8" }}>
-            Speaker Breakdown
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-            {[
-              { label: "Host Claims", value: report.host_claims, color: "#1d4ed8" },
-              { label: "Guest Claims", value: report.guest_claims, color: "#c2410c" },
-              { label: "Third-Party", value: report.third_party_claims, color: "#166534" },
-              { label: "Unlinked", value: report.unlinked_claims, color: "#6b21a8" },
-            ].map(item => (
-              <div key={item.label} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span style={{ fontSize: "0.68rem", color: "#374151", flex: 1 }}>{item.label}</span>
-                <div style={{ width: 60, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ width: `${report.total > 0 ? (item.value / report.total) * 100 : 0}%`, height: "100%", background: item.color, borderRadius: 2 }} />
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+        {domains.map((d, i) => {
+          const hasScore = d.evaluated > 0;
+          const color = hasScore
+            ? (d.accuracy_score >= 70 ? "#10b981" : d.accuracy_score >= 50 ? "#f59e0b" : "#ef4444")
+            : "#94a3b8";
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.55rem 1rem", borderBottom: i < domains.length - 1 ? "1px solid #f1f5f9" : "none" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#0f172a", flex: 1 }}>{d.domain}</span>
+              <span style={{ fontSize: "0.62rem", color: "#94a3b8" }}>{d.total} predictions</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <div style={{ width: 80, height: 5, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ width: hasScore ? `${d.accuracy_score}%` : "0%", height: "100%", background: color, borderRadius: 3 }} />
                 </div>
-                <span style={{ fontSize: "0.72rem", fontWeight: 800, color: item.color, minWidth: 20, textAlign: "right" }}>{item.value}</span>
+                <span style={{ fontSize: "0.72rem", fontWeight: 900, color, minWidth: 30, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {hasScore ? `${d.accuracy_score}%` : "—"}
+                </span>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Risk indicators */}
-        <div style={{ background: "white", border: `1px solid ${riskColor}33`, borderRadius: 10, padding: "0.75rem 1rem" }}>
-          <p style={{ margin: "0 0 0.6rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#94a3b8" }}>
-            Contamination Risk
+            </div>
+          );
+        })}
+        {!withData.length && (
+          <p style={{ margin: 0, padding: "0.75rem 1rem", fontSize: "0.72rem", color: "#94a3b8", fontStyle: "italic" }}>
+            No evaluated predictions yet. Run evaluation to see domain accuracy.
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.15rem" }}>
-                <span style={{ fontSize: "0.68rem", color: "#374151" }}>Guest-derived</span>
-                <span style={{ fontSize: "0.72rem", fontWeight: 800, color: riskColor }}>{guestPct}%</span>
-              </div>
-              <div style={{ height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
-                <div style={{ width: `${guestPct}%`, height: "100%", background: riskColor, borderRadius: 2 }} />
-              </div>
-            </div>
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.15rem" }}>
-                <span style={{ fontSize: "0.68rem", color: "#374151" }}>Attribution ambiguity</span>
-                <span style={{ fontSize: "0.72rem", fontWeight: 800, color: ambiguityPct > 40 ? "#ef4444" : "#f59e0b" }}>{ambiguityPct}%</span>
-              </div>
-              <div style={{ height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
-                <div style={{ width: `${ambiguityPct}%`, height: "100%", background: ambiguityPct > 40 ? "#ef4444" : "#f59e0b", borderRadius: 2 }} />
-              </div>
-            </div>
-            <div style={{ marginTop: "0.25rem", padding: "0.35rem 0.5rem", background: "#f8fafc", borderRadius: 6 }}>
-              <span style={{ fontSize: "0.65rem", color: "#475569" }}>
-                Evaluable chain: <strong style={{ color: "#0f172a" }}>{report.evaluable}</strong> / {report.total} claims
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Tier distribution */}
-        <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.75rem 1rem" }}>
-          <p style={{ margin: "0 0 0.6rem", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#94a3b8" }}>
-            Outcome Tier Distribution
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-            {[
-              { label: "Tier 1 · 1.0× weight", value: tier1, color: "#10b981" },
-              { label: "Tier 2 · 0.6× weight", value: tier2, color: "#f59e0b" },
-              { label: "Tier 3 · 0.3× weight", value: tier3, color: "#ef4444" },
-              { label: "Tier 4 · Excluded", value: tier4, color: "#6b21a8" },
-            ].map(item => (
-              <div key={item.label} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span style={{ fontSize: "0.65rem", color: "#374151", flex: 1 }}>{item.label}</span>
-                <span style={{ fontSize: "0.72rem", fontWeight: 800, color: item.color, minWidth: 20, textAlign: "right" }}>{item.value}</span>
-              </div>
-            ))}
-          </div>
-          {scorable > 0 && (
-            <div style={{ marginTop: "0.6rem", borderTop: "1px solid #f1f5f9", paddingTop: "0.5rem" }}>
-              <p style={{ margin: "0 0 0.1rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
-                Weighted Accuracy
-              </p>
-              {report.weighted_accuracy !== null ? (
-                <p style={{ margin: 0, fontSize: "1.1rem", fontWeight: 900, color: report.weighted_accuracy >= 70 ? "#10b981" : report.weighted_accuracy >= 50 ? "#f59e0b" : "#ef4444" }}>
-                  {report.weighted_accuracy}
-                  <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "#94a3b8" }}> / 100</span>
-                </p>
-              ) : (
-                <p style={{ margin: 0, fontSize: "0.72rem", color: "#94a3b8", fontStyle: "italic" }}>No evaluated chains</p>
-              )}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </section>
   );
@@ -313,23 +371,21 @@ function ContaminationReport({ report }: { report: AttributionContaminationRepor
 // ── Creator leaderboard ───────────────────────────────────────────────────────
 
 function CreatorLeaderboard({ stats }: { stats: PredictionAccuracyStat[] }) {
-  if (stats.length === 0) return null;
   const withData = stats.filter(s => s.evaluated > 0).sort((a, b) => b.accuracy_score - a.accuracy_score);
-  if (withData.length === 0) return null;
-
+  if (!withData.length) return null;
   return (
     <section>
-      <h2 style={{ margin: "0 0 0.75rem", fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-        Prediction Accuracy Leaderboard
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Creator Accuracy Leaderboard
       </h2>
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 80px 120px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", padding: "0.4rem 1rem", gap: "0.5rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 120px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", padding: "0.4rem 1rem", gap: "0.5rem" }}>
           {["Creator", "Total", "Scored", "Accuracy"].map(h => (
             <span key={h} style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "#94a3b8" }}>{h}</span>
           ))}
         </div>
         {withData.map((s, i) => (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 80px 80px 120px", padding: "0.55rem 1rem", gap: "0.5rem", alignItems: "center", borderBottom: i < withData.length - 1 ? "1px solid #f1f5f9" : "none" }}>
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 120px", padding: "0.55rem 1rem", gap: "0.5rem", alignItems: "center", borderBottom: i < withData.length - 1 ? "1px solid #f1f5f9" : "none" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
               <span style={{ fontSize: "0.7rem", fontWeight: 800, color: i === 0 ? "#f59e0b" : i === 1 ? "#94a3b8" : "#cd7c54", minWidth: 18 }}>#{i + 1}</span>
               <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "#0f172a" }}>{s.creator}</span>
@@ -349,12 +405,12 @@ function CreatorLeaderboard({ stats }: { stats: PredictionAccuracyStat[] }) {
 export function PredictionsView() {
   const [predictions, setPredictions] = useState<PredictionRow[]>([]);
   const [stats, setStats] = useState<PredictionAccuracyStat[]>([]);
-  const [contamination, setContamination] = useState<AttributionContaminationReport | null>(null);
+  const [domainAccuracy, setDomainAccuracy] = useState<DomainAccuracyStat[]>([]);
   const [loading, setLoading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | "pending" | "accurate" | "inaccurate" | "unlinked">("all");
+  const [filter, setFilter] = useState<"all" | "pending" | "accurate" | "inaccurate" | "unknown">("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -364,11 +420,11 @@ export function PredictionsView() {
       const data = await res.json() as {
         predictions: PredictionRow[];
         stats: PredictionAccuracyStat[];
-        contamination: AttributionContaminationReport;
+        domainAccuracy: DomainAccuracyStat[];
       };
       setPredictions(data.predictions);
       setStats(data.stats);
-      setContamination(data.contamination ?? null);
+      setDomainAccuracy(data.domainAccuracy ?? []);
     } catch {
       setMessage("Failed to load predictions.");
     } finally {
@@ -410,102 +466,83 @@ export function PredictionsView() {
     }
   }, [load]);
 
+  const pending = predictions.filter(p => p.status === "pending" && p.trackable).length;
   const filtered = predictions.filter(p => filter === "all" || p.status === filter);
-  const pending = predictions.filter(p => p.status === "pending" && p.is_evaluable).length;
 
   return (
     <div style={{ padding: "1.5rem", maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+
       {/* Header */}
       <div>
         <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.25rem", fontWeight: 800, color: "#0f172a" }}>
           Prediction Tracking
         </h1>
         <p style={{ margin: 0, fontSize: "0.82rem", color: "#64748b" }}>
-          Extract creator predictions with full speaker attribution chains. Evaluate accuracy using tier-weighted scoring.
+          Extract, normalize, and track creator predictions. Evaluated for accuracy when evidence is available.
         </p>
       </div>
 
       {/* Action bar */}
       <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          style={{ padding: "0.5rem 1rem", fontSize: "0.8rem", fontWeight: 700, borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#374151", cursor: loading ? "not-allowed" : "pointer" }}
-        >
+        <button type="button" onClick={() => void load()} disabled={loading}
+          style={{ padding: "0.5rem 1rem", fontSize: "0.8rem", fontWeight: 700, borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#374151", cursor: loading ? "not-allowed" : "pointer" }}>
           {loading ? "Loading…" : "↻ Refresh"}
         </button>
-        <button
-          type="button"
-          onClick={() => void handleExtract()}
-          disabled={extracting}
-          style={{ padding: "0.5rem 1rem", fontSize: "0.8rem", fontWeight: 700, borderRadius: 8, border: "none", background: "#6366f1", color: "white", cursor: extracting ? "not-allowed" : "pointer" }}
-        >
+        <button type="button" onClick={() => void handleExtract()} disabled={extracting}
+          style={{ padding: "0.5rem 1rem", fontSize: "0.8rem", fontWeight: 700, borderRadius: 8, border: "none", background: "#6366f1", color: "white", cursor: extracting ? "not-allowed" : "pointer" }}>
           {extracting ? "Extracting…" : "⚡ Extract Predictions"}
         </button>
         {pending > 0 && (
-          <button
-            type="button"
-            onClick={() => void handleEvaluate()}
-            disabled={evaluating}
-            style={{ padding: "0.5rem 1rem", fontSize: "0.8rem", fontWeight: 700, borderRadius: 8, border: "none", background: "#10b981", color: "white", cursor: evaluating ? "not-allowed" : "pointer" }}
-          >
-            {evaluating ? "Evaluating…" : `▶ Evaluate ${pending} Pending`}
+          <button type="button" onClick={() => void handleEvaluate()} disabled={evaluating}
+            style={{ padding: "0.5rem 1rem", fontSize: "0.8rem", fontWeight: 700, borderRadius: 8, border: "none", background: "#10b981", color: "white", cursor: evaluating ? "not-allowed" : "pointer" }}>
+            {evaluating ? "Evaluating…" : `▶ Evaluate ${pending} Trackable`}
           </button>
         )}
-        {message && (
-          <p style={{ margin: 0, fontSize: "0.75rem", color: "#475569" }}>{message}</p>
-        )}
+        {message && <p style={{ margin: 0, fontSize: "0.75rem", color: "#475569" }}>{message}</p>}
       </div>
 
       {/* Stats summary */}
       {predictions.length > 0 && (
-        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           {[
-            { label: "Total", value: predictions.length, color: "#0f172a" },
-            { label: "Evaluable", value: predictions.filter(p => p.is_evaluable).length, color: "#6366f1" },
-            { label: "Accurate", value: predictions.filter(p => p.status === "accurate").length, color: "#10b981" },
-            { label: "Inaccurate", value: predictions.filter(p => p.status === "inaccurate").length, color: "#ef4444" },
-            { label: "Unlinked", value: predictions.filter(p => p.status === "unlinked").length, color: "#6b21a8" },
+            { label: "Total",     value: predictions.length,                                   color: "#0f172a" },
+            { label: "Trackable", value: predictions.filter(p => p.trackable).length,           color: "#6366f1" },
+            { label: "Correct",   value: predictions.filter(p => p.status === "accurate").length,   color: "#10b981" },
+            { label: "Incorrect", value: predictions.filter(p => p.status === "inaccurate").length, color: "#ef4444" },
+            { label: "Mixed",     value: predictions.filter(p => p.status === "unknown").length,    color: "#f59e0b" },
           ].map(s => (
-            <div key={s.label} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.75rem 1rem", minWidth: 90 }}>
-              <p style={{ margin: "0 0 0.15rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#94a3b8" }}>{s.label}</p>
-              <p style={{ margin: 0, fontSize: "1.2rem", fontWeight: 900, color: s.color, fontVariantNumeric: "tabular-nums" }}>{s.value}</p>
+            <div key={s.label} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.65rem 0.9rem", minWidth: 80 }}>
+              <p style={{ margin: "0 0 0.1rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#94a3b8" }}>{s.label}</p>
+              <p style={{ margin: 0, fontSize: "1.15rem", fontWeight: 900, color: s.color, fontVariantNumeric: "tabular-nums" }}>{s.value}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* Contamination Report */}
-      {contamination && contamination.total > 0 && (
-        <ContaminationReport report={contamination} />
-      )}
+      {/* Domain accuracy */}
+      {domainAccuracy.length > 0 && <DomainAccuracyPanel domains={domainAccuracy} />}
 
-      {/* Leaderboard */}
+      {/* Creator leaderboard */}
       <CreatorLeaderboard stats={stats} />
 
       {/* Filter + list */}
       {predictions.length > 0 && (
         <section>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
-            <h2 style={{ margin: 0, fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+            <h2 style={{ margin: 0, fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
               Predictions ({filtered.length})
             </h2>
             <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
-              {(["all", "pending", "accurate", "inaccurate", "unlinked"] as const).map(f => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setFilter(f)}
-                  style={{ padding: "3px 10px", fontSize: "0.65rem", fontWeight: 700, borderRadius: 20, border: `1px solid ${filter === f ? "#6366f1" : "#e2e8f0"}`, background: filter === f ? "#6366f1" : "white", color: filter === f ? "white" : "#64748b", cursor: "pointer", textTransform: "capitalize" }}
-                >
-                  {f}
+              {(["all", "pending", "accurate", "inaccurate", "unknown"] as const).map(f => (
+                <button key={f} type="button" onClick={() => setFilter(f)}
+                  style={{ padding: "3px 10px", fontSize: "0.65rem", fontWeight: 700, borderRadius: 20, border: `1px solid ${filter === f ? "#6366f1" : "#e2e8f0"}`, background: filter === f ? "#6366f1" : "white", color: filter === f ? "white" : "#64748b", cursor: "pointer", textTransform: "capitalize" }}>
+                  {f === "accurate" ? "🟢 Correct" : f === "inaccurate" ? "🔴 Incorrect" : f === "unknown" ? "🟡 Mixed" : f}
                 </button>
               ))}
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {filtered.map(p => <PredictionItem key={p.prediction_id} p={p} />)}
+            {filtered.map(p => <PredictionItem key={p.prediction_id} p={p} domainAccuracy={domainAccuracy} />)}
           </div>
         </section>
       )}
@@ -514,15 +551,11 @@ export function PredictionsView() {
         <div style={{ padding: "3rem 2rem", textAlign: "center", background: "#f8fafc", border: "1px dashed #e2e8f0", borderRadius: 12 }}>
           <p style={{ margin: "0 0 0.5rem", fontSize: "1.5rem" }}>🎯</p>
           <p style={{ margin: "0 0 0.4rem", fontSize: "0.9rem", fontWeight: 700, color: "#0f172a" }}>No predictions yet</p>
-          <p style={{ margin: "0 0 1rem", fontSize: "0.78rem", color: "#64748b", maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>
-            Click "Extract Predictions" to scan your creator library. Each prediction is attributed to its actual speaker (Host, Guest, or Third-Party) for accurate chain tracking.
+          <p style={{ margin: "0 0 1rem", fontSize: "0.78rem", color: "#64748b", maxWidth: 420, marginInline: "auto" }}>
+            Click "Extract Predictions" to scan your creator library. Each prediction is normalized, scored for falsifiability and specificity, and tracked for future resolution.
           </p>
-          <button
-            type="button"
-            onClick={() => void handleExtract()}
-            disabled={extracting}
-            style={{ padding: "0.6rem 1.25rem", fontSize: "0.82rem", fontWeight: 700, borderRadius: 8, border: "none", background: "#6366f1", color: "white", cursor: extracting ? "not-allowed" : "pointer" }}
-          >
+          <button type="button" onClick={() => void handleExtract()} disabled={extracting}
+            style={{ padding: "0.6rem 1.25rem", fontSize: "0.82rem", fontWeight: 700, borderRadius: 8, border: "none", background: "#6366f1", color: "white", cursor: extracting ? "not-allowed" : "pointer" }}>
             {extracting ? "Extracting…" : "⚡ Extract Predictions"}
           </button>
         </div>
