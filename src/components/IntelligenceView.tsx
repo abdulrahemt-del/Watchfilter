@@ -346,23 +346,58 @@ function Contradictions({ items }: { items: IntelligenceMemo["contradictions"] }
 function EvidenceUsed({ memo }: { memo: IntelligenceMemo }) {
   const eu = memo.evidence_used;
   const density = memo.insight_density;
+  const ep = memo.evidence_processing;
   if (!eu) return null;
+  const acceptanceRate = ep && ep.retrieved > 0
+    ? Math.round((ep.quality_accepted / ep.retrieved) * 100)
+    : null;
   return (
     <section>
       <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
         Evidence Used
       </h2>
+      {ep?.quality_warning && (
+        <div style={{ marginBottom: "0.65rem", padding: "0.55rem 0.85rem", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: "0.7rem", color: "#854d0e", lineHeight: 1.5 }}>
+          ⚠ {ep.quality_warning}
+        </div>
+      )}
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1.1rem" }}>
         <div style={{ display: "flex", gap: "1.25rem", alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", minWidth: 110 }}>
             <span style={{ fontSize: "1.5rem", fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>{eu.total_signals}</span>
-            <p style={{ margin: "0.1rem 0 0", fontSize: "0.6rem", color: "#64748b" }}>supporting signals</p>
+            <p style={{ margin: 0, fontSize: "0.6rem", color: "#64748b" }}>accepted signals</p>
             {density && (
-              <p style={{ margin: "0.2rem 0 0", fontSize: "0.6rem", color: "#94a3b8" }}>
+              <p style={{ margin: 0, fontSize: "0.6rem", color: "#94a3b8" }}>
                 {density.unique_insights} unique insight{density.unique_insights !== 1 ? "s" : ""}
               </p>
             )}
           </div>
+          {ep && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.22rem", minWidth: 155 }}>
+              <p style={{ margin: "0 0 0.2rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Processing</p>
+              {[
+                { label: "Retrieved", value: ep.retrieved, color: "#0f172a" },
+                { label: "Relevance passed", value: ep.relevance_passed, color: "#0f172a" },
+                { label: "Quality accepted", value: ep.quality_accepted, color: "#0f172a" },
+              ].map(r => (
+                <div key={r.label} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.62rem", color: "#64748b" }}>
+                  <span>{r.label}</span><span style={{ fontWeight: 700, color: r.color }}>{r.value}</span>
+                </div>
+              ))}
+              {acceptanceRate !== null && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.62rem", color: "#64748b" }}>
+                  <span>Acceptance rate</span>
+                  <span style={{ fontWeight: 700, color: acceptanceRate >= 50 ? "#15803d" : acceptanceRate >= 25 ? "#b45309" : "#dc2626" }}>
+                    {acceptanceRate}%
+                  </span>
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.62rem", color: "#64748b" }}>
+                <span>Query type</span>
+                <span style={{ fontWeight: 700, color: "#6366f1", textTransform: "capitalize" }}>{ep.query_intent}</span>
+              </div>
+            </div>
+          )}
           {eu.primary_themes.length > 0 && (
             <div style={{ flex: 1 }}>
               <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>

@@ -94,6 +94,14 @@ export type IntelligenceMemo = {
     missing: string[];
     gap_impact: string[];
   };
+  evidence_processing: {
+    retrieved: number;
+    relevance_passed: number;
+    quality_accepted: number;
+    query_intent: string;
+    is_recovery: boolean;
+    quality_warning: string | null;
+  };
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -171,13 +179,50 @@ function extractKeywords(q: string): string[] {
   )].slice(0, 8);
 }
 
+// Morphological variants — catches singular/plural, -ing, and shared 5-char stem
+// "acquisition" → ["acqui"], "strategies" → ["strat"], "startups" → ["startup"]
+function keywordVariants(kw: string): string[] {
+  const v = new Set([kw]);
+  if (kw.endsWith("ies"))                                  v.add(kw.slice(0, -3) + "y");
+  else if (kw.endsWith("y"))                               v.add(kw.slice(0, -1) + "ies");
+  if (kw.endsWith("s") && kw.length > 4 && !kw.endsWith("ss")) v.add(kw.slice(0, -1));
+  else if (!kw.endsWith("s"))                              v.add(kw + "s");
+  if (kw.endsWith("ing") && kw.length > 5)                v.add(kw.slice(0, -3));
+  if (kw.length >= 7)                                      v.add(kw.slice(0, 5)); // acquisi… → acqui
+  return [...v].filter(w => w.length >= 4);
+}
+
 // Score how relevant a claim's text is to the current query (0–100)
 function scoreClaimRelevance(text: string, keywords: string[]): number {
   if (!keywords.length) return 60;
   const lower = text.toLowerCase();
-  const matched = keywords.filter(kw => lower.includes(kw)).length;
+  const matched = keywords.filter(kw => keywordVariants(kw).some(v => lower.includes(v))).length;
   return Math.round((matched / keywords.length) * 100);
 }
+
+// ── Query intent classification ───────────────────────────────────────────────
+
+type QueryIntent = "exploration" | "comparison" | "recommendation" | "decision" | "prediction" | "research";
+
+function classifyQueryIntent(q: string): QueryIntent {
+  const s = q.toLowerCase();
+  if (s.includes(" vs ") || s.includes(" versus ") || s.includes("compar") || / or /.test(s)) return "comparison";
+  if (s.includes("should i") || s.includes("should we") || s.includes("worth it") || s.includes("is it worth")) return "decision";
+  if (s.includes("will ") || s.includes("predict") || s.includes("forecast") || /by 20\d\d/.test(s)) return "prediction";
+  if (s.startsWith("what is ") || s.startsWith("define ") || s.startsWith("explain ")) return "research";
+  if (s.startsWith("best ") || s.includes("strateg") || s.includes("how to") || s.includes("how do") || s.includes("what are")) return "exploration";
+  return "recommendation";
+}
+
+// Looser gates for broad exploratory queries; tighter for precision decisions
+const INTENT_THRESHOLDS: Record<QueryIntent, { relevanceGate: number; qualityExclude: number }> = {
+  exploration:    { relevanceGate: 20, qualityExclude: 20 },
+  recommendation: { relevanceGate: 25, qualityExclude: 25 },
+  comparison:     { relevanceGate: 30, qualityExclude: 35 },
+  decision:       { relevanceGate: 35, qualityExclude: 40 },
+  prediction:     { relevanceGate: 40, qualityExclude: 45 },
+  research:       { relevanceGate: 45, qualityExclude: 50 },
+};
 
 // ── Source → NormalizedClaim converters ───────────────────────────────────────
 // Note: queryRelevance is added externally after construction
@@ -281,6 +326,7 @@ const BASE_AUTHORITY: Record<NormalizedClaim["source"], number> = {
 function scoreSourceQuality(
   claims: NormalizedClaim[],
   source: NormalizedClaim["source"],
+  excludeThreshold = 25,
 ): SourceQualityResult {
   const sc = claims.filter(c => c.source === source);
   if (sc.length < 2) return { score: 0, level: "Low", excluded: true };
@@ -296,7 +342,7 @@ function scoreSourceQuality(
 
   const score = Math.round(composite);
   const level: "High" | "Medium" | "Low" = score >= 70 ? "High" : score >= 50 ? "Medium" : "Low";
-  return { score, level, excluded: score < 60 };
+  return { score, level, excluded: score < excludeThreshold };
 }
 
 // ── Scoring ───────────────────────────────────────────────────────────────────
@@ -699,7 +745,7 @@ function buildClusters(extractor: ExtractorOutput, claimIndex: Map<string, Norma
       theme: ec.theme,
       claims: ec.claims.map(id => claimIndex.get(id)).filter((c): c is NormalizedClaim => c != null),
     }))
-    .filter(c => c.claims.length >= 2);
+    .filter(c => c.claims.length >= 1);
 }
 
 // ── Decision LLM ──────────────────────────────────────────────────────────────
@@ -898,15 +944,16 @@ const SOURCE_FRIENDLY: Record<string, string> = {
 // ── Memo assembly (pure, no LLM) ──────────────────────────────────────────────
 
 function assembleMemo(
-  query:            string,
-  gatedClaims:      NormalizedClaim[],
-  clusters:         ClaimCluster[],
-  extractor:        ExtractorOutput,
-  confidenceResult: ConfidenceResult,
-  decision:         { directional: string; decision_summary: string; priority_actions: PriorityAction[] },
-  rawCounts:        { youtube: number; reddit: number; web: number },
-  redditDiag:       IntelligenceMemo["reddit_diagnostics"],
-  qualityScores:    Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+  query:              string,
+  gatedClaims:        NormalizedClaim[],
+  clusters:           ClaimCluster[],
+  extractor:          ExtractorOutput,
+  confidenceResult:   ConfidenceResult,
+  decision:           { directional: string; decision_summary: string; priority_actions: PriorityAction[] },
+  rawCounts:          { youtube: number; reddit: number; web: number },
+  redditDiag:         IntelligenceMemo["reddit_diagnostics"],
+  qualityScores:      Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+  evidenceProcessing: IntelligenceMemo["evidence_processing"],
 ): IntelligenceMemo {
   const bySource = (src: NormalizedClaim["source"]) =>
     gatedClaims.filter(c => c.source === src)
@@ -999,6 +1046,7 @@ function assembleMemo(
     sources_used: sourcesUsed,
     best_evidence_ranking: buildBestEvidenceRanking(gatedClaims, extractor),
     coverage: computeCoverage(sourcesUsed),
+    evidence_processing: evidenceProcessing,
   };
 }
 
@@ -1185,7 +1233,12 @@ export async function POST(req: NextRequest) {
         emit({ type: "stage", source: "web", message: `Web search unavailable: ${err instanceof Error ? err.message : "error"}` });
       }
 
-      // Normalize → add queryRelevance → strength filter
+      // Classify intent → choose gate thresholds (exploration is most permissive)
+      const queryIntent = classifyQueryIntent(query);
+      const intentThresholds = INTENT_THRESHOLDS[queryIntent];
+      console.log(`[Intent] "${queryIntent}" → relevanceGate=${intentThresholds.relevanceGate} qualityExclude=${intentThresholds.qualityExclude}`);
+
+      // Normalize → add queryRelevance → reject only very weak claims (strength < 0.3)
       const addRelevance = (c: Omit<NormalizedClaim, "queryRelevance">): NormalizedClaim => ({
         ...c,
         queryRelevance: scoreClaimRelevance(c.claim, keywords),
@@ -1197,65 +1250,119 @@ export async function POST(req: NextRequest) {
       ].filter(c => computeClaimStrength(c) >= 0.3);
 
       if (!rawClaims.length) {
-        emit({ type: "error", message: "No evidence found. Try a more specific query or analyze relevant videos first." });
+        emit({ type: "error", message: "No evidence found. Analyze relevant creator content first or try a different query." });
         close();
         return;
       }
 
-      // Relevance gate: filter out claims that don't discuss the query topic
-      const relevantClaims = rawClaims.filter(c => c.queryRelevance >= 50);
+      // Relevance gate: only reject hard garbage (< intentThresholds.relevanceGate)
+      // For exploration: 20 — a claim matching 1 of 5 keywords passes
+      const relevantClaims = rawClaims.filter(c => c.queryRelevance >= intentThresholds.relevanceGate);
       const filteredOut = rawClaims.length - relevantClaims.length;
-      console.log(`[Relevance] ${rawClaims.length} claims → ${relevantClaims.length} relevant (${filteredOut} off-topic filtered)`);
+      console.log(`[Relevance/${queryIntent}] ${rawClaims.length} → ${relevantClaims.length} (gate=${intentThresholds.relevanceGate}, ${filteredOut} off-topic)`);
+      emit({
+        type: "stage", agent: "Relevance Gate",
+        message: `${relevantClaims.length}/${rawClaims.length} signals passed relevance gate (${filteredOut} off-topic)`,
+        count: relevantClaims.length,
+      });
 
-      if (!relevantClaims.length) {
-        emit({ type: "error", message: "No on-topic evidence found for this query. Try a more specific question or analyze relevant creator content first." });
+      // Recovery L1: relevance gate eliminated everything but substantial raw evidence exists
+      let workingClaims = relevantClaims;
+      let isRecovery = false;
+      if (!workingClaims.length && rawClaims.length >= 5) {
+        workingClaims = [...rawClaims]
+          .sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a))
+          .slice(0, 15);
+        isRecovery = true;
+        console.log(`[Recovery-L1] ${workingClaims.length} signals by strength (relevance gate bypassed)`);
+        emit({ type: "stage", agent: "Recovery", message: "Evidence quality below threshold — using best-available signals for synthesis" });
+      } else if (!workingClaims.length) {
+        emit({ type: "error", message: "Insufficient evidence. Analyze relevant creator content first." });
         close();
         return;
       }
 
-      // Stage 4: Source quality scoring + gating (on relevant claims only)
+      // Stage 4: Source quality scoring (intent-adjusted exclusion threshold)
       const qualityScores = {
-        youtube: scoreSourceQuality(relevantClaims, "youtube"),
-        reddit:  scoreSourceQuality(relevantClaims, "reddit"),
-        web:     scoreSourceQuality(relevantClaims, "web"),
+        youtube: scoreSourceQuality(workingClaims, "youtube", intentThresholds.qualityExclude),
+        reddit:  scoreSourceQuality(workingClaims, "reddit",  intentThresholds.qualityExclude),
+        web:     scoreSourceQuality(workingClaims, "web",     intentThresholds.qualityExclude),
       };
-      const gatedClaims = relevantClaims.filter(c => !qualityScores[c.source].excluded);
+      let gatedClaims = workingClaims.filter(c => !qualityScores[c.source].excluded);
       const gatedSourceNames = (["youtube", "reddit", "web"] as const)
         .filter(s => !qualityScores[s].excluded)
         .map(s => SOURCE_FRIENDLY[s]);
       console.log(
-        `[Quality] YT=${qualityScores.youtube.score}(${qualityScores.youtube.excluded ? "❌" : "✓"})`,
+        `[Quality/${queryIntent}] YT=${qualityScores.youtube.score}(${qualityScores.youtube.excluded ? "❌" : "✓"})`,
         `HN=${qualityScores.reddit.score}(${qualityScores.reddit.excluded ? "❌" : "✓"})`,
         `Web=${qualityScores.web.score}(${qualityScores.web.excluded ? "❌" : "✓"})`,
-        `→ ${gatedClaims.length} claims accepted`,
+        `→ ${gatedClaims.length} accepted`,
       );
-      emit({ type: "stage", agent: "Quality Gate", message: `Sources accepted: ${gatedSourceNames.join(", ")} — ${gatedClaims.length} signals to synthesize` });
+      emit({
+        type: "stage", agent: "Quality Gate",
+        message: gatedClaims.length > 0
+          ? `Sources: ${gatedSourceNames.join(", ")} — ${gatedClaims.length} signals accepted`
+          : `Quality gate: all sources below threshold — activating recovery`,
+        count: gatedClaims.length,
+      });
 
-      if (!gatedClaims.length) {
-        emit({ type: "error", message: "No high-quality evidence found for this query. Try a more specific question or analyze relevant creator content first." });
+      // Recovery L2: quality gate eliminated everything — take top signals by quality × relevance
+      if (!gatedClaims.length && workingClaims.length >= 5) {
+        gatedClaims = [...workingClaims]
+          .sort((a, b) =>
+            (computeClaimStrength(b) * b.queryRelevance) -
+            (computeClaimStrength(a) * a.queryRelevance),
+          )
+          .slice(0, 10);
+        isRecovery = true;
+        // Un-exclude any source that has recovery claims so claimIndex builds correctly
+        const recoverySrcs = new Set(gatedClaims.map(c => c.source));
+        (["youtube", "reddit", "web"] as const).forEach(s => {
+          if (recoverySrcs.has(s)) qualityScores[s] = { ...qualityScores[s], excluded: false };
+        });
+        console.log(`[Recovery-L2] ${gatedClaims.length} signals by quality×relevance (quality gate bypassed)`);
+        emit({ type: "stage", agent: "Recovery", message: `Best-effort synthesis from ${gatedClaims.length} signals — confidence will reflect evidence quality` });
+      } else if (!gatedClaims.length) {
+        emit({ type: "error", message: "Insufficient evidence. Analyze relevant creator content first." });
         close();
         return;
       }
 
+      const qualityWarning = isRecovery
+        ? "Evidence quality was lower than preferred. This is a best-effort synthesis — confidence reflects that."
+        : null;
+
+      const evidenceProcessing: IntelligenceMemo["evidence_processing"] = {
+        retrieved: rawClaims.length,
+        relevance_passed: relevantClaims.length,
+        quality_accepted: gatedClaims.length,
+        query_intent: queryIntent,
+        is_recovery: isRecovery,
+        quality_warning: qualityWarning,
+      };
+
       const evidenceMap = buildEvidenceMap(ytRows, hnClaims, articles);
       const claimIndex = new Map(gatedClaims.map(c => [c.id, c]));
 
-      // Stage 5: Extract + cluster (only gated claims go to extractor)
+      // Stage 5: Extract + cluster
       emit({ type: "stage", agent: "Extractor", message: `Extracting and clustering ${gatedClaims.length} signals…` });
       const extractor = await runExtractor(query, gatedClaims, evidenceMap);
       const clusters = buildClusters(extractor, claimIndex);
       emit({ type: "stage", agent: "Extractor", message: `Formed ${clusters.length} insight clusters` });
 
-      // Stage 6: Score (deterministic, contradiction-aware)
+      // Stage 6: Score (deterministic; cap confidence in recovery mode)
       const extractorHasContrad = extractor.contradictions.length > 0;
-      const confidenceResult = computeFinalConfidence(clusters, qualityScores, extractorHasContrad);
+      let confidenceResult = computeFinalConfidence(clusters, qualityScores, extractorHasContrad);
+      if (isRecovery) {
+        confidenceResult = { ...confidenceResult, confidence: Math.min(0.60, confidenceResult.confidence) };
+      }
 
       // Stage 7: Decision
       emit({ type: "stage", agent: "Decision", message: "Generating decision intelligence…" });
       const decision = await generateDecision(query, clusters, extractor.stage_interpretation);
 
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
-      const memo = assembleMemo(query, gatedClaims, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores);
+      const memo = assembleMemo(query, gatedClaims, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores, evidenceProcessing);
 
       emit({ type: "complete", memo });
 
