@@ -102,6 +102,26 @@ export type IntelligenceMemo = {
     is_recovery: boolean;
     quality_warning: string | null;
   };
+  source_detail: Record<"youtube" | "reddit" | "web", {
+    quality_score: number;
+    signal_count: number;
+    unique_insights: number;
+    overlapping_insights: number;
+    contribution_pct: number;
+    primary_claims: string[];
+    excluded: boolean;
+    excluded_sample: Array<{ claim: string; reason: string }>;
+  }>;
+  attributed_evidence: Array<{
+    claim: string;
+    sources: Array<{ source: "youtube" | "reddit" | "web"; signal_count: number }>;
+  }>;
+  evidence_waterfall: {
+    retrieved: { youtube: number; reddit: number; web: number };
+    accepted:  { youtube: number; reddit: number; web: number };
+    normalized: number;
+    synthesized: number;
+  };
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -943,9 +963,105 @@ const SOURCE_FRIENDLY: Record<string, string> = {
 
 // ── Memo assembly (pure, no LLM) ──────────────────────────────────────────────
 
+// ── Source detail + attribution ───────────────────────────────────────────────
+
+function computeSourceDetail(
+  rawClaims:      NormalizedClaim[],
+  gatedClaims:    NormalizedClaim[],
+  clusters:       ClaimCluster[],
+  qualityScores:  Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+  relevanceGate:  number,
+): IntelligenceMemo["source_detail"] {
+  const sources = ["youtube", "reddit", "web"] as const;
+  const gatedSet = new Set(gatedClaims.map(c => c.id));
+
+  // Weighted contribution: quality_score × signal_count for each accepted source
+  const weights = sources.map(s => ({
+    src: s,
+    w: qualityScores[s].excluded ? 0
+      : qualityScores[s].score * gatedClaims.filter(c => c.source === s).length,
+  }));
+  const totalW = weights.reduce((t, { w }) => t + w, 0);
+
+  return Object.fromEntries(sources.map(src => {
+    const q         = qualityScores[src];
+    const srcGated  = gatedClaims.filter(c => c.source === src);
+    const myWeight  = weights.find(w => w.src === src)!.w;
+    const contribution = totalW > 0 ? Math.round((myWeight / totalW) * 100) : 0;
+
+    // Unique = clusters where only this source contributed
+    // Overlapping = clusters where this source AND others contributed
+    const uniqueInsights = clusters.filter(c => {
+      const srcs = new Set(c.claims.map(cl => cl.source));
+      return srcs.has(src) && srcs.size === 1;
+    }).length;
+    const overlapInsights = clusters.filter(c => {
+      const srcs = new Set(c.claims.map(cl => cl.source));
+      return srcs.has(src) && srcs.size > 1;
+    }).length;
+
+    const primaryClaims = srcGated
+      .sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a))
+      .slice(0, 4)
+      .map(c => c.claim.length > 160 ? c.claim.slice(0, 160) + "…" : c.claim);
+
+    const excludedSample = rawClaims
+      .filter(c => c.source === src && !gatedSet.has(c.id))
+      .sort((a, b) => b.queryRelevance - a.queryRelevance)
+      .slice(0, 3)
+      .map(c => ({
+        claim: c.claim.length > 120 ? c.claim.slice(0, 120) + "…" : c.claim,
+        reason: c.queryRelevance < relevanceGate ? "Low relevance to query" : "Source quality below threshold",
+      }));
+
+    return [src, {
+      quality_score:        q.score,
+      signal_count:         srcGated.length,
+      unique_insights:      uniqueInsights,
+      overlapping_insights: overlapInsights,
+      contribution_pct:     contribution,
+      primary_claims:       primaryClaims,
+      excluded:             q.excluded,
+      excluded_sample:      excludedSample,
+    }];
+  })) as IntelligenceMemo["source_detail"];
+}
+
+function buildAttributedEvidence(
+  bestEvidence: string[],
+  clusters:     ClaimCluster[],
+  extractor:    ExtractorOutput,
+): IntelligenceMemo["attributed_evidence"] {
+  // Map each key_theme text → its parent ClaimCluster
+  const themeToCluster = new Map<string, ClaimCluster>();
+  extractor.insight_clusters.forEach(ec => {
+    const mc = clusters.find(c => c.theme === ec.theme);
+    if (mc) (ec.key_themes ?? []).forEach(kt => themeToCluster.set(kt, mc));
+  });
+
+  return bestEvidence.map(evidence => {
+    const cluster = themeToCluster.get(evidence);
+    if (!cluster) return { claim: evidence, sources: [] };
+
+    const srcCounts = new Map<"youtube" | "reddit" | "web", number>();
+    cluster.claims.forEach(cl => srcCounts.set(cl.source, (srcCounts.get(cl.source) ?? 0) + 1));
+
+    return {
+      claim: evidence,
+      sources: [...srcCounts.entries()]
+        .sort(([, a], [, b]) => b - a)
+        .map(([source, signal_count]) => ({ source, signal_count })),
+    };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function assembleMemo(
   query:              string,
   gatedClaims:        NormalizedClaim[],
+  rawClaims:          NormalizedClaim[],
+  relevanceGate:      number,
   clusters:           ClaimCluster[],
   extractor:          ExtractorOutput,
   confidenceResult:   ConfidenceResult,
@@ -985,6 +1101,8 @@ function assembleMemo(
 
   // Primary themes for evidence_used
   const primaryThemes = clusters.slice(0, 5).map(c => c.theme);
+
+  const bestEvidence = buildBestEvidenceRanking(gatedClaims, extractor);
 
   // Build new insight clusters format: synthesized themes, not raw excerpts
   const clusterByTheme = new Map(clusters.map(c => [c.theme, c]));
@@ -1044,9 +1162,21 @@ function assembleMemo(
     reddit_diagnostics: redditDiag,
     source_quality_scores: qualityScores,
     sources_used: sourcesUsed,
-    best_evidence_ranking: buildBestEvidenceRanking(gatedClaims, extractor),
+    best_evidence_ranking: bestEvidence,
     coverage: computeCoverage(sourcesUsed),
     evidence_processing: evidenceProcessing,
+    source_detail: computeSourceDetail(rawClaims, gatedClaims, clusters, qualityScores, relevanceGate),
+    attributed_evidence: buildAttributedEvidence(bestEvidence, clusters, extractor),
+    evidence_waterfall: {
+      retrieved: rawCounts,
+      accepted: {
+        youtube: gatedClaims.filter(c => c.source === "youtube").length,
+        reddit:  gatedClaims.filter(c => c.source === "reddit").length,
+        web:     gatedClaims.filter(c => c.source === "web").length,
+      },
+      normalized: gatedClaims.length,
+      synthesized: clusters.length,
+    },
   };
 }
 
@@ -1362,7 +1492,7 @@ export async function POST(req: NextRequest) {
       const decision = await generateDecision(query, clusters, extractor.stage_interpretation);
 
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
-      const memo = assembleMemo(query, gatedClaims, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores, evidenceProcessing);
+      const memo = assembleMemo(query, gatedClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores, evidenceProcessing);
 
       emit({ type: "complete", memo });
 

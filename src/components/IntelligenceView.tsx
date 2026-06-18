@@ -140,23 +140,216 @@ function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
   );
 }
 
-// ── Highest confidence evidence ───────────────────────────────────────────────
+// ── Source breakdown ─────────────────────────────────────────────────────────
 
-function HighestConfidenceEvidence({ ranking }: { ranking: string[] }) {
-  if (!ranking.length) return null;
+const SRC_DISPLAY = {
+  youtube: { label: "Creator Intelligence",   icon: "▶", accent: "#ef4444", dimBg: "#fee2e2", dimBorder: "#fca5a5" },
+  reddit:  { label: "Community Intelligence", icon: "▲", accent: "#10b981", dimBg: "#f0fdf4", dimBorder: "#86efac" },
+  web:     { label: "Web Intelligence",       icon: "⬡", accent: "#3b82f6", dimBg: "#eff6ff", dimBorder: "#bfdbfe" },
+} as const;
+
+function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
+  const detail = memo.source_detail;
+  if (!detail) return null;
+  const sources = ["youtube", "reddit", "web"] as const;
+
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Source Breakdown
+      </h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        {sources.map(src => {
+          const d    = detail[src];
+          const disp = SRC_DISPLAY[src];
+
+          if (d.excluded || d.signal_count === 0) {
+            return (
+              <div key={src} style={{ background: "#fafafa", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.75rem 1rem", opacity: 0.7 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <span style={{ fontSize: "0.75rem", color: "#cbd5e1" }}>{disp.icon}</span>
+                  <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#94a3b8" }}>{disp.label}</span>
+                  {d.quality_score > 0 && (
+                    <span style={{ fontSize: "0.57rem", color: "#cbd5e1", marginLeft: "auto" }}>Quality: {d.quality_score}</span>
+                  )}
+                </div>
+                <p style={{ margin: "0.35rem 0 0", fontSize: "0.65rem", color: "#94a3b8", fontStyle: "italic" }}>
+                  No qualifying evidence found. Excluded from synthesis.
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div key={src} style={{ background: "white", border: "1px solid #e2e8f0", borderLeft: `3px solid ${disp.accent}`, borderRadius: 10, padding: "0.85rem 1rem" }}>
+
+              {/* Header row */}
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", marginBottom: "0.55rem", flexWrap: "wrap" }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: "0.68rem", fontWeight: 800, color: disp.accent }}>{disp.icon} {disp.label}</span>
+                </div>
+                <div style={{ display: "flex", gap: "0.75rem", flexShrink: 0 }}>
+                  <span style={{ fontSize: "0.6rem", color: "#64748b" }}>Quality <strong style={{ color: "#0f172a" }}>{d.quality_score}</strong></span>
+                  <span style={{ fontSize: "0.6rem", color: "#64748b" }}>Contribution <strong style={{ color: disp.accent }}>{d.contribution_pct}%</strong></span>
+                </div>
+              </div>
+
+              {/* Contribution bar */}
+              <div style={{ height: 3, background: "#f1f5f9", borderRadius: 2, marginBottom: "0.7rem", overflow: "hidden" }}>
+                <div style={{ width: `${d.contribution_pct}%`, height: "100%", background: disp.accent, borderRadius: 2 }} />
+              </div>
+
+              {/* Primary claims */}
+              {d.primary_claims.length > 0 && (
+                <div style={{ marginBottom: "0.65rem" }}>
+                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
+                    Primary Claims
+                  </p>
+                  <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                    {d.primary_claims.map((c, i) => (
+                      <li key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
+                        <span style={{ color: disp.accent, fontSize: "0.65rem", paddingTop: 1, flexShrink: 0 }}>•</span>
+                        <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Stats row */}
+              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", paddingTop: "0.45rem", borderTop: "1px solid #f1f5f9" }}>
+                <span style={{ fontSize: "0.6rem", color: "#64748b" }}>
+                  <strong style={{ color: "#0f172a" }}>{d.signal_count}</strong> supporting signals
+                </span>
+                {d.unique_insights > 0 && (
+                  <span style={{ fontSize: "0.6rem", color: "#64748b" }}>
+                    <strong style={{ color: "#0f172a" }}>{d.unique_insights}</strong> unique insight{d.unique_insights !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {d.overlapping_insights > 0 && (
+                  <span style={{ fontSize: "0.6rem", color: "#64748b" }}>
+                    <strong style={{ color: "#0f172a" }}>{d.overlapping_insights}</strong> overlapping
+                  </span>
+                )}
+              </div>
+
+              {/* Excluded sample (debug) */}
+              {d.excluded_sample.length > 0 && (
+                <details style={{ marginTop: "0.55rem" }}>
+                  <summary style={{ fontSize: "0.58rem", fontWeight: 700, color: "#94a3b8", cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    {d.excluded_sample.length} excluded claim{d.excluded_sample.length !== 1 ? "s" : ""}
+                  </summary>
+                  <div style={{ marginTop: "0.35rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                    {d.excluded_sample.map((e, i) => (
+                      <div key={i} style={{ padding: "0.35rem 0.6rem", background: "#fafafa", borderRadius: 6, border: "1px solid #f1f5f9" }}>
+                        <p style={{ margin: "0 0 0.1rem", fontSize: "0.67rem", color: "#374151" }}>• {e.claim}</p>
+                        <p style={{ margin: 0, fontSize: "0.57rem", color: "#94a3b8" }}>Reason: {e.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ── Highest confidence evidence (with source attribution) ─────────────────────
+
+function AttributedEvidence({ evidence }: { evidence: IntelligenceMemo["attributed_evidence"] }) {
+  if (!evidence?.length) return null;
   return (
     <section>
       <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
         Highest Confidence Evidence
       </h2>
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.9rem 1.1rem" }}>
-        <ol style={{ margin: 0, paddingLeft: "1.3rem", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-          {ranking.map((r, i) => (
-            <li key={i} style={{ fontSize: "0.78rem", color: "#0f172a", lineHeight: 1.6, fontWeight: 500 }}>
-              {r}
-            </li>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {evidence.map((e, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2rem 1fr", gap: "0.5rem", alignItems: "start" }}>
+              <span style={{ fontSize: "0.62rem", fontWeight: 900, color: "#94a3b8", paddingTop: 2 }}>{i + 1}.</span>
+              <div>
+                <p style={{ margin: "0 0 0.3rem", fontSize: "0.78rem", color: "#0f172a", lineHeight: 1.6, fontWeight: 500 }}>{e.claim}</p>
+                {e.sources.length > 0 && (
+                  <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: "0.55rem", fontWeight: 600, color: "#94a3b8" }}>Sources:</span>
+                    {e.sources.map(s => {
+                      const disp = SRC_DISPLAY[s.source];
+                      return (
+                        <span key={s.source} style={{ display: "inline-flex", alignItems: "center", gap: "0.2rem", fontSize: "0.57rem", fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: disp.dimBg, color: disp.accent, border: `1px solid ${disp.dimBorder}` }}>
+                          {disp.icon} {disp.label.split(" ")[0]} ({s.signal_count})
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
           ))}
-        </ol>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Evidence waterfall ────────────────────────────────────────────────────────
+
+function EvidenceWaterfall({ memo }: { memo: IntelligenceMemo }) {
+  const wf = memo.evidence_waterfall;
+  if (!wf) return null;
+
+  const srcRow = (label: string, counts: { youtube: number; reddit: number; web: number }) => {
+    const items = [
+      { src: "youtube" as const, n: counts.youtube },
+      { src: "reddit"  as const, n: counts.reddit  },
+      { src: "web"     as const, n: counts.web     },
+    ].filter(x => x.n > 0);
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+        <span style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8", width: 80, flexShrink: 0 }}>{label}</span>
+        <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+          {items.map(({ src, n }) => {
+            const d = SRC_DISPLAY[src];
+            return (
+              <span key={src} style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 8px", borderRadius: 20, background: d.dimBg, color: d.accent, border: `1px solid ${d.dimBorder}` }}>
+                {d.icon} {n}
+              </span>
+            );
+          })}
+          {items.length === 0 && <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>—</span>}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Evidence Waterfall
+      </h2>
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        {srcRow("Retrieved", wf.retrieved)}
+        <div style={{ paddingLeft: 80, fontSize: "0.75rem", color: "#cbd5e1" }}>↓</div>
+        {srcRow("Accepted", wf.accepted)}
+        <div style={{ paddingLeft: 80, fontSize: "0.75rem", color: "#cbd5e1" }}>↓</div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8", width: 80 }}>Normalized</span>
+          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: "#0f172a" }}>{wf.normalized} claims</span>
+        </div>
+        <div style={{ paddingLeft: 80, fontSize: "0.75rem", color: "#cbd5e1" }}>↓</div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8", width: 80 }}>Synthesized</span>
+          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: "#0f172a" }}>{wf.synthesized} insight cluster{wf.synthesized !== 1 ? "s" : ""}</span>
+        </div>
+        <div style={{ paddingLeft: 80, fontSize: "0.75rem", color: "#cbd5e1" }}>↓</div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6366f1", width: 80 }}>Decision</span>
+          <span style={{ fontSize: "0.65rem", color: "#6366f1", fontWeight: 700 }}>←</span>
+        </div>
       </div>
     </section>
   );
@@ -704,7 +897,7 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
   );
 }
 
-// ── Full report — Decision → Evidence → Reasoning → Actions → Confidence → Gaps ─
+// ── Full report ───────────────────────────────────────────────────────────────
 
 function IntelligenceReport({ memo, query }: { memo: IntelligenceMemo; query: string }) {
   return (
@@ -713,37 +906,43 @@ function IntelligenceReport({ memo, query }: { memo: IntelligenceMemo; query: st
       {/* 1. Decision */}
       <DecisionCard memo={memo} />
 
-      {/* 2. Highest Confidence Evidence */}
-      <HighestConfidenceEvidence ranking={memo.best_evidence_ranking ?? []} />
+      {/* 2. Source Breakdown — which source said what, how much it contributed */}
+      {memo.source_detail && <SourceBreakdown memo={memo} />}
 
-      {/* 3. Reasoning (Evidence Themes) */}
+      {/* 3. Highest Confidence Evidence (with source attribution) */}
+      <AttributedEvidence evidence={memo.attributed_evidence ?? memo.best_evidence_ranking?.map(r => ({ claim: r, sources: [] })) ?? []} />
+
+      {/* 4. Reasoning (Evidence Themes) */}
       <InsightClusters clusters={memo.insight_clusters} />
 
-      {/* 4. Priority Actions */}
+      {/* 5. Priority Actions */}
       <PriorityActions actions={memo.decision_recommendation.priority_actions} />
 
-      {/* 5. Confidence */}
+      {/* 6. Confidence */}
       <ConfidenceSection memo={memo} />
 
-      {/* 6. Evidence Gaps */}
+      {/* 7. Evidence Gaps */}
       {memo.coverage && <EvidenceGaps coverage={memo.coverage} />}
 
-      {/* 7. Consensus */}
+      {/* 8. Consensus */}
       <ConsensusSection consensus={memo.consensus} />
 
-      {/* 8. Contradictions */}
+      {/* 9. Contradictions */}
       <Contradictions items={memo.contradictions} />
 
-      {/* 9. Evidence Quality */}
+      {/* 10. Evidence Quality */}
       {memo.source_quality_scores && <EvidenceQualityPanel scores={memo.source_quality_scores} />}
 
-      {/* 10. Evidence Used */}
+      {/* 11. Evidence Waterfall */}
+      {memo.evidence_waterfall && <EvidenceWaterfall memo={memo} />}
+
+      {/* 12. Evidence Used (processing stats) */}
       <EvidenceUsed memo={memo} />
 
-      {/* 11. Stage Playbook */}
+      {/* 13. Stage Playbook */}
       <StageActions rec={memo.decision_recommendation} />
 
-      {/* 12. Prediction Intelligence (conditional on relevance) */}
+      {/* 14. Prediction Intelligence (conditional on relevance) */}
       <PredictionIntelligenceCard query={query} />
 
     </div>
