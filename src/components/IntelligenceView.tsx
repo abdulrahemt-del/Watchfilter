@@ -210,11 +210,18 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
 
             {has ? (
               <>
+                {/* Weak signal banner */}
+                {p!.weak_signal && (
+                  <p style={{ margin: "0 0 0.45rem", fontSize: "0.62rem", fontWeight: 700, color: "#d97706", letterSpacing: "0.01em" }}>
+                    Weak signal detected. Observed themes:
+                  </p>
+                )}
+
                 {/* Synthesized perspective bullets */}
                 <ul style={{ margin: "0 0 0.6rem", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
                   {p!.bullets.map((bullet, i) => (
                     <li key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
-                      <span style={{ color: disp.accent, fontSize: "0.65rem", paddingTop: 1, flexShrink: 0 }}>•</span>
+                      <span style={{ color: p!.weak_signal ? "#d97706" : disp.accent, fontSize: "0.65rem", paddingTop: 1, flexShrink: 0 }}>•</span>
                       <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{bullet}</span>
                     </li>
                   ))}
@@ -231,7 +238,7 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
                 )}
               </>
             ) : (
-              /* Clean placeholder — no mechanics, no error messaging */
+              /* Clean placeholder — only when source genuinely has < 2 relevant signals */
               <div>
                 <p style={{ margin: "0 0 0.3rem", fontSize: "0.72rem", color: "#94a3b8", lineHeight: 1.55 }}>{fb.body}</p>
                 <p style={{ margin: 0, fontSize: "0.65rem", color: "#cbd5e1" }}>{fb.footer}</p>
@@ -905,7 +912,7 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
 
 // ── Full report ───────────────────────────────────────────────────────────────
 
-function IntelligenceReport({ memo, query }: { memo: IntelligenceMemo; query: string }) {
+function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; query: string; debug: boolean }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
@@ -936,8 +943,20 @@ function IntelligenceReport({ memo, query }: { memo: IntelligenceMemo; query: st
       {/* 10. Stage Playbook */}
       <StageActions rec={memo.decision_recommendation} />
 
-      {/* 14. Prediction Intelligence (conditional on relevance) */}
+      {/* 11. Prediction Intelligence (conditional on relevance) */}
       <PredictionIntelligenceCard query={query} />
+
+      {/* Debug panel — pipeline diagnostics, hidden by default */}
+      {debug && (
+        <div style={{ borderTop: "2px dashed #e2e8f0", paddingTop: "1.25rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+          <p style={{ margin: 0, fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#94a3b8" }}>
+            ◈ Debug — Pipeline Diagnostics
+          </p>
+          {memo.source_quality_scores && <EvidenceQualityPanel scores={memo.source_quality_scores} />}
+          {memo.evidence_waterfall && <EvidenceWaterfall memo={memo} />}
+          <EvidenceUsed memo={memo} />
+        </div>
+      )}
 
     </div>
   );
@@ -961,6 +980,7 @@ export function IntelligenceView() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [memo, setMemo] = useState<IntelligenceMemo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const run = useCallback(async (q: string) => {
@@ -1075,12 +1095,18 @@ export function IntelligenceView() {
             <p style={{ margin: 0, fontSize: "0.7rem", color: "#64748b" }}>
               Query: <strong style={{ color: "#0f172a" }}>"{memo.query}"</strong>
             </p>
-            <button type="button" onClick={() => { setMemo(null); setLog([]); setError(null); }}
-              style={{ padding: "0.3rem 0.75rem", fontSize: "0.68rem", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", cursor: "pointer" }}>
-              ← New Query
-            </button>
+            <div style={{ display: "flex", gap: "0.4rem" }}>
+              <button type="button" onClick={() => setDebugMode(d => !d)}
+                style={{ padding: "0.3rem 0.75rem", fontSize: "0.68rem", borderRadius: 8, border: `1px solid ${debugMode ? "#6366f1" : "#e2e8f0"}`, background: debugMode ? "#eef2ff" : "white", color: debugMode ? "#6366f1" : "#94a3b8", cursor: "pointer", fontWeight: debugMode ? 700 : 400 }}>
+                {debugMode ? "◈ Debug On" : "◈ Debug"}
+              </button>
+              <button type="button" onClick={() => { setMemo(null); setLog([]); setError(null); setDebugMode(false); }}
+                style={{ padding: "0.3rem 0.75rem", fontSize: "0.68rem", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", cursor: "pointer" }}>
+                ← New Query
+              </button>
+            </div>
           </div>
-          <IntelligenceReport memo={memo} query={query} />
+          <IntelligenceReport memo={memo} query={query} debug={debugMode} />
         </>
       )}
     </div>

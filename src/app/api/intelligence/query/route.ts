@@ -127,6 +127,7 @@ export type IntelligenceMemo = {
     bullets: string[];
     common_view: string;
     confidence: "High" | "Medium" | "Low";
+    weak_signal: boolean;
   } | null>;
   cross_source_synthesis: {
     youtube: string | null;
@@ -911,7 +912,9 @@ async function generateDecision(
   query: string,
   clusters: ClaimCluster[],
   stageInterpretation: ExtractorOutput["stage_interpretation"],
+  workingClaims: NormalizedClaim[],
 ): Promise<DecisionResult> {
+  // Quality-gated claims (from clusters) → used for decision/actions
   const allFlat = clusters.flatMap(c => c.claims);
   const topBySource = (src: NormalizedClaim["source"]) =>
     allFlat
@@ -920,11 +923,23 @@ async function generateDecision(
       .slice(0, 8)
       .map(c => ({ claim: c.claim, type: c.type }));
 
+  // All relevance-passed claims (pre-quality-gate) → used for perspective synthesis
+  // Even excluded sources may have 2+ relevant signals that reveal operator patterns
+  const perspBySource = (src: NormalizedClaim["source"]) =>
+    workingClaims
+      .filter(c => c.source === src)
+      .sort((a, b) => (computeClaimStrength(b) * b.queryRelevance) - (computeClaimStrength(a) * a.queryRelevance))
+      .slice(0, 10)
+      .map(c => ({ claim: c.claim, type: c.type }));
+
   const input = {
     question: query,
     creator_signals:   topBySource("youtube"),
     community_signals: topBySource("reddit"),
     web_signals:       topBySource("web"),
+    creator_raw:       perspBySource("youtube"),
+    community_raw:     perspBySource("reddit"),
+    web_raw:           perspBySource("web"),
     precomputed: { agreement_score: null, confidence: null },
     stage_observations: stageInterpretation,
   };
@@ -966,16 +981,18 @@ You do NOT browse, search, or invent facts. Work only from provided signals.
    BAD action: "Create a community"
    BAD action: "Build a value proposition"
 
-6. source_perspectives: For each source that has signals, synthesize 3–5 bullets from that source's unique lens.
-   Ground every bullet in the provided signals only. No hallucination or inference from absent sources.
-   - youtube (creator): "What do experienced operators believe?" → operator mental models, tactical principles, execution philosophy.
-   - reddit (community): "What actually happened in practice?" → real founder outcomes, what worked, what failed, specific tactics used.
-   - web: "What is generally recommended?" → published playbooks, research-backed strategies, standard approaches.
-   If a source array is empty, OMIT that key entirely from source_perspectives.
-   common_view: one sentence capturing that source's central conclusion on the question.
+6. source_perspectives: Use the *_raw arrays (creator_raw, community_raw, web_raw) — NOT the main *_signals arrays.
+   *_raw = all relevance-matched signals before quality filtering. These reveal patterns even when evidence is imperfect.
+   Minimum to generate a perspective: 2 entries in the *_raw array. If fewer than 2, OMIT that source key entirely.
+   - creator_raw → youtube perspective: "What do experienced operators believe?" → mental models, tactical principles, recurring beliefs.
+   - community_raw → reddit perspective: "What actually happened in practice?" → observed outcomes, tactics used, what worked or failed.
+   - web_raw → web perspective: "What is generally recommended?" → published playbooks, research-backed strategies.
+   Synthesize 3–5 bullets per source from patterns in the raw signals. Do NOT copy raw text verbatim.
+   common_view: one sentence capturing that source's central conclusion.
+   Even if signals are weak: extract the recurring theme. A useful imperfect synthesis beats an empty box.
 
-7. cross_source_synthesis: One sentence per active source capturing their unique contribution to answering the question.
-   Enable direct comparison across perspectives. Omit sources that have no signals.
+7. cross_source_synthesis: One sentence per active source (one with 2+ raw signals) capturing their unique contribution.
+   Enable direct comparison across perspectives. Omit sources with fewer than 2 raw signals.
 
 8. Directional must be EXACTLY one of:
    "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)"
@@ -1359,27 +1376,32 @@ function assembleMemo(
       normalized: gatedClaims.length,
       synthesized: clusters.length,
     },
+    // source_perspective: not gated by quality exclusion — perspectives are synthesized from
+    // the pre-quality-gate working pool so sources with 2+ relevant signals always contribute
     source_perspective: {
-      youtube: qualityScores.youtube.excluded || !(decision.source_perspectives.youtube?.bullets?.length)
+      youtube: !(decision.source_perspectives.youtube?.bullets?.length)
         ? null
         : {
             bullets:     decision.source_perspectives.youtube.bullets,
             common_view: decision.source_perspectives.youtube.common_view,
             confidence:  qualityScores.youtube.score >= 70 ? "High" : qualityScores.youtube.score >= 50 ? "Medium" : "Low",
+            weak_signal: qualityScores.youtube.excluded,
           },
-      reddit: qualityScores.reddit.excluded || !(decision.source_perspectives.reddit?.bullets?.length)
+      reddit: !(decision.source_perspectives.reddit?.bullets?.length)
         ? null
         : {
             bullets:     decision.source_perspectives.reddit.bullets,
             common_view: decision.source_perspectives.reddit.common_view,
             confidence:  qualityScores.reddit.score >= 70 ? "High" : qualityScores.reddit.score >= 50 ? "Medium" : "Low",
+            weak_signal: qualityScores.reddit.excluded,
           },
-      web: qualityScores.web.excluded || !(decision.source_perspectives.web?.bullets?.length)
+      web: !(decision.source_perspectives.web?.bullets?.length)
         ? null
         : {
             bullets:     decision.source_perspectives.web.bullets,
             common_view: decision.source_perspectives.web.common_view,
             confidence:  qualityScores.web.score >= 70 ? "High" : qualityScores.web.score >= 50 ? "Medium" : "Low",
+            weak_signal: qualityScores.web.excluded,
           },
     },
     cross_source_synthesis: {
@@ -1704,7 +1726,7 @@ export async function POST(req: NextRequest) {
 
       // Stage 7: Decision
       emit({ type: "stage", agent: "Decision", message: "Generating decision intelligence…" });
-      const decision = await generateDecision(query, clusters, extractor.stage_interpretation);
+      const decision = await generateDecision(query, clusters, extractor.stage_interpretation, workingClaims);
 
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
       const memo = assembleMemo(query, gatedClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores, evidenceProcessing);
