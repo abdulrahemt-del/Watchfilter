@@ -210,31 +210,38 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
 
             {has ? (
               <>
-                {/* Weak signal banner */}
-                {p!.weak_signal && (
-                  <p style={{ margin: "0 0 0.45rem", fontSize: "0.62rem", fontWeight: 700, color: "#d97706", letterSpacing: "0.01em" }}>
-                    Weak signal detected. Observed themes:
+                {/* Bullets section — label changes for weak vs strong signal */}
+                <div style={{ marginBottom: "0.6rem" }}>
+                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: p!.weak_signal ? "#d97706" : "#94a3b8" }}>
+                    {p!.weak_signal
+                      ? `Observed ${src === "youtube" ? "operator" : src === "reddit" ? "practitioner" : "web"} themes`
+                      : SRC_BULLETS_LABEL[src]}
                   </p>
-                )}
-
-                {/* Synthesized perspective bullets */}
-                <ul style={{ margin: "0 0 0.6rem", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                  {p!.bullets.map((bullet, i) => (
-                    <li key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
-                      <span style={{ color: p!.weak_signal ? "#d97706" : disp.accent, fontSize: "0.65rem", paddingTop: 1, flexShrink: 0 }}>•</span>
-                      <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{bullet}</span>
-                    </li>
-                  ))}
-                </ul>
+                  <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                    {p!.bullets.map((bullet, i) => (
+                      <li key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
+                        <span style={{ color: p!.weak_signal ? "#d97706" : disp.accent, fontSize: "0.65rem", paddingTop: 1, flexShrink: 0 }}>•</span>
+                        <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{bullet}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
 
                 {/* Common view / playbook */}
-                {p!.common_view && (
+                {!p!.weak_signal && p!.common_view && (
                   <div style={{ paddingTop: "0.5rem", borderTop: "1px solid #f1f5f9" }}>
                     <p style={{ margin: "0 0 0.2rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
                       {SRC_VIEW_LABEL[src]}
                     </p>
                     <p style={{ margin: 0, fontSize: "0.72rem", color: "#374151", lineHeight: 1.55 }}>{p!.common_view}</p>
                   </div>
+                )}
+
+                {/* Weak signal footer */}
+                {p!.weak_signal && (
+                  <p style={{ margin: "0.4rem 0 0", fontSize: "0.62rem", fontWeight: 700, color: "#d97706" }}>
+                    Signal Strength: Weak
+                  </p>
                 )}
               </>
             ) : (
