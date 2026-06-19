@@ -123,6 +123,16 @@ export type IntelligenceMemo = {
     normalized: number;
     synthesized: number;
   };
+  source_perspective: Record<"youtube" | "reddit" | "web", {
+    bullets: string[];
+    common_view: string;
+    confidence: "High" | "Medium" | "Low";
+  } | null>;
+  cross_source_synthesis: {
+    youtube: string | null;
+    reddit: string | null;
+    web: string | null;
+  } | null;
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -889,11 +899,19 @@ type PriorityAction = {
   supporting_signals: number;
 };
 
+type DecisionResult = {
+  directional: string;
+  decision_summary: string;
+  priority_actions: PriorityAction[];
+  source_perspectives: Partial<Record<"youtube" | "reddit" | "web", { bullets: string[]; common_view: string }>>;
+  cross_source_synthesis: Partial<Record<"youtube" | "reddit" | "web", string>>;
+};
+
 async function generateDecision(
   query: string,
   clusters: ClaimCluster[],
   stageInterpretation: ExtractorOutput["stage_interpretation"],
-): Promise<{ directional: string; decision_summary: string; priority_actions: PriorityAction[] }> {
+): Promise<DecisionResult> {
   const allFlat = clusters.flatMap(c => c.claims);
   const topBySource = (src: NormalizedClaim["source"]) =>
     allFlat
@@ -914,7 +932,7 @@ async function generateDecision(
   const res = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.3,
-    max_tokens: 1400,
+    max_tokens: 2800,
     response_format: { type: "json_object" },
     messages: [
       {
@@ -948,7 +966,18 @@ You do NOT browse, search, or invent facts. Work only from provided signals.
    BAD action: "Create a community"
    BAD action: "Build a value proposition"
 
-6. Directional must be EXACTLY one of:
+6. source_perspectives: For each source that has signals, synthesize 3–5 bullets from that source's unique lens.
+   Ground every bullet in the provided signals only. No hallucination or inference from absent sources.
+   - youtube (creator): "What do experienced operators believe?" → operator mental models, tactical principles, execution philosophy.
+   - reddit (community): "What actually happened in practice?" → real founder outcomes, what worked, what failed, specific tactics used.
+   - web: "What is generally recommended?" → published playbooks, research-backed strategies, standard approaches.
+   If a source array is empty, OMIT that key entirely from source_perspectives.
+   common_view: one sentence capturing that source's central conclusion on the question.
+
+7. cross_source_synthesis: One sentence per active source capturing their unique contribution to answering the question.
+   Enable direct comparison across perspectives. Omit sources that have no signals.
+
+8. Directional must be EXACTLY one of:
    "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)"
 
 # STYLE
@@ -966,7 +995,17 @@ Return ONLY valid JSON:
   "priority_actions": [
     { "action": "specific immediately executable action", "evidence_strength": "High|Medium|Low", "supporting_signals": 5 },
     { "action": "...", "evidence_strength": "...", "supporting_signals": 3 }
-  ]
+  ],
+  "source_perspectives": {
+    "youtube": { "bullets": ["3–5 synthesized operator beliefs"], "common_view": "One sentence" },
+    "reddit":  { "bullets": ["3–5 practitioner observations"], "common_view": "One sentence" },
+    "web":     { "bullets": ["3–5 synthesized recommendations"], "common_view": "One sentence" }
+  },
+  "cross_source_synthesis": {
+    "youtube": "One sentence: what operators uniquely contribute to answering this question",
+    "reddit":  "One sentence: what community experiences uniquely contribute",
+    "web":     "One sentence: what established guidance uniquely contributes"
+  }
 }`,
       },
       { role: "user", content: JSON.stringify(input) },
@@ -984,7 +1023,33 @@ Return ONLY valid JSON:
       directional?: string;
       decision_summary?: string;
       priority_actions?: Array<{ action?: string; evidence_strength?: string; supporting_signals?: number }>;
+      source_perspectives?: Record<string, { bullets?: unknown[]; common_view?: string }>;
+      cross_source_synthesis?: Record<string, unknown>;
     };
+
+    const VALID_SRCS = new Set(["youtube", "reddit", "web"]);
+
+    const parsedPerspectives: DecisionResult["source_perspectives"] = {};
+    if (p.source_perspectives && typeof p.source_perspectives === "object") {
+      for (const [src, val] of Object.entries(p.source_perspectives)) {
+        if (VALID_SRCS.has(src) && val && Array.isArray(val.bullets)) {
+          parsedPerspectives[src as "youtube" | "reddit" | "web"] = {
+            bullets: val.bullets.filter((b): b is string => typeof b === "string" && b.length > 5).slice(0, 6),
+            common_view: typeof val.common_view === "string" ? val.common_view : "",
+          };
+        }
+      }
+    }
+
+    const parsedSynthesis: DecisionResult["cross_source_synthesis"] = {};
+    if (p.cross_source_synthesis && typeof p.cross_source_synthesis === "object") {
+      for (const [src, val] of Object.entries(p.cross_source_synthesis)) {
+        if (VALID_SRCS.has(src) && typeof val === "string" && val.length > 5) {
+          parsedSynthesis[src as "youtube" | "reddit" | "web"] = val;
+        }
+      }
+    }
+
     return {
       directional:      VALID_DIRECTIONALS.has(p.directional ?? "") ? p.directional! : "Neutral / Tradeoff",
       decision_summary: p.decision_summary ?? "Insufficient evidence to synthesize a decision.",
@@ -997,12 +1062,16 @@ Return ONLY valid JSON:
                 supporting_signals: Math.max(1, Math.round(a.supporting_signals ?? 1)),
               }))
         : [],
+      source_perspectives:    parsedPerspectives,
+      cross_source_synthesis: parsedSynthesis,
     };
   } catch {
     return {
       directional:      "Neutral / Tradeoff",
       decision_summary: "Insufficient evidence to synthesize a decision.",
       priority_actions: [],
+      source_perspectives:    {},
+      cross_source_synthesis: {},
     };
   }
 }
@@ -1178,7 +1247,7 @@ function assembleMemo(
   clusters:           ClaimCluster[],
   extractor:          ExtractorOutput,
   confidenceResult:   ConfidenceResult,
-  decision:           { directional: string; decision_summary: string; priority_actions: PriorityAction[] },
+  decision:           DecisionResult,
   rawCounts:          { youtube: number; reddit: number; web: number },
   redditDiag:         IntelligenceMemo["reddit_diagnostics"],
   qualityScores:      Record<"youtube" | "reddit" | "web", SourceQualityResult>,
@@ -1289,6 +1358,34 @@ function assembleMemo(
       },
       normalized: gatedClaims.length,
       synthesized: clusters.length,
+    },
+    source_perspective: {
+      youtube: qualityScores.youtube.excluded || !(decision.source_perspectives.youtube?.bullets?.length)
+        ? null
+        : {
+            bullets:     decision.source_perspectives.youtube.bullets,
+            common_view: decision.source_perspectives.youtube.common_view,
+            confidence:  qualityScores.youtube.score >= 70 ? "High" : qualityScores.youtube.score >= 50 ? "Medium" : "Low",
+          },
+      reddit: qualityScores.reddit.excluded || !(decision.source_perspectives.reddit?.bullets?.length)
+        ? null
+        : {
+            bullets:     decision.source_perspectives.reddit.bullets,
+            common_view: decision.source_perspectives.reddit.common_view,
+            confidence:  qualityScores.reddit.score >= 70 ? "High" : qualityScores.reddit.score >= 50 ? "Medium" : "Low",
+          },
+      web: qualityScores.web.excluded || !(decision.source_perspectives.web?.bullets?.length)
+        ? null
+        : {
+            bullets:     decision.source_perspectives.web.bullets,
+            common_view: decision.source_perspectives.web.common_view,
+            confidence:  qualityScores.web.score >= 70 ? "High" : qualityScores.web.score >= 50 ? "Medium" : "Low",
+          },
+    },
+    cross_source_synthesis: {
+      youtube: qualityScores.youtube.excluded ? null : (decision.cross_source_synthesis.youtube ?? null),
+      reddit:  qualityScores.reddit.excluded  ? null : (decision.cross_source_synthesis.reddit  ?? null),
+      web:     qualityScores.web.excluded     ? null : (decision.cross_source_synthesis.web     ?? null),
     },
   };
 }

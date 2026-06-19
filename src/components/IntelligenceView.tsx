@@ -143,12 +143,48 @@ const SRC_DISPLAY = {
   web:     { label: "Web Intelligence",       icon: "⬡", accent: "#3b82f6", dimBg: "#eff6ff", dimBorder: "#bfdbfe" },
 } as const;
 
+const SRC_QUESTION: Record<"youtube" | "reddit" | "web", string> = {
+  youtube: "What do experienced operators believe?",
+  reddit:  "What actually happened in practice?",
+  web:     "What is generally recommended?",
+};
+
+const SRC_BULLETS_LABEL: Record<"youtube" | "reddit" | "web", string> = {
+  youtube: "Operator Beliefs",
+  reddit:  "Practitioner Observations",
+  web:     "Consensus Recommendations",
+};
+
+const SRC_VIEW_LABEL: Record<"youtube" | "reddit" | "web", string> = {
+  youtube: "Common Operator View",
+  reddit:  "Community Consensus",
+  web:     "Common Playbook",
+};
+
+const SRC_SYNTH_LABEL: Record<"youtube" | "reddit" | "web", string> = {
+  youtube: "What experienced operators believe:",
+  reddit:  "What community practitioners observed:",
+  web:     "What is generally recommended:",
+};
+
 function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
-  const detail = memo.source_detail;
+  const detail      = memo.source_detail;
+  const perspective = memo.source_perspective;
   if (!detail) return null;
-  const sources = ["youtube", "reddit", "web"] as const;
-  const activeSources = sources.filter(s => !detail[s].excluded && detail[s].signal_count > 0);
+
+  // Render order: Web (what's recommended) → Community (what happened) → Creator (what operators believe)
+  const renderOrder = ["web", "reddit", "youtube"] as const;
+  const activeSources = renderOrder.filter(s =>
+    !detail[s].excluded &&
+    detail[s].signal_count > 0 &&
+    (perspective?.[s]?.bullets?.length ?? 0) > 0,
+  );
   if (!activeSources.length) return null;
+
+  const crossSynth    = memo.cross_source_synthesis;
+  const activeCrossSrcs = crossSynth
+    ? renderOrder.filter(s => activeSources.includes(s) && crossSynth[s] !== null)
+    : [];
 
   return (
     <section>
@@ -156,24 +192,29 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
         Source Breakdown
       </h2>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {sources.map(src => {
+        {activeSources.map(src => {
           const d    = detail[src];
+          const p    = perspective![src]!;
           const disp = SRC_DISPLAY[src];
-
-          if (d.excluded || d.signal_count === 0) return null;
 
           return (
             <div key={src} style={{ background: "white", border: "1px solid #e2e8f0", borderLeft: `3px solid ${disp.accent}`, borderRadius: 10, padding: "0.85rem 1rem" }}>
 
-              {/* Header row */}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", marginBottom: "0.55rem", flexWrap: "wrap" }}>
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: "0.68rem", fontWeight: 800, color: disp.accent }}>{disp.icon} {disp.label}</span>
-                </div>
-                <div style={{ display: "flex", gap: "0.75rem", flexShrink: 0 }}>
-                  <span style={{ fontSize: "0.6rem", color: "#64748b" }}>Quality <strong style={{ color: "#0f172a" }}>{d.quality_score}</strong></span>
-                  <span style={{ fontSize: "0.6rem", color: "#64748b" }}>Contribution <strong style={{ color: disp.accent }}>{d.contribution_pct}%</strong></span>
-                </div>
+              {/* Source label */}
+              <div style={{ marginBottom: "0.3rem" }}>
+                <span style={{ fontSize: "0.68rem", fontWeight: 800, color: disp.accent }}>{disp.icon} {disp.label}</span>
+              </div>
+
+              {/* Perspective question */}
+              <p style={{ margin: "0 0 0.55rem", fontSize: "0.67rem", fontStyle: "italic", color: "#64748b", lineHeight: 1.4 }}>
+                {SRC_QUESTION[src]}
+              </p>
+
+              {/* Metrics */}
+              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.4rem" }}>
+                <span style={{ fontSize: "0.6rem", color: "#64748b" }}>Quality <strong style={{ color: "#0f172a" }}>{d.quality_score}</strong></span>
+                <span style={{ fontSize: "0.6rem", color: "#64748b" }}>Contribution <strong style={{ color: disp.accent }}>{d.contribution_pct}%</strong></span>
+                <span style={{ fontSize: "0.6rem", color: "#64748b" }}>Confidence <strong style={{ color: "#0f172a" }}>{p.confidence}</strong></span>
               </div>
 
               {/* Contribution bar */}
@@ -181,60 +222,59 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
                 <div style={{ width: `${d.contribution_pct}%`, height: "100%", background: disp.accent, borderRadius: 2 }} />
               </div>
 
-              {/* Primary claims */}
-              {d.primary_claims.length > 0 && (
+              {/* Synthesized perspective bullets */}
+              {p.bullets.length > 0 && (
                 <div style={{ marginBottom: "0.65rem" }}>
                   <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
-                    Primary Claims
+                    {SRC_BULLETS_LABEL[src]}
                   </p>
                   <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                    {d.primary_claims.map((c, i) => (
+                    {p.bullets.map((bullet, i) => (
                       <li key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
                         <span style={{ color: disp.accent, fontSize: "0.65rem", paddingTop: 1, flexShrink: 0 }}>•</span>
-                        <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{c}</span>
+                        <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{bullet}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {/* Stats row */}
-              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", paddingTop: "0.45rem", borderTop: "1px solid #f1f5f9" }}>
-                <span style={{ fontSize: "0.6rem", color: "#64748b" }}>
-                  <strong style={{ color: "#0f172a" }}>{d.signal_count}</strong> supporting signals
-                </span>
-                {d.unique_insights > 0 && (
-                  <span style={{ fontSize: "0.6rem", color: "#64748b" }}>
-                    <strong style={{ color: "#0f172a" }}>{d.unique_insights}</strong> unique insight{d.unique_insights !== 1 ? "s" : ""}
-                  </span>
-                )}
-                {d.overlapping_insights > 0 && (
-                  <span style={{ fontSize: "0.6rem", color: "#64748b" }}>
-                    <strong style={{ color: "#0f172a" }}>{d.overlapping_insights}</strong> overlapping
-                  </span>
-                )}
-              </div>
-
-              {/* Excluded sample (debug) */}
-              {d.excluded_sample.length > 0 && (
-                <details style={{ marginTop: "0.55rem" }}>
-                  <summary style={{ fontSize: "0.58rem", fontWeight: 700, color: "#94a3b8", cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    {d.excluded_sample.length} excluded claim{d.excluded_sample.length !== 1 ? "s" : ""}
-                  </summary>
-                  <div style={{ marginTop: "0.35rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                    {d.excluded_sample.map((e, i) => (
-                      <div key={i} style={{ padding: "0.35rem 0.6rem", background: "#fafafa", borderRadius: 6, border: "1px solid #f1f5f9" }}>
-                        <p style={{ margin: "0 0 0.1rem", fontSize: "0.67rem", color: "#374151" }}>• {e.claim}</p>
-                        <p style={{ margin: 0, fontSize: "0.57rem", color: "#94a3b8" }}>Reason: {e.reason}</p>
-                      </div>
-                    ))}
-                  </div>
-                </details>
+              {/* Common view / playbook */}
+              {p.common_view && (
+                <div style={{ paddingTop: "0.5rem", borderTop: "1px solid #f1f5f9" }}>
+                  <p style={{ margin: "0 0 0.2rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
+                    {SRC_VIEW_LABEL[src]}
+                  </p>
+                  <p style={{ margin: 0, fontSize: "0.72rem", color: "#374151", lineHeight: 1.55 }}>{p.common_view}</p>
+                </div>
               )}
-
             </div>
           );
         })}
+
+        {/* Cross-Source Synthesis — only when 2+ active sources have a synthesis line */}
+        {activeCrossSrcs.length >= 2 && crossSynth && (
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1rem" }}>
+            <p style={{ margin: "0 0 0.6rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+              Cross-Source Synthesis
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+              {renderOrder.map(src => {
+                const syn = crossSynth[src];
+                if (!syn || !activeSources.includes(src)) return null;
+                const disp = SRC_DISPLAY[src];
+                return (
+                  <div key={src} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                    <span style={{ fontSize: "0.6rem", fontWeight: 700, color: disp.accent, flexShrink: 0, paddingTop: 3, whiteSpace: "nowrap" }}>
+                      {SRC_SYNTH_LABEL[src]}
+                    </span>
+                    <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{syn}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
