@@ -47,7 +47,7 @@ export type HNSearchOptions = {
   fetchComments?: boolean;
   commentLimit?: number;
   commentedPostsLimit?: number;
-  minPoints?: number;
+  minPoints?: number;           // default 1 — allow low-scored posts (quality gate is claim strength)
 };
 
 // ── Internal Algolia API types ────────────────────────────────────────────────
@@ -152,8 +152,8 @@ export async function searchHN(
     limit = 15,
     fetchComments: doFetch = true,
     commentLimit = 10,
-    commentedPostsLimit = 5,
-    minPoints = 3,
+    commentedPostsLimit = 6,
+    minPoints = 1,
   } = options;
 
   const q = encodeURIComponent(query);
@@ -277,34 +277,35 @@ export async function extractHNClaims(
     messages: [
       {
         role: "system",
-        content: `You are a Hacker News Intelligence Extractor. Your goal is to surface experiential knowledge from technical founders, operators, and practitioners who have done the thing.
+        content: `You are a Hacker News Intelligence Extractor. Surface experiential knowledge from technical founders, operators, and practitioners.
 
-PRIORITY: Extract from COMMENTS before post bodies. Comments contain first-person lived experience; post titles are usually questions.
+PRIORITY: Extract from COMMENTS before post bodies. Comments contain first-person lived experience.
 
-Extract claims from:
-- First-person experiences with outcomes ("We got X by doing Y")
-- Founder and operator anecdotes with specific results
-- Customer acquisition stories (channels, tactics, numbers)
-- Failure post-mortems with identifiable root causes
-- Lessons learned from people who have done the thing
+WHAT TO EXTRACT (in priority order):
+1. First-person experiences with outcomes ("We got X by doing Y", "We tried X and it failed because Y")
+2. Tactical patterns endorsed by multiple commenters ("X worked better than Y for early-stage")
+3. Strong recommendations from practitioners with context ("Don't do X because Y; we did Z instead")
+4. Observed patterns: what channels/tactics/approaches the community converges on as effective or ineffective
+5. Specific numbers, timelines, or scale data when mentioned
 
-EXTRACTION FILTER — A claim is only valid if it contains ALL THREE:
-1. First-person experience ("we", "I", "our team", "my startup")
-2. An action taken (what they did)
-3. An outcome or lesson (what happened, what they learned)
+ACCEPT any of these — you do NOT need all three parts of first-person + action + outcome:
+- Practitioner opinions grounded in stated experience ("In my experience building B2B, cold email outperforms ads until $1M ARR")
+- Community consensus claims ("HN founders consistently report that founder-led sales is essential before $1M ARR")
+- Failure patterns ("X approach consistently fails at early stage because Y")
 
-Discard any claim that fails this test. Generic advice without evidence is noise.
+REJECT:
+- Generic platitudes with no specific context ("just build a great product")
+- Post titles that are only questions with no content
+- Advice with zero grounding in experience
 
-MERGE RULE: If multiple commenters independently describe the same action with the same outcome, merge into one claim. Preserve the count ("3 founders report…").
+MERGE RULE: If 2+ commenters describe the same pattern independently, merge into one claim with support_count reflecting convergence.
 
 RULES:
-- Only extract what is directly stated — no inference
+- Only extract what is stated or strongly implied — no hallucination
 - Source reference must match the [H#] index from evidence
-- Extract at most 20 claims, prioritize specificity
-- Exclude vague generalities
-
-source_type: "comment" if from a comment, "post" if from post body
-support_count: number of distinct people reporting the same outcome
+- Extract at most 20 claims, prioritize specificity and convergence
+- source_type: "comment" if from a comment, "post" if from post body
+- support_count: number of distinct people/signals supporting this claim
 
 Return JSON:
 {

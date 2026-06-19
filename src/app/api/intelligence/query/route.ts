@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import OpenAI from "openai";
 import { getDeepResearchEvidence, type DeepResearchRow } from "@/lib/db";
 import { searchHN, extractHNClaims, type HNClaim } from "@/lib/hnSkill";
+import { searchReddit, extractRedditClaims } from "@/lib/redditSkill";
 import { intelligenceWebSearch, type IntelligenceArticle } from "@/lib/webSearch";
 
 export const runtime = "nodejs";
@@ -1414,6 +1415,48 @@ function assembleMemo(
   };
 }
 
+// ── Domain fallback HN queries (used when LLM expansion fails) ────────────────
+
+const DOMAIN_HN_FALLBACKS: Record<QueryDomain, string[]> = {
+  customer_acquisition: [
+    "how did you get your first paying customers",
+    "startup early traction what worked",
+    "founder-led sales lessons",
+    "customer acquisition channels early stage",
+    "first 100 users startup experience",
+  ],
+  growth_strategy: [
+    "how did you scale your startup growth",
+    "startup growth channels that worked",
+    "user acquisition strategies founders",
+    "scaling startup lessons learned",
+  ],
+  product_building: [
+    "how to build MVP startup lessons",
+    "product development early stage experience",
+    "shipping fast startup what worked",
+    "what I learned building my first product",
+  ],
+  fundraising: [
+    "how to raise seed funding experience",
+    "pitch investors startup lessons",
+    "fundraising what worked first round",
+    "raising money before product market fit",
+  ],
+  technical: [
+    "startup technical architecture decisions lessons",
+    "scaling engineering startup experience",
+    "what I wish I knew about startup tech stack",
+    "technical debt early stage startup",
+  ],
+  market_research: [
+    "how to validate startup idea",
+    "customer discovery interviews lessons",
+    "market research before building experience",
+    "finding product market fit how",
+  ],
+};
+
 // ── Domain synonym map ────────────────────────────────────────────────────────
 
 const DOMAIN_SYNONYMS: Record<string, string[]> = {
@@ -1532,59 +1575,117 @@ export async function POST(req: NextRequest) {
       const ytRows = await getDeepResearchEvidence(keywords, 50);
       emit({ type: "stage", source: "youtube", message: `Found ${ytRows.length} creator evidence points`, count: ytRows.length });
 
-      // Stage 2: HN (query expansion + retrieval)
-      emit({ type: "stage", source: "reddit", message: "Expanding query for HN retrieval…" });
+      // Stage 2: Community (HN + Reddit in parallel)
+      // Domain classification needed for fallback queries — classify early
+      const queryDomain = classifyQueryDomain(query);
+
+      emit({ type: "stage", source: "reddit", message: "Expanding community queries…" });
       let hnClaims: HNClaim[] = [];
       let redditDiag: IntelligenceMemo["reddit_diagnostics"] = null;
       try {
-        const expandedQueries = await expandHNQueries(query);
-        const queriesToRun = [query, ...expandedQueries].slice(0, 4);
-        console.log("[HN] expanded queries:", JSON.stringify({ original: query, expanded: expandedQueries }));
-        emit({ type: "stage", source: "reddit", message: `Running ${queriesToRun.length} HN queries…` });
+        // Query expansion with hardcoded domain fallback when LLM fails
+        let expandedQueries: string[] = [];
+        try {
+          expandedQueries = await expandHNQueries(query);
+          console.log(`[Community] HN expansion succeeded: ${expandedQueries.length} queries`);
+        } catch {
+          console.warn("[Community] HN expansion failed — using domain fallbacks");
+        }
+        if (expandedQueries.length < 2) {
+          const fallbacks = DOMAIN_HN_FALLBACKS[queryDomain];
+          expandedQueries = [...expandedQueries, ...fallbacks].slice(0, 5);
+          console.log(`[Community] Using fallback queries: ${JSON.stringify(expandedQueries)}`);
+        }
 
-        const postSets = await Promise.allSettled(
-          queriesToRun.map(q => searchHN(q, { limit: 10, fetchComments: true, commentLimit: 8, commentedPostsLimit: 5 }))
-        );
+        const queriesToRun = [query, ...expandedQueries].slice(0, 6);
+        console.log("[Community] queries to run:", JSON.stringify(queriesToRun));
+        emit({ type: "stage", source: "reddit", message: `Running ${queriesToRun.length} community queries…` });
 
-        postSets.forEach((r, i) => {
-          if (r.status === "fulfilled") {
-            const posts = r.value;
-            const totalComments = posts.reduce((s, p) => s + p.top_comments.length, 0);
-            console.log(`[HN] query[${i}] "${queriesToRun[i]}": ${posts.length} posts | ${totalComments} comments`);
-          } else {
-            console.warn(`[HN] query[${i}] "${queriesToRun[i]}" FAILED:`, r.reason);
-          }
+        // HN + Reddit in parallel
+        const [hnPostSets, redditResult] = await Promise.allSettled([
+          Promise.allSettled(
+            queriesToRun.map(q => searchHN(q, { limit: 12, fetchComments: true, commentLimit: 10, commentedPostsLimit: 8, minPoints: 1 }))
+          ),
+          // Reddit: use the top expanded query (more natural than the literal question)
+          searchReddit(expandedQueries[0] ?? query, { limit: 15, fetchComments: true, commentLimit: 8, commentedPostsLimit: 6, time: "all" }),
+        ]);
+
+        // Process HN results
+        let hnPostCount = 0, hnCommentCount = 0, hnPostsRaw = 0;
+        let submittedHNPosts: import("@/lib/hnSkill").HNPost[] = [];
+        if (hnPostSets.status === "fulfilled") {
+          hnPostSets.value.forEach((r, i) => {
+            if (r.status === "fulfilled") {
+              console.log(`[HN] query[${i}] "${queriesToRun[i]}": ${r.value.length} posts`);
+            } else {
+              console.warn(`[HN] query[${i}] failed:`, r.reason);
+            }
+          });
+          const allHNPosts = hnPostSets.value.flatMap(r => r.status === "fulfilled" ? r.value : []);
+          hnPostsRaw = allHNPosts.length;
+          const seen = new Set<string>();
+          const deduped = allHNPosts
+            .filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true; })
+            .sort((a, b) => b.score - a.score);
+          submittedHNPosts = deduped.slice(0, 20);
+          hnPostCount = submittedHNPosts.length;
+          hnCommentCount = submittedHNPosts.reduce((s, p) => s + p.top_comments.length, 0);
+          console.log(`[HN] raw: ${hnPostsRaw} → dedup: ${deduped.length} → submit: ${hnPostCount} | comments: ${hnCommentCount}`);
+        }
+        emit({
+          type: "stage", source: "reddit",
+          message: `HN: ${hnPostCount} threads (${hnCommentCount} comments)`,
+          count: hnPostCount,
+          diagnostics: { raw_posts: hnPostsRaw, deduped: hnPostCount, comments: hnCommentCount },
         });
 
-        const postsRetrieved = postSets.flatMap(r => r.status === "fulfilled" ? r.value : []);
-        const seen = new Set<string>();
-        const dedupedPosts = postsRetrieved
-          .filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true; })
-          .sort((a, b) => b.score - a.score);
-        const submittedPosts = dedupedPosts.slice(0, 20);
-        const commentsRetrieved = submittedPosts.reduce((s, p) => s + p.top_comments.length, 0);
-        console.log(`[HN] dedup: ${postsRetrieved.length} → ${dedupedPosts.length} | submitting: ${submittedPosts.length} | comments: ${commentsRetrieved}`);
+        // Process Reddit results
+        let redditPosts: import("@/lib/redditSkill").RedditPost[] = [];
+        if (redditResult.status === "fulfilled") {
+          redditPosts = redditResult.value;
+          const rComments = redditPosts.reduce((s, p) => s + p.top_comments.length, 0);
+          console.log(`[Reddit] ${redditPosts.length} posts | ${rComments} comments`);
+          emit({
+            type: "stage", source: "reddit",
+            message: `Reddit: ${redditPosts.length} posts (${rComments} comments)`,
+            count: redditPosts.length,
+          });
+        } else {
+          console.warn("[Reddit] search failed:", redditResult.reason);
+          emit({ type: "stage", source: "reddit", message: "Reddit unavailable, HN only" });
+        }
 
-        emit({ type: "stage", source: "reddit", message: `Found ${submittedPosts.length} HN threads (${commentsRetrieved} comments) — extracting claims…` });
-        hnClaims = await extractHNClaims(submittedPosts, query, openai);
-        console.log(`[HN] claims extracted: ${hnClaims.length}`);
+        // Claim extraction (parallel)
+        const [hnExtracted, redditExtracted] = await Promise.allSettled([
+          submittedHNPosts.length > 0 ? extractHNClaims(submittedHNPosts, query, openai) : Promise.resolve([] as HNClaim[]),
+          redditPosts.length > 0 ? extractRedditClaims(redditPosts, query, openai) : Promise.resolve([]),
+        ]);
 
+        const hnClaimsRaw = hnExtracted.status === "fulfilled" ? hnExtracted.value : [];
+        const redditClaimsRaw = redditExtracted.status === "fulfilled" ? redditExtracted.value : [];
+        console.log(`[Community] claims: HN=${hnClaimsRaw.length} Reddit=${redditClaimsRaw.length}`);
+
+        // Reddit claims are structurally identical to HNClaim — merge safely
+        hnClaims = [...hnClaimsRaw, ...(redditClaimsRaw as unknown as HNClaim[])];
+
+        const totalPosts = hnPostCount + redditPosts.length;
+        const totalComments = hnCommentCount + redditPosts.reduce((s, p) => s + p.top_comments.length, 0);
         redditDiag = {
           queries_generated: queriesToRun.length,
-          posts_retrieved: postsRetrieved.length,
-          posts_after_dedupe: dedupedPosts.length,
-          posts_submitted: submittedPosts.length,
-          comments_retrieved: commentsRetrieved,
+          posts_retrieved: hnPostsRaw + redditPosts.length,
+          posts_after_dedupe: hnPostCount + redditPosts.length,
+          posts_submitted: totalPosts,
+          comments_retrieved: totalComments,
           claims_extracted: hnClaims.length,
         };
         emit({
           type: "stage", source: "reddit",
-          message: `Extracted ${hnClaims.length} HN claims (${submittedPosts.length} threads, ${commentsRetrieved} comments)`,
+          message: `Community: ${hnClaims.length} claims (${hnClaimsRaw.length} HN + ${redditClaimsRaw.length} Reddit)`,
           count: hnClaims.length,
           diagnostics: redditDiag,
         });
       } catch (err) {
-        emit({ type: "stage", source: "reddit", message: `HN unavailable: ${err instanceof Error ? err.message : "error"}` });
+        emit({ type: "stage", source: "reddit", message: `Community unavailable: ${err instanceof Error ? err.message : "error"}` });
       }
 
       // Stage 3: Web
@@ -1597,9 +1698,8 @@ export async function POST(req: NextRequest) {
         emit({ type: "stage", source: "web", message: `Web search unavailable: ${err instanceof Error ? err.message : "error"}` });
       }
 
-      // Classify intent + domain (domain determines what counts as relevant content)
+      // Classify intent (domain was already classified above for community fallbacks)
       const queryIntent = classifyQueryIntent(query);
-      const queryDomain = classifyQueryDomain(query);
       const intentThresholds = INTENT_THRESHOLDS[queryIntent];
       console.log(`[Intent] "${queryIntent}" domain="${queryDomain}" → relevanceGate=${intentThresholds.relevanceGate} qualityExclude=${intentThresholds.qualityExclude}`);
 
