@@ -1484,30 +1484,37 @@ function detectDomainSynonyms(query: string): string[] {
 
 // ── HN Query Expansion ────────────────────────────────────────────────────────
 
-const HN_EXPANSION_PROMPT = `You are a Hacker News retrieval optimization engine for WatchFilter.
+const HN_EXPANSION_PROMPT = `You are a Hacker News search query generator.
 
-Transform the user question into high-signal Hacker News search queries that maximize retrieval of founder experiences, startup lessons, and operator insights.
+Goal: Generate SHORT keyword-based queries that find HN discussions relevant to the user's question.
 
-Hacker News users are technical founders, operators, and engineers. Generate queries that match how they write Ask HN threads and comments.
+Critical rule: Algolia (the HN search engine) works best with SHORT queries of 2–5 words. Long sentence queries return zero or near-zero results. NEVER repeat the original question. NEVER generate queries longer than 6 words.
 
-Rules:
-1. Generate 10–15 queries.
-2. Rewrite into founder language: "first customers", "first users", "traction", "paying customers", "growth", "customer acquisition"
-3. Include synonyms: customers ↔ users ↔ clients ↔ signups, acquisition ↔ growth ↔ traction
-4. Prefer question-style and experiential framing: "how did you", "what worked", "lessons from", "experience with"
-5. Include tactical terms: cold email, outbound, content marketing, SEO, founder-led sales, referrals, communities
-6. Avoid generic queries. BAD: "startup customers". GOOD: "how did you get your first paying customers"
-7. Optimize for: Ask HN threads, YC founder discussions, technical founder experiences, Show HN posts
+Generate 10–15 queries using:
+- Core concept and intent keywords (noun phrases, not questions)
+- Startup vocabulary: traction, PMF, founders, operators, distribution, outreach, referrals
+- Action/outcome terms: what worked, channel, lessons, experience
+- Synonyms and related terms: customers ↔ users ↔ signups, acquisition ↔ growth ↔ traction
+- Practitioner phrasing (3–5 words max): "founder-led sales", "early traction", "startup growth"
+
+Priority guidance:
+- high: directly maps to the core concept (e.g. "first customers" for a customer-acquisition question)
+- medium: adjacent or synonym queries
+
+EXAMPLES:
+User: "How do AI startups get their first 100 customers?"
+Good queries: "first customers", "early traction", "customer acquisition", "founder-led sales", "getting first users", "startup distribution", "cold outreach", "referrals startup", "traction before PMF", "finding first users", "early stage growth", "startup sales lessons"
+Bad queries: "How do AI startups get their first 100 customers?", "how did you get your first paying customers SaaS"
 
 Return ONLY valid JSON:
-{ "queries": [{ "query": "...", "intent": "customer_acquisition", "priority": "high" | "medium" }] }`;
+{ "queries": [{ "query": "...", "priority": "high" | "medium" }] }`;
 
 async function expandHNQueries(query: string): Promise<string[]> {
   try {
     const res = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.4,
-      max_tokens: 800,
+      temperature: 0.5,
+      max_tokens: 1000,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: HN_EXPANSION_PROMPT },
@@ -1516,8 +1523,8 @@ async function expandHNQueries(query: string): Promise<string[]> {
           content: (() => {
             const hints = detectDomainSynonyms(query);
             return hints.length > 0
-              ? `Question:\n${query}\n\nDomain synonyms to include in queries: ${hints.join(", ")}`
-              : `Question:\n${query}`;
+              ? `User question:\n${query}\n\nRelated startup terms to include: ${hints.join(", ")}`
+              : `User question:\n${query}`;
           })(),
         },
       ],
@@ -1526,8 +1533,9 @@ async function expandHNQueries(query: string): Promise<string[]> {
     type ExpandedQuery = { query?: string; priority?: string };
     const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as { queries?: ExpandedQuery[] };
     const queries = Array.isArray(parsed.queries) ? parsed.queries : [];
-    const high   = queries.filter(q => q.priority === "high"   && q.query).slice(0, 3).map(q => q.query!);
-    const medium = queries.filter(q => q.priority !== "high"   && q.query).slice(0, 1).map(q => q.query!);
+    // Take up to 6 high + 4 medium priority queries (previously took only 3+1)
+    const high   = queries.filter(q => q.priority === "high"   && q.query).slice(0, 6).map(q => q.query!);
+    const medium = queries.filter(q => q.priority !== "high"   && q.query).slice(0, 4).map(q => q.query!);
     return [...high, ...medium];
   } catch {
     return [];
@@ -1587,27 +1595,32 @@ export async function POST(req: NextRequest) {
         let expandedQueries: string[] = [];
         try {
           expandedQueries = await expandHNQueries(query);
-          console.log(`[Community] HN expansion succeeded: ${expandedQueries.length} queries`);
+          console.log(`[Community] HN expansion: ${expandedQueries.length} queries → ${JSON.stringify(expandedQueries)}`);
         } catch {
-          console.warn("[Community] HN expansion failed — using domain fallbacks");
+          console.warn("[Community] HN expansion threw — using domain fallbacks");
         }
-        if (expandedQueries.length < 2) {
+        // Fallback when expansion returns too few (< 3) short-form queries
+        if (expandedQueries.length < 3) {
           const fallbacks = DOMAIN_HN_FALLBACKS[queryDomain];
-          expandedQueries = [...expandedQueries, ...fallbacks].slice(0, 5);
-          console.log(`[Community] Using fallback queries: ${JSON.stringify(expandedQueries)}`);
+          expandedQueries = [...expandedQueries, ...fallbacks].slice(0, 8);
+          console.log(`[Community] Fallback queries injected: ${JSON.stringify(expandedQueries)}`);
         }
 
-        const queriesToRun = [query, ...expandedQueries].slice(0, 6);
+        // Never include the literal sentence — it returns 0 Algolia results.
+        // Use only the short-form expanded queries (already optimized for Algolia).
+        const queriesToRun = expandedQueries.slice(0, 10);
         console.log("[Community] queries to run:", JSON.stringify(queriesToRun));
         emit({ type: "stage", source: "reddit", message: `Running ${queriesToRun.length} community queries…` });
 
         // HN + Reddit in parallel
+        // Reddit search works better with a slightly longer phrase than the ultra-short HN keywords
+        // Use the domain fallback[0] (conversational phrasing) as Reddit query, falling back to query itself
+        const redditQuery = DOMAIN_HN_FALLBACKS[queryDomain][0] ?? query;
         const [hnPostSets, redditResult] = await Promise.allSettled([
           Promise.allSettled(
             queriesToRun.map(q => searchHN(q, { limit: 12, fetchComments: true, commentLimit: 10, commentedPostsLimit: 8, minPoints: 1 }))
           ),
-          // Reddit: use the top expanded query (more natural than the literal question)
-          searchReddit(expandedQueries[0] ?? query, { limit: 15, fetchComments: true, commentLimit: 8, commentedPostsLimit: 6, time: "all" }),
+          searchReddit(redditQuery, { limit: 15, fetchComments: true, commentLimit: 8, commentedPostsLimit: 6, time: "all" }),
         ]);
 
         // Process HN results
@@ -1714,6 +1727,19 @@ export async function POST(req: NextRequest) {
         ...webToNormalizedClaims(articles).map(addRelevance),
       ].filter(c => computeClaimStrength(c) >= 0.3);
 
+      const rawBySource = {
+        youtube: rawClaims.filter(c => c.source === "youtube").length,
+        reddit:  rawClaims.filter(c => c.source === "reddit").length,
+        web:     rawClaims.filter(c => c.source === "web").length,
+      };
+      console.log(`[Raw] Total: ${rawClaims.length} | YT=${rawBySource.youtube} Community=${rawBySource.reddit} Web=${rawBySource.web}`);
+      emit({
+        type: "stage", agent: "Signal Pool",
+        message: `${rawClaims.length} raw signals — Creator: ${rawBySource.youtube} | Community: ${rawBySource.reddit} | Web: ${rawBySource.web}`,
+        count: rawClaims.length,
+        diagnostics: rawBySource,
+      });
+
       if (!rawClaims.length) {
         emit({ type: "error", message: "No evidence found. Analyze relevant creator content first or try a different query." });
         close();
@@ -1724,11 +1750,18 @@ export async function POST(req: NextRequest) {
       // For exploration: 20 — a claim matching 1 of 5 keywords passes
       const relevantClaims = rawClaims.filter(c => c.queryRelevance >= intentThresholds.relevanceGate);
       const filteredOut = rawClaims.length - relevantClaims.length;
+      const relBySource = {
+        youtube: relevantClaims.filter(c => c.source === "youtube").length,
+        reddit:  relevantClaims.filter(c => c.source === "reddit").length,
+        web:     relevantClaims.filter(c => c.source === "web").length,
+      };
       console.log(`[Relevance/${queryIntent}] ${rawClaims.length} → ${relevantClaims.length} (gate=${intentThresholds.relevanceGate}, ${filteredOut} off-topic)`);
+      console.log(`[Relevance] by source: YT=${relBySource.youtube} Community=${relBySource.reddit} Web=${relBySource.web}`);
       emit({
         type: "stage", agent: "Relevance Gate",
-        message: `${relevantClaims.length}/${rawClaims.length} signals passed relevance gate (${filteredOut} off-topic)`,
+        message: `${relevantClaims.length}/${rawClaims.length} passed — Creator: ${relBySource.youtube} | Community: ${relBySource.reddit} | Web: ${relBySource.web}`,
         count: relevantClaims.length,
+        diagnostics: relBySource,
       });
 
       // Recovery L1: relevance gate eliminated everything but substantial raw evidence exists
