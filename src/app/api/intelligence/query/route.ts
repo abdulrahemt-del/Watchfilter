@@ -983,28 +983,25 @@ You do NOT browse, search, or invent facts. Work only from provided signals.
    BAD action: "Create a community"
    BAD action: "Build a value proposition"
 
-6. source_perspectives: ALWAYS generate perspectives for ALL THREE sources (youtube, reddit, web). Never omit a source key.
-   Pipeline:
-   A. If *_raw has 1+ entries → synthesize from those signals
-   B. If *_raw is empty for a source → synthesize from decision_summary and priority_actions viewed through that source's lens
-   Path B must always produce real output. "No data" is not a valid response for B.
+6. source_perspectives: Generate from EACH SOURCE'S OWN EVIDENCE ONLY.
+   CRITICAL: Do NOT synthesize a source's perspective from decision_summary or another source's signals.
+   That is circular reasoning — all three would echo the same decision content.
 
-   Source angles:
-   - creator_raw → youtube: "What do experienced operators believe?" → mental models, tactical principles, recurring beliefs.
-     If creator_raw is empty, extract the operator/founder angle from decision_summary: what mental model does it imply?
-   - community_raw → reddit: "What actually happened in practice?" → outcomes, tactics used, real-world results.
-     If community_raw is empty, translate decision_summary priority_actions into practitioner-observed patterns.
-   - web_raw → web: "What is generally recommended?" → published playbooks, research-backed frameworks.
-     If web_raw is empty, frame decision_summary guidance as consensus recommendations.
+   Rules:
+   A. If *_raw has 1+ entries → synthesize 3–5 bullets from those signals only. common_view: one sentence.
+   B. If *_raw has 0 entries → OMIT that source key entirely from source_perspectives.
+   C. Do NOT fabricate content. Do NOT copy raw text verbatim.
 
-   Output rules:
-   - 3–5 bullets per source. Synthesize — do NOT copy raw signal text verbatim.
-   - common_view: one sentence capturing that source's central conclusion.
-   - Signal volume determines confidence, not whether a perspective exists.
-   - Never return null. Never omit a source. Never write "No {source} perspective identified."
+   Source angles (only when signals exist):
+   - creator_raw → youtube: "What do experienced operators believe?" → mental models, tactical principles, recurring themes.
+   - community_raw → reddit: "What actually happened in practice?" → outcomes, what worked, real-world patterns.
+   - web_raw → web: "What is generally recommended?" → published playbooks, research-backed strategies.
 
-7. cross_source_synthesis: One sentence per source capturing its unique contribution to the answer.
-   Include ALL THREE sources regardless of raw signal count.
+   Confidence and existence are separate. A single signal still produces a perspective — mark it via signal volume.
+   Even with just 1–2 signals: extract the theme, synthesize the bullet, do not omit.
+
+7. cross_source_synthesis: One sentence per source that HAS signals (1+ raw entries). Omit sources with 0 raw signals.
+   Each sentence must capture that source's unique contribution. No cross-contamination between sources.
 
 8. Directional must be EXACTLY one of:
    "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)"
@@ -1397,7 +1394,7 @@ function assembleMemo(
             bullets:     decision.source_perspectives.youtube.bullets,
             common_view: decision.source_perspectives.youtube.common_view,
             confidence:  qualityScores.youtube.score >= 70 ? "High" : qualityScores.youtube.score >= 50 ? "Medium" : "Low",
-            weak_signal: qualityScores.youtube.excluded,
+            weak_signal: qualityScores.youtube.excluded || qualityScores.youtube.score < 60,
           },
       reddit: !(decision.source_perspectives.reddit?.bullets?.length)
         ? null
@@ -1405,7 +1402,7 @@ function assembleMemo(
             bullets:     decision.source_perspectives.reddit.bullets,
             common_view: decision.source_perspectives.reddit.common_view,
             confidence:  qualityScores.reddit.score >= 70 ? "High" : qualityScores.reddit.score >= 50 ? "Medium" : "Low",
-            weak_signal: qualityScores.reddit.excluded,
+            weak_signal: qualityScores.reddit.excluded || qualityScores.reddit.score < 60,
           },
       web: !(decision.source_perspectives.web?.bullets?.length)
         ? null
@@ -1413,7 +1410,7 @@ function assembleMemo(
             bullets:     decision.source_perspectives.web.bullets,
             common_view: decision.source_perspectives.web.common_view,
             confidence:  qualityScores.web.score >= 70 ? "High" : qualityScores.web.score >= 50 ? "Medium" : "Low",
-            weak_signal: qualityScores.web.excluded,
+            weak_signal: qualityScores.web.excluded || qualityScores.web.score < 60,
           },
     },
     cross_source_synthesis: {

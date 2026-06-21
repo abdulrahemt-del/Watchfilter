@@ -175,9 +175,9 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
   const SOURCES = ["youtube", "reddit", "web"] as const;
 
   const FALLBACK: Record<"youtube" | "reddit" | "web", { body: string; footer: string }> = {
-    youtube: { body: "Insufficient validated creator intelligence for this query.", footer: "No creator perspective identified." },
-    reddit:  { body: "Insufficient validated community evidence for this query.",  footer: "No operator consensus identified." },
-    web:     { body: "Insufficient validated web intelligence for this query.",    footer: "No established recommendations identified." },
+    youtube: { body: "Coverage unavailable for this query.", footer: "No strong creator signal detected." },
+    reddit:  { body: "Coverage unavailable for this query.", footer: "No strong community signal detected." },
+    web:     { body: "Coverage unavailable for this query.", footer: "No strong web signal detected." },
   };
 
   const hasPerspective = (src: "youtube" | "reddit" | "web") =>
@@ -245,10 +245,11 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
                 )}
               </>
             ) : (
-              /* Clean placeholder — only when source genuinely has < 2 relevant signals */
+              /* Zero evidence — Rule 6: show coverage unavailable, never fabricate */
               <div>
-                <p style={{ margin: "0 0 0.3rem", fontSize: "0.72rem", color: "#94a3b8", lineHeight: 1.55 }}>{fb.body}</p>
-                <p style={{ margin: 0, fontSize: "0.65rem", color: "#cbd5e1" }}>{fb.footer}</p>
+                <p style={{ margin: "0 0 0.2rem", fontSize: "0.72rem", color: "#94a3b8", lineHeight: 1.55 }}>{fb.body}</p>
+                <p style={{ margin: "0 0 0.35rem", fontSize: "0.65rem", color: "#cbd5e1" }}>{fb.footer}</p>
+                <p style={{ margin: 0, fontSize: "0.62rem", fontWeight: 700, color: "#cbd5e1" }}>Signal Strength: None</p>
               </div>
             )}
           </div>
