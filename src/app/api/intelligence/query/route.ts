@@ -983,19 +983,28 @@ You do NOT browse, search, or invent facts. Work only from provided signals.
    BAD action: "Create a community"
    BAD action: "Build a value proposition"
 
-6. source_perspectives: Use the *_raw arrays (creator_raw, community_raw, web_raw) — NOT the main *_signals arrays.
-   *_raw = signals that keyword-match the query OR match the domain topic vocabulary (e.g. "distribution", "outreach",
-   "sales" for a customer-acquisition query). These catch semantically relevant content missed by keyword scoring.
-   Minimum to generate a perspective: 2 entries in the *_raw array. If fewer than 2, OMIT that source key entirely.
-   - creator_raw → youtube perspective: "What do experienced operators believe?" → mental models, tactical principles, recurring beliefs.
-   - community_raw → reddit perspective: "What actually happened in practice?" → observed outcomes, tactics used, what worked or failed.
-   - web_raw → web perspective: "What is generally recommended?" → published playbooks, research-backed strategies.
-   Synthesize 3–5 bullets per source from patterns in the raw signals. Do NOT copy raw text verbatim.
-   common_view: one sentence capturing that source's central conclusion.
-   Even if signals are weak: extract the recurring theme. A useful imperfect synthesis beats an empty box.
+6. source_perspectives: ALWAYS generate perspectives for ALL THREE sources (youtube, reddit, web). Never omit a source key.
+   Pipeline:
+   A. If *_raw has 1+ entries → synthesize from those signals
+   B. If *_raw is empty for a source → synthesize from decision_summary and priority_actions viewed through that source's lens
+   Path B must always produce real output. "No data" is not a valid response for B.
 
-7. cross_source_synthesis: One sentence per active source (one with 2+ raw signals) capturing their unique contribution.
-   Enable direct comparison across perspectives. Omit sources with fewer than 2 raw signals.
+   Source angles:
+   - creator_raw → youtube: "What do experienced operators believe?" → mental models, tactical principles, recurring beliefs.
+     If creator_raw is empty, extract the operator/founder angle from decision_summary: what mental model does it imply?
+   - community_raw → reddit: "What actually happened in practice?" → outcomes, tactics used, real-world results.
+     If community_raw is empty, translate decision_summary priority_actions into practitioner-observed patterns.
+   - web_raw → web: "What is generally recommended?" → published playbooks, research-backed frameworks.
+     If web_raw is empty, frame decision_summary guidance as consensus recommendations.
+
+   Output rules:
+   - 3–5 bullets per source. Synthesize — do NOT copy raw signal text verbatim.
+   - common_view: one sentence capturing that source's central conclusion.
+   - Signal volume determines confidence, not whether a perspective exists.
+   - Never return null. Never omit a source. Never write "No {source} perspective identified."
+
+7. cross_source_synthesis: One sentence per source capturing its unique contribution to the answer.
+   Include ALL THREE sources regardless of raw signal count.
 
 8. Directional must be EXACTLY one of:
    "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)"
@@ -1417,43 +1426,53 @@ function assembleMemo(
 
 // ── Domain fallback HN queries (used when LLM expansion fails) ────────────────
 
+// Short 2-4 word keyword queries — these are what Algolia HN search works best with.
 const DOMAIN_HN_FALLBACKS: Record<QueryDomain, string[]> = {
   customer_acquisition: [
-    "how did you get your first paying customers",
-    "startup early traction what worked",
-    "founder-led sales lessons",
-    "customer acquisition channels early stage",
-    "first 100 users startup experience",
+    "first customers",
+    "customer acquisition",
+    "founder-led sales",
+    "early traction",
+    "getting first users",
+    "startup outreach",
+    "startup distribution",
+    "paying customers",
   ],
   growth_strategy: [
-    "how did you scale your startup growth",
-    "startup growth channels that worked",
-    "user acquisition strategies founders",
-    "scaling startup lessons learned",
+    "startup growth",
+    "user acquisition",
+    "growth channels",
+    "scaling startup",
+    "user retention",
+    "viral growth",
   ],
   product_building: [
-    "how to build MVP startup lessons",
-    "product development early stage experience",
-    "shipping fast startup what worked",
-    "what I learned building my first product",
+    "building MVP",
+    "product market fit",
+    "shipping product",
+    "MVP launch",
+    "startup product lessons",
   ],
   fundraising: [
-    "how to raise seed funding experience",
-    "pitch investors startup lessons",
-    "fundraising what worked first round",
-    "raising money before product market fit",
+    "seed funding",
+    "raising capital",
+    "angel investors",
+    "startup fundraising",
+    "pitch investors",
   ],
   technical: [
-    "startup technical architecture decisions lessons",
-    "scaling engineering startup experience",
-    "what I wish I knew about startup tech stack",
-    "technical debt early stage startup",
+    "startup tech stack",
+    "scaling engineering",
+    "technical debt startup",
+    "architecture lessons",
+    "software startup lessons",
   ],
   market_research: [
-    "how to validate startup idea",
-    "customer discovery interviews lessons",
-    "market research before building experience",
-    "finding product market fit how",
+    "startup validation",
+    "customer discovery",
+    "product market fit",
+    "user interviews",
+    "market research startup",
   ],
 };
 
@@ -1606,19 +1625,18 @@ export async function POST(req: NextRequest) {
           console.log(`[Community] Fallback queries injected: ${JSON.stringify(expandedQueries)}`);
         }
 
-        // Never include the literal sentence — it returns 0 Algolia results.
-        // Use only the short-form expanded queries (already optimized for Algolia).
-        const queriesToRun = expandedQueries.slice(0, 10);
+        // Use at most 5 short-form queries. Never include the literal sentence (400s from Algolia).
+        // More than 5 queries × (1 story + 1 comment + 4 items) = too many parallel requests.
+        const queriesToRun = expandedQueries.slice(0, 5);
         console.log("[Community] queries to run:", JSON.stringify(queriesToRun));
         emit({ type: "stage", source: "reddit", message: `Running ${queriesToRun.length} community queries…` });
 
         // HN + Reddit in parallel
-        // Reddit search works better with a slightly longer phrase than the ultra-short HN keywords
-        // Use the domain fallback[0] (conversational phrasing) as Reddit query, falling back to query itself
-        const redditQuery = DOMAIN_HN_FALLBACKS[queryDomain][0] ?? query;
+        // Reddit handles slightly longer phrases better than 2-word keywords
+        const redditQuery = expandedQueries.slice(0, 3).join(" ") || query;
         const [hnPostSets, redditResult] = await Promise.allSettled([
           Promise.allSettled(
-            queriesToRun.map(q => searchHN(q, { limit: 12, fetchComments: true, commentLimit: 10, commentedPostsLimit: 8, minPoints: 1 }))
+            queriesToRun.map(q => searchHN(q, { limit: 10, fetchComments: true, commentLimit: 8, commentedPostsLimit: 4, minPoints: 0 }))
           ),
           searchReddit(redditQuery, { limit: 15, fetchComments: true, commentLimit: 8, commentedPostsLimit: 6, time: "all" }),
         ]);

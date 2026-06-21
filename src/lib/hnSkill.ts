@@ -47,7 +47,7 @@ export type HNSearchOptions = {
   fetchComments?: boolean;
   commentLimit?: number;
   commentedPostsLimit?: number;
-  minPoints?: number;           // default 1 — allow low-scored posts (quality gate is claim strength)
+  minPoints?: number;           // client-side filter after retrieval; Algolia doesn't support numericFilters on points
 };
 
 // ── Internal Algolia API types ────────────────────────────────────────────────
@@ -152,20 +152,21 @@ export async function searchHN(
     limit = 15,
     fetchComments: doFetch = true,
     commentLimit = 10,
-    commentedPostsLimit = 6,
-    minPoints = 1,
+    commentedPostsLimit = 4,
+    minPoints = 0,
   } = options;
 
   const q = encodeURIComponent(query);
 
-  // Parallel: story search + direct comment search
+  // Algolia HN API does NOT support numericFilters on "points" — omit the filter entirely.
+  // Apply minPoints as a client-side filter after retrieval.
   const [storyRes, commentRes] = await Promise.allSettled([
     fetch(
-      `https://hn.algolia.com/api/v1/search?query=${q}&tags=story&hitsPerPage=${limit}&numericFilters=points>${minPoints}`,
+      `https://hn.algolia.com/api/v1/search?query=${q}&tags=story&hitsPerPage=${limit}`,
       { signal: AbortSignal.timeout(8_000) }
     ),
     fetch(
-      `https://hn.algolia.com/api/v1/search?query=${q}&tags=comment&hitsPerPage=40&numericFilters=points>1`,
+      `https://hn.algolia.com/api/v1/search?query=${q}&tags=comment&hitsPerPage=40`,
       { signal: AbortSignal.timeout(8_000) }
     ),
   ]);
@@ -175,16 +176,20 @@ export async function searchHN(
 
   if (storyRes.status === "fulfilled" && storyRes.value.ok) {
     const data = await storyRes.value.json() as { hits: AlgoliaStoryHit[] };
-    storyHits = data.hits ?? [];
+    storyHits = (data.hits ?? []).filter(h => (h.points ?? 0) >= minPoints);
     console.log(`[hnSkill] searchHN "${query}": ${storyHits.length} stories`);
   } else {
-    console.warn(`[hnSkill] story search failed for "${query}"`);
+    const status = storyRes.status === "fulfilled" ? storyRes.value.status : "network-error";
+    console.warn(`[hnSkill] story search failed for "${query}" — status: ${status}`);
   }
 
   if (commentRes.status === "fulfilled" && commentRes.value.ok) {
     const data = await commentRes.value.json() as { hits: AlgoliaCommentHit[] };
     commentHits = data.hits ?? [];
     console.log(`[hnSkill] searchHN "${query}": ${commentHits.length} direct comment hits`);
+  } else {
+    const status = commentRes.status === "fulfilled" ? commentRes.value.status : "network-error";
+    console.warn(`[hnSkill] comment search failed for "${query}" — status: ${status}`);
   }
 
   // Fetch full item details for top stories to get their comment threads
