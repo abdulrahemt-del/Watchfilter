@@ -674,6 +674,7 @@ export type DeepResearchRow = {
   insight: string | null;
   channel_name: string;
   video_title: string | null;
+  video_id: string | null;
   timestamp_str: string | null;
   type: string;
   signal_strength: string | null;
@@ -694,7 +695,7 @@ export async function getDeepResearchEvidence(
 
   if (keywords.length === 0) {
     sql = `
-      SELECT ri.quote, ri.insight, ri.channel_name, ri.video_title,
+      SELECT ri.quote, ri.insight, ri.channel_name, ri.video_title, ri.video_id,
              ri.timestamp_str, ri.type, ri.signal_strength, ri.contrarian,
              ri.category, ri.takeaway,
              COALESCE(a.upload_date, ri.indexed_at) AS upload_date
@@ -712,7 +713,7 @@ export async function getDeepResearchEvidence(
       .map(() => `(LOWER(ri.quote) LIKE ? OR LOWER(COALESCE(ri.insight,'')) LIKE ? OR LOWER(COALESCE(ri.category,'')) LIKE ? OR LOWER(COALESCE(ri.video_title,'')) LIKE ?)`)
       .join(" OR ");
     sql = `
-      SELECT ri.quote, ri.insight, ri.channel_name, ri.video_title,
+      SELECT ri.quote, ri.insight, ri.channel_name, ri.video_title, ri.video_id,
              ri.timestamp_str, ri.type, ri.signal_strength, ri.contrarian,
              ri.category, ri.takeaway,
              COALESCE(a.upload_date, ri.indexed_at) AS upload_date
@@ -733,6 +734,7 @@ export async function getDeepResearchEvidence(
     insight:        r.insight as string | null,
     channel_name:   r.channel_name as string,
     video_title:    r.video_title as string | null,
+    video_id:       r.video_id as string | null,
     timestamp_str:  r.timestamp_str as string | null,
     type:           r.type as string,
     signal_strength: r.signal_strength as string | null,

@@ -144,7 +144,7 @@ const SRC_DISPLAY = {
 } as const;
 
 const SRC_QUESTION: Record<"youtube" | "reddit" | "web", string> = {
-  youtube: "What do experienced operators believe?",
+  youtube: "What do experienced creators and operators say?",
   reddit:  "What actually happened in practice?",
   web:     "What is generally recommended?",
 };
@@ -167,6 +167,164 @@ const SRC_SYNTH_LABEL: Record<"youtube" | "reddit" | "web", string> = {
   web:     "What is generally recommended:",
 };
 
+// ── Creator Evidence Section — evidence-backed claims with source attribution ──
+
+function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
+  const ci = memo.creator_intelligence;
+  const acc = SRC_DISPLAY.youtube.accent;
+
+  if (!ci) return null;
+
+  const { claims, coverage } = ci;
+  const coverageColor = coverage.level === "High" ? "#10b981" : coverage.level === "Medium" ? "#d97706" : "#ef4444";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+
+      {/* Coverage badge */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p style={{ margin: 0, fontSize: "0.67rem", fontStyle: "italic", color: "#64748b" }}>
+          {SRC_QUESTION.youtube}
+        </p>
+        <span style={{ fontSize: "0.58rem", fontWeight: 800, padding: "2px 8px", borderRadius: 20, background: `${coverageColor}18`, color: coverageColor, border: `1px solid ${coverageColor}44`, whiteSpace: "nowrap" }}>
+          Coverage: {coverage.level} ({coverage.coverage_score}%)
+        </span>
+      </div>
+
+      {/* Low-coverage warning */}
+      {coverage.level === "Low" && (
+        <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "0.5rem 0.75rem" }}>
+          <p style={{ margin: 0, fontSize: "0.67rem", color: "#9a3412", lineHeight: 1.5 }}>
+            Limited creator content found for this topic. {coverage.retrieved > 0 ? `${coverage.accepted} of ${coverage.retrieved} retrieved segments matched — results may draw from loosely related content.` : "No creator segments retrieved."}
+          </p>
+        </div>
+      )}
+
+      {/* Evidence claims */}
+      {claims.length > 0 ? claims.map((claim, ci_i) => (
+        <div key={ci_i} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 9, overflow: "hidden" }}>
+
+          {/* Claim header */}
+          <div style={{ padding: "0.6rem 0.85rem 0.5rem", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem" }}>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: "0 0 0.15rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Claim</p>
+              <p style={{ margin: 0, fontSize: "0.75rem", fontWeight: 600, color: "#0f172a", lineHeight: 1.5 }}>{claim.theme}</p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.2rem", flexShrink: 0 }}>
+              <span style={{ fontSize: "0.56rem", fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: claim.confidence === "High" ? "#f0fdf4" : claim.confidence === "Medium" ? "#fffbeb" : "#fef2f2", color: claim.confidence === "High" ? "#15803d" : claim.confidence === "Medium" ? "#b45309" : "#dc2626", border: `1px solid ${claim.confidence === "High" ? "#bbf7d0" : claim.confidence === "Medium" ? "#fde68a" : "#fecaca"}` }}>
+                {claim.confidence}
+              </span>
+              <span style={{ fontSize: "0.56rem", color: "#94a3b8" }}>{claim.evidence_count} creator{claim.evidence_count !== 1 ? "s" : ""}</span>
+            </div>
+          </div>
+
+          {/* Evidence list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            {claim.evidence.map((ev, ev_i) => (
+              <div key={ev_i} style={{ padding: "0.65rem 0.85rem", borderBottom: ev_i < claim.evidence.length - 1 ? "1px solid #f8fafc" : "none" }}>
+
+                {/* Creator + source line */}
+                <div style={{ display: "flex", alignItems: "baseline", gap: "0.4rem", marginBottom: "0.3rem", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#0f172a" }}>{ev.creator}</span>
+                  {ev.video_title && (
+                    <>
+                      <span style={{ fontSize: "0.6rem", color: "#cbd5e1" }}>·</span>
+                      {ev.video_id ? (
+                        <a href={`https://www.youtube.com/watch?v=${ev.video_id}${ev.timestamp ? `&t=${ev.timestamp.replace(":", "m")}s` : ""}`} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: "0.63rem", color: acc, textDecoration: "none", fontStyle: "italic" }}>
+                          {ev.video_title.slice(0, 60)}{ev.video_title.length > 60 ? "…" : ""}
+                        </a>
+                      ) : (
+                        <span style={{ fontSize: "0.63rem", color: "#64748b", fontStyle: "italic" }}>{ev.video_title.slice(0, 60)}{ev.video_title.length > 60 ? "…" : ""}</span>
+                      )}
+                      {ev.timestamp && (
+                        <>
+                          <span style={{ fontSize: "0.6rem", color: "#cbd5e1" }}>·</span>
+                          <span style={{ fontSize: "0.6rem", color: "#94a3b8", fontFamily: "monospace" }}>{ev.timestamp}</span>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Quote */}
+                <blockquote style={{ margin: 0, padding: "0.3rem 0 0.3rem 0.6rem", borderLeft: `2px solid ${acc}44`, fontSize: "0.7rem", color: "#475569", lineHeight: 1.6, fontStyle: "italic" }}>
+                  "{ev.quote}"
+                </blockquote>
+              </div>
+            ))}
+          </div>
+        </div>
+      )) : (
+        <div>
+          <p style={{ margin: "0 0 0.2rem", fontSize: "0.72rem", color: "#94a3b8" }}>No attributable creator claims found for this query.</p>
+          <p style={{ margin: 0, fontSize: "0.62rem", fontWeight: 700, color: "#cbd5e1" }}>Signal Strength: None</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Creator Retrieval Diagnostics (debug) ─────────────────────────────────────
+
+function CreatorDiagnostics({ memo }: { memo: IntelligenceMemo }) {
+  const [open, setOpen] = useState(false);
+  const ci = memo.creator_intelligence;
+  if (!ci) return null;
+  const { coverage } = ci;
+
+  return (
+    <div style={{ background: "#0f172a", borderRadius: 10, overflow: "hidden" }}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        style={{ width: "100%", padding: "0.65rem 1rem", background: "transparent", border: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#475569" }}>
+          ▶ Creator Retrieval Diagnostics
+        </span>
+        <span style={{ fontSize: "0.6rem", color: "#475569" }}>{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: "0 1rem 1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+
+          {/* Stats row */}
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+            {[
+              { label: "Retrieved", value: coverage.retrieved },
+              { label: "Accepted", value: coverage.accepted },
+              { label: "Rejected", value: coverage.rejected },
+              { label: "Coverage", value: `${coverage.coverage_score}%` },
+            ].map(({ label, value }) => (
+              <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontSize: "0.55rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>{label}</span>
+                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#e2e8f0" }}>{value}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Top rejections */}
+          {coverage.top_rejections.length > 0 && (
+            <div>
+              <p style={{ margin: "0 0 0.35rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>
+                Top Rejections
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                {coverage.top_rejections.map((r, i) => (
+                  <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "baseline" }}>
+                    <span style={{ fontSize: "0.6rem", color: "#f97316", flexShrink: 0 }}>·</span>
+                    <span style={{ fontSize: "0.62rem", color: "#94a3b8", lineHeight: 1.4 }}>
+                      {r.claim} <span style={{ color: "#475569" }}>— score: {r.relevance_score} — {r.reason}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
   const perspective = memo.source_perspective;
   const crossSynth  = memo.cross_source_synthesis;
@@ -187,6 +345,9 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
     ? SOURCES.filter(s => hasPerspective(s) && crossSynth[s] !== null)
     : [];
 
+  // Creator Intelligence uses evidence cards when available; Community and Web use bullets
+  const hasCreatorEvidence = (memo.creator_intelligence?.claims?.length ?? 0) > 0;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       {SOURCES.map(src => {
@@ -195,6 +356,48 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
         const has  = hasPerspective(src);
         const fb   = FALLBACK[src];
 
+        // Creator Intelligence — render evidence cards when available
+        if (src === "youtube") {
+          return (
+            <div key={src} style={{ background: "white", border: "1px solid #e2e8f0", borderLeft: `3px solid ${disp.accent}`, borderRadius: 10, padding: "0.85rem 1rem" }}>
+              <div style={{ marginBottom: "0.5rem" }}>
+                <span style={{ fontSize: "0.68rem", fontWeight: 800, color: disp.accent }}>{disp.icon} {disp.label}</span>
+              </div>
+              {hasCreatorEvidence ? (
+                <CreatorEvidenceSection memo={memo} />
+              ) : has ? (
+                /* Fallback to synthesized bullets when no evidence cards */
+                <>
+                  <p style={{ margin: "0 0 0.6rem", fontSize: "0.67rem", fontStyle: "italic", color: "#64748b", lineHeight: 1.4 }}>
+                    {SRC_QUESTION[src]}
+                  </p>
+                  <div style={{ marginBottom: "0.35rem" }}>
+                    <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: p!.weak_signal ? "#d97706" : "#94a3b8" }}>
+                      {p!.weak_signal ? "Observed operator themes" : SRC_BULLETS_LABEL[src]}
+                    </p>
+                    <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                      {p!.bullets.map((bullet, i) => (
+                        <li key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
+                          <span style={{ color: p!.weak_signal ? "#d97706" : disp.accent, fontSize: "0.65rem", paddingTop: 1, flexShrink: 0 }}>•</span>
+                          <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{bullet}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {p!.weak_signal && <p style={{ margin: "0.4rem 0 0", fontSize: "0.62rem", fontWeight: 700, color: "#d97706" }}>Signal Strength: Weak</p>}
+                </>
+              ) : (
+                <div>
+                  <p style={{ margin: "0 0 0.2rem", fontSize: "0.72rem", color: "#94a3b8", lineHeight: 1.55 }}>{fb.body}</p>
+                  <p style={{ margin: "0 0 0.35rem", fontSize: "0.65rem", color: "#cbd5e1" }}>{fb.footer}</p>
+                  <p style={{ margin: 0, fontSize: "0.62rem", fontWeight: 700, color: "#cbd5e1" }}>Signal Strength: None</p>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // Community + Web — existing bullet rendering
         return (
           <div key={src} style={{ background: "white", border: "1px solid #e2e8f0", borderLeft: `3px solid ${disp.accent}`, borderRadius: 10, padding: "0.85rem 1rem" }}>
 
@@ -210,11 +413,10 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
 
             {has ? (
               <>
-                {/* Bullets section — label changes for weak vs strong signal */}
                 <div style={{ marginBottom: "0.6rem" }}>
                   <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: p!.weak_signal ? "#d97706" : "#94a3b8" }}>
                     {p!.weak_signal
-                      ? `Observed ${src === "youtube" ? "operator" : src === "reddit" ? "practitioner" : "web"} themes`
+                      ? `Observed ${src === "reddit" ? "practitioner" : "web"} themes`
                       : SRC_BULLETS_LABEL[src]}
                   </p>
                   <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
@@ -227,7 +429,6 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
                   </ul>
                 </div>
 
-                {/* Common view / playbook */}
                 {!p!.weak_signal && p!.common_view && (
                   <div style={{ paddingTop: "0.5rem", borderTop: "1px solid #f1f5f9" }}>
                     <p style={{ margin: "0 0 0.2rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>
@@ -237,7 +438,6 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
                   </div>
                 )}
 
-                {/* Weak signal footer */}
                 {p!.weak_signal && (
                   <p style={{ margin: "0.4rem 0 0", fontSize: "0.62rem", fontWeight: 700, color: "#d97706" }}>
                     Signal Strength: Weak
@@ -245,7 +445,6 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
                 )}
               </>
             ) : (
-              /* Zero evidence — Rule 6: show coverage unavailable, never fabricate */
               <div>
                 <p style={{ margin: "0 0 0.2rem", fontSize: "0.72rem", color: "#94a3b8", lineHeight: 1.55 }}>{fb.body}</p>
                 <p style={{ margin: "0 0 0.35rem", fontSize: "0.65rem", color: "#cbd5e1" }}>{fb.footer}</p>
@@ -1027,6 +1226,7 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
           <p style={{ margin: 0, fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#94a3b8" }}>
             ◈ Debug — Pipeline Diagnostics
           </p>
+          <CreatorDiagnostics memo={memo} />
           {memo.perspective_raw && <PerspectiveCompressionAudit memo={memo} />}
           {memo.source_quality_scores && <EvidenceQualityPanel scores={memo.source_quality_scores} />}
           {memo.evidence_waterfall && <EvidenceWaterfall memo={memo} />}

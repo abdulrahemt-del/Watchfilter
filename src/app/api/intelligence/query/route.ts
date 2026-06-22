@@ -136,6 +136,29 @@ export type IntelligenceMemo = {
     web: string | null;
   } | null;
   perspective_raw: Record<"youtube" | "reddit" | "web", string[]> | null;
+  creator_intelligence: {
+    claims: Array<{
+      theme: string;
+      confidence: "High" | "Medium" | "Low";
+      evidence_count: number;
+      evidence: Array<{
+        creator: string;
+        video_title: string | null;
+        video_id: string | null;
+        timestamp: string | null;
+        quote: string;
+        relevance_score: number;
+      }>;
+    }>;
+    coverage: {
+      retrieved: number;
+      accepted: number;
+      rejected: number;
+      coverage_score: number;
+      level: "High" | "Medium" | "Low";
+      top_rejections: Array<{ claim: string; relevance_score: number; reason: string }>;
+    };
+  } | null;
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -1181,6 +1204,82 @@ const SOURCE_FRIENDLY: Record<string, string> = {
   web:     "Web Intelligence",
 };
 
+// ── Creator Intelligence — evidence-backed claims with source attribution ─────
+
+function buildCreatorIntelligence(
+  ytRows:       DeepResearchRow[],
+  rawClaims:    NormalizedClaim[],
+  gatedClaims:  NormalizedClaim[],
+  clusters:     ClaimCluster[],
+  relevanceGate: number,
+): IntelligenceMemo["creator_intelligence"] {
+  if (ytRows.length === 0) return null;
+
+  // yt-${i} maps 1-to-1 with ytRows[i]
+  const rowByClaimId = new Map<string, DeepResearchRow>(
+    ytRows.map((r, i) => [`yt-${i}`, r])
+  );
+
+  const gatedYtIds = new Set(gatedClaims.filter(c => c.source === "youtube").map(c => c.id));
+  const rawYtClaims = rawClaims.filter(c => c.source === "youtube");
+
+  const retrieved    = ytRows.length;
+  const accepted     = gatedYtIds.size;
+  const coverageScore = retrieved > 0 ? Math.round((accepted / retrieved) * 100) : 0;
+  const coverageLevel: "High" | "Medium" | "Low" =
+    coverageScore >= 50 ? "High" : coverageScore >= 20 ? "Medium" : "Low";
+
+  // Top rejections: raw YT claims that didn't reach gated, highest relevance first
+  const topRejections = rawYtClaims
+    .filter(c => !gatedYtIds.has(c.id))
+    .sort((a, b) => b.queryRelevance - a.queryRelevance)
+    .slice(0, 5)
+    .map(c => {
+      const row = rowByClaimId.get(c.id);
+      return {
+        claim: (row?.insight ?? row?.quote ?? c.claim).slice(0, 80),
+        relevance_score: c.queryRelevance,
+        reason: c.queryRelevance < relevanceGate ? "Low relevance to query" : "Quality threshold not met",
+      };
+    });
+
+  // One evidence card per cluster — only clusters that have at least one YT claim
+  const claims: NonNullable<IntelligenceMemo["creator_intelligence"]>["claims"] = [];
+  for (const cluster of clusters) {
+    const ytInCluster = cluster.claims.filter(c => c.source === "youtube");
+    if (ytInCluster.length === 0) continue;
+
+    // Build evidence items, deduped by creator (keep best relevance per creator)
+    const byCreator = new Map<string, NonNullable<IntelligenceMemo["creator_intelligence"]>["claims"][0]["evidence"][0]>();
+    for (const c of ytInCluster) {
+      const row = rowByClaimId.get(c.id);
+      const creator = row?.channel_name ?? "Unknown Creator";
+      const existing = byCreator.get(creator);
+      if (!existing || c.queryRelevance > existing.relevance_score) {
+        byCreator.set(creator, {
+          creator,
+          video_title: row?.video_title ?? null,
+          video_id:    row?.video_id    ?? null,
+          timestamp:   row?.timestamp_str ?? null,
+          quote:       (row?.quote ?? c.claim).slice(0, 300),
+          relevance_score: c.queryRelevance,
+        });
+      }
+    }
+
+    const evidence = [...byCreator.values()];
+    const confidence: "High" | "Medium" | "Low" =
+      evidence.length >= 3 ? "High" : evidence.length >= 2 ? "Medium" : "Low";
+
+    claims.push({ theme: cluster.theme, confidence, evidence_count: evidence.length, evidence });
+  }
+
+  return {
+    claims,
+    coverage: { retrieved, accepted, rejected: retrieved - accepted, coverage_score: coverageScore, level: coverageLevel, top_rejections: topRejections },
+  };
+}
+
 // ── Memo assembly (pure, no LLM) ──────────────────────────────────────────────
 
 // ── Source detail + attribution ───────────────────────────────────────────────
@@ -1292,6 +1391,7 @@ function assembleMemo(
   qualityScores:      Record<"youtube" | "reddit" | "web", SourceQualityResult>,
   evidenceProcessing: IntelligenceMemo["evidence_processing"],
   perspRaw:           Record<"youtube" | "reddit" | "web", string[]>,
+  creatorIntelligence: IntelligenceMemo["creator_intelligence"],
 ): IntelligenceMemo {
   const bySource = (src: NormalizedClaim["source"]) =>
     gatedClaims.filter(c => c.source === src)
@@ -1432,6 +1532,7 @@ function assembleMemo(
       web:     qualityScores.web.excluded     ? null : (perspResult.cross_source_synthesis.web     ?? null),
     },
     perspective_raw: perspRaw,
+    creator_intelligence: creatorIntelligence,
   };
 }
 
@@ -1999,7 +2100,8 @@ export async function POST(req: NextRequest) {
       };
 
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
-      const memo = assembleMemo(query, gatedClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw);
+      const creatorIntelligence = buildCreatorIntelligence(ytRows, rawClaims, gatedClaims, clusters, intentThresholds.relevanceGate);
+      const memo = assembleMemo(query, gatedClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence);
 
       emit({ type: "complete", memo });
 
