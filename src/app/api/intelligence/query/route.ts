@@ -135,6 +135,7 @@ export type IntelligenceMemo = {
     reddit: string | null;
     web: string | null;
   } | null;
+  perspective_raw: Record<"youtube" | "reddit" | "web", string[]> | null;
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -997,11 +998,36 @@ You do NOT browse, search, or invent facts. Work only from provided signals.
    - community_raw → reddit: "What actually happened in practice?" → outcomes, what worked, real-world patterns.
    - web_raw → web: "What is generally recommended?" → published playbooks, research-backed strategies.
 
+   SPECIFICITY RULES — CRITICAL — READ CAREFULLY:
+   The objective is INTELLIGENCE DENSITY, not elegance. Preserve the actual language from the evidence.
+
+   Specificity bias: specific > abstract | tactic > principle | behavior > value | action > slogan
+
+   Vocabulary preservation: when the evidence uses specific startup terms (founder-led sales, cold outreach,
+   narrow ICP, referrals, distribution, customer interviews, warm intros, outbound), KEEP those terms in the output.
+   Do NOT replace them with generic abstractions.
+
+   BAD transformations — these DESTROY intelligence:
+   - "Founder-led sales" → "Build trust" [WRONG — over-generalized]
+   - "Customer interviews" → "Understand your customers" [WRONG — removes the tactic]
+   - "Cold outreach" → "Engage your audience" [WRONG — meaningless abstraction]
+   - "Referrals" → "Relationships matter" [WRONG — loses the mechanism]
+   - "Narrow ICP" → "Know your target market" [WRONG — drops the operator concept]
+
+   GOOD synthesis — preserves the tactic while adding structure:
+   - "Operators repeatedly emphasize founder-led sales and direct outreach before investing in scalable channels"
+   - "Practitioners report referrals outperform paid acquisition before product-market fit"
+   - "Narrow ICP targeting and customer interviews surface repeatedly as early traction drivers"
+
+   If a tactic or term appears in multiple signals: NAME IT EXPLICITLY in the bullet.
+   If signals mention channel names (LinkedIn, YC network, communities): PRESERVE THEM.
+   Bullets must answer: what specifically did they do? Not: what value did they express?
+
    Confidence and existence are separate. A single signal still produces a perspective — mark it via signal volume.
    Even with just 1–2 signals: extract the theme, synthesize the bullet, do not omit.
 
 7. cross_source_synthesis: One sentence per source that HAS signals (1+ raw entries). Omit sources with 0 raw signals.
-   Each sentence must capture that source's unique contribution. No cross-contamination between sources.
+   Each sentence must capture that source's unique contribution. Apply the same specificity rules — preserve tactics, channels, and operator vocabulary.
 
 8. Directional must be EXACTLY one of:
    "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)"
@@ -1278,6 +1304,7 @@ function assembleMemo(
   redditDiag:         IntelligenceMemo["reddit_diagnostics"],
   qualityScores:      Record<"youtube" | "reddit" | "web", SourceQualityResult>,
   evidenceProcessing: IntelligenceMemo["evidence_processing"],
+  perspRaw:           Record<"youtube" | "reddit" | "web", string[]>,
 ): IntelligenceMemo {
   const bySource = (src: NormalizedClaim["source"]) =>
     gatedClaims.filter(c => c.source === src)
@@ -1418,6 +1445,7 @@ function assembleMemo(
       reddit:  qualityScores.reddit.excluded  ? null : (decision.cross_source_synthesis.reddit  ?? null),
       web:     qualityScores.web.excluded     ? null : (decision.cross_source_synthesis.web     ?? null),
     },
+    perspective_raw: perspRaw,
   };
 }
 
@@ -1889,8 +1917,17 @@ export async function POST(req: NextRequest) {
 
       const decision = await generateDecision(query, clusters, extractor.stage_interpretation, perspectiveClaims);
 
+      // Capture what was fed to the perspective LLM per source (for compression audit in debug mode)
+      const sortByStrength = (cs: NormalizedClaim[]) =>
+        [...cs].sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a));
+      const perspRaw: Record<"youtube" | "reddit" | "web", string[]> = {
+        youtube: sortByStrength(perspectiveClaims.filter(c => c.source === "youtube")).slice(0, 10).map(c => c.claim),
+        reddit:  sortByStrength(perspectiveClaims.filter(c => c.source === "reddit")).slice(0, 10).map(c => c.claim),
+        web:     sortByStrength(perspectiveClaims.filter(c => c.source === "web")).slice(0, 10).map(c => c.claim),
+      };
+
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
-      const memo = assembleMemo(query, gatedClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores, evidenceProcessing);
+      const memo = assembleMemo(query, gatedClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw);
 
       emit({ type: "complete", memo });
 

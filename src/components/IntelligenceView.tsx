@@ -321,6 +321,73 @@ function AttributedEvidence({ evidence }: { evidence: IntelligenceMemo["attribut
   );
 }
 
+// ── Perspective Compression Audit ────────────────────────────────────────────
+
+function PerspectiveCompressionAudit({ memo }: { memo: IntelligenceMemo }) {
+  const raw = memo.perspective_raw;
+  const persp = memo.source_perspective;
+  if (!raw) return null;
+
+  const SRCS = [
+    { key: "youtube" as const, label: "Creator" },
+    { key: "reddit"  as const, label: "Community" },
+    { key: "web"     as const, label: "Web" },
+  ];
+
+  function tokenize(text: string): Set<string> {
+    const STOP = new Set(["a","an","the","and","or","but","in","on","at","to","for","of","with","is","are","was","were","be","been","being","have","has","had","do","does","did","this","that","it","its","by","from","as","they","their","we","our","you","your","I","my","not","more","less","than","so","can","will","may","should","would","could","get","got","how","what","when","where","who","which","if","then","than"]);
+    return new Set(text.toLowerCase().split(/\W+/).filter(t => t.length > 3 && !STOP.has(t)));
+  }
+
+  return (
+    <div style={{ background: "#0f172a", borderRadius: 10, padding: "1rem", display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+      <p style={{ margin: 0, fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#475569" }}>
+        Perspective Compression Audit
+      </p>
+      {SRCS.map(({ key, label }) => {
+        const rawThemes = raw[key] ?? [];
+        const bullets = persp?.[key]?.bullets ?? [];
+        if (rawThemes.length === 0 && bullets.length === 0) return null;
+
+        // Count how many raw theme words survive into the generated bullets
+        const rawTokens = new Set([...rawThemes.flatMap(t => [...tokenize(t)])]);
+        const bulletTokens = new Set([...bullets.flatMap(b => [...tokenize(b)])]);
+        const preserved = [...rawTokens].filter(t => bulletTokens.has(t)).length;
+        const ratio = rawTokens.size > 0 ? Math.round((preserved / rawTokens.size) * 100) : 100;
+        const flagged = ratio < 50 && rawThemes.length >= 3;
+
+        return (
+          <div key={key}>
+            <p style={{ margin: "0 0 0.4rem", fontSize: "0.6rem", fontWeight: 700, color: flagged ? "#f97316" : "#64748b" }}>
+              {label} {flagged ? "⚠ LOW PRESERVATION" : ""} — {rawThemes.length} raw themes → {bullets.length} bullets | vocab preserved: {ratio}%
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+              <div>
+                <p style={{ margin: "0 0 0.2rem", fontSize: "0.55rem", color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Raw Themes (input to LLM)</p>
+                <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                  {rawThemes.map((t, i) => (
+                    <li key={i} style={{ fontSize: "0.6rem", color: "#94a3b8", lineHeight: 1.4 }}>· {t.length > 100 ? t.slice(0, 100) + "…" : t}</li>
+                  ))}
+                  {rawThemes.length === 0 && <li style={{ fontSize: "0.6rem", color: "#475569" }}>— none —</li>}
+                </ul>
+              </div>
+              <div>
+                <p style={{ margin: "0 0 0.2rem", fontSize: "0.55rem", color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Generated Perspective</p>
+                <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                  {bullets.map((b, i) => (
+                    <li key={i} style={{ fontSize: "0.6rem", color: flagged ? "#fb923c" : "#10b981", lineHeight: 1.4 }}>· {b}</li>
+                  ))}
+                  {bullets.length === 0 && <li style={{ fontSize: "0.6rem", color: "#475569" }}>— not generated —</li>}
+                </ul>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Evidence waterfall ────────────────────────────────────────────────────────
 
 function EvidenceWaterfall({ memo }: { memo: IntelligenceMemo }) {
@@ -960,6 +1027,7 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
           <p style={{ margin: 0, fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#94a3b8" }}>
             ◈ Debug — Pipeline Diagnostics
           </p>
+          {memo.perspective_raw && <PerspectiveCompressionAudit memo={memo} />}
           {memo.source_quality_scores && <EvidenceQualityPanel scores={memo.source_quality_scores} />}
           {memo.evidence_waterfall && <EvidenceWaterfall memo={memo} />}
           <EvidenceUsed memo={memo} />
