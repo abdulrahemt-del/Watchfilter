@@ -335,8 +335,11 @@ function ytToNormalizedClaims(rows: DeepResearchRow[]): Omit<NormalizedClaim, "q
 function hnToNormalizedClaims(claims: HNClaim[]): Omit<NormalizedClaim, "queryRelevance">[] {
   const maxScore = Math.max(...claims.map(c => c.post_score), 1);
   return claims.map((c, i) => {
-    const age = c.created_at
-      ? clamp(1 - (Date.now() / 1000 - Number(c.created_at)) / (365 * 86400), 0, 1)
+    // Use Date.parse (milliseconds) not Number() — Number() of an ISO string is NaN,
+    // which propagates through computeClaimStrength and makes every HN claim fail the >= 0.3 filter.
+    const createdMs = c.created_at ? Date.parse(c.created_at) : NaN;
+    const age = Number.isFinite(createdMs)
+      ? clamp(1 - (Date.now() - createdMs) / (365 * 86400 * 1000), 0, 1)
       : 0.5;
     const commentBoost = c.source_type === "comment" ? 1.5 : 1.0;
     const supportBonus = Math.min(((c.support_count ?? 1) - 1) * 0.1, 0.3);
@@ -1781,17 +1784,33 @@ export async function POST(req: NextRequest) {
         ...c,
         queryRelevance: scoreClaimRelevance(c.claim, keywords),
       });
-      const rawClaims: NormalizedClaim[] = [
+      const preFilter = [
         ...ytToNormalizedClaims(ytRows).map(addRelevance),
         ...hnToNormalizedClaims(hnClaims).map(addRelevance),
         ...webToNormalizedClaims(articles).map(addRelevance),
-      ].filter(c => computeClaimStrength(c) >= 0.3);
+      ];
+      const preFilterBySource = {
+        youtube: preFilter.filter(c => c.source === "youtube").length,
+        reddit:  preFilter.filter(c => c.source === "reddit").length,
+        web:     preFilter.filter(c => c.source === "web").length,
+      };
+      const rawClaims: NormalizedClaim[] = preFilter.filter(c => computeClaimStrength(c) >= 0.3);
 
       const rawBySource = {
         youtube: rawClaims.filter(c => c.source === "youtube").length,
         reddit:  rawClaims.filter(c => c.source === "reddit").length,
         web:     rawClaims.filter(c => c.source === "web").length,
       };
+      console.log(`[Normalize] pre-filter: YT=${preFilterBySource.youtube} Community=${preFilterBySource.reddit} Web=${preFilterBySource.web}`);
+      console.log(`[Normalize] post-strength-filter (>=0.3): YT=${rawBySource.youtube} Community=${rawBySource.reddit} Web=${rawBySource.web}`);
+      if (hnClaims.length > 0 && rawBySource.reddit === 0) {
+        console.error(`[COMMUNITY LOSS] ${hnClaims.length} community claims extracted but 0 survived strength filter — check NaN in recency/engagement`);
+        // Log strength sample for first 3 HN claims
+        hnToNormalizedClaims(hnClaims.slice(0, 3)).forEach((c, i) => {
+          const strength = computeClaimStrength(c as NormalizedClaim);
+          console.error(`  claim[${i}] strength=${strength} specificity=${c.specificity} engagement=${c.engagement} recency=${c.recency}`);
+        });
+      }
       console.log(`[Raw] Total: ${rawClaims.length} | YT=${rawBySource.youtube} Community=${rawBySource.reddit} Web=${rawBySource.web}`);
       emit({
         type: "stage", agent: "Signal Pool",
