@@ -1639,15 +1639,20 @@ export async function POST(req: NextRequest) {
         console.log("[Community] queries to run:", JSON.stringify(queriesToRun));
         emit({ type: "stage", source: "reddit", message: `Running ${queriesToRun.length} community queries…` });
 
-        // HN + Reddit in parallel
-        // Reddit handles slightly longer phrases better than 2-word keywords
+        // HN always runs. Reddit only runs when OAuth credentials are configured —
+        // without them, searchReddit hits the public www.reddit.com API which is
+        // blocked by Reddit on AWS/Vercel IP ranges (returns connection refused).
+        const hasRedditCreds = !!(process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET);
         const redditQuery = expandedQueries.slice(0, 3).join(" ") || query;
         const [hnPostSets, redditResult] = await Promise.allSettled([
           Promise.allSettled(
             queriesToRun.map(q => searchHN(q, { limit: 10, fetchComments: true, commentLimit: 8, commentedPostsLimit: 4, minPoints: 0 }))
           ),
-          searchReddit(redditQuery, { limit: 15, fetchComments: true, commentLimit: 8, commentedPostsLimit: 6, time: "all" }),
+          hasRedditCreds
+            ? searchReddit(redditQuery, { limit: 15, fetchComments: true, commentLimit: 8, commentedPostsLimit: 6, time: "all" })
+            : Promise.resolve([]),
         ]);
+        if (!hasRedditCreds) console.log("[Reddit] skipped — no OAuth credentials configured");
 
         // Process HN results
         let hnPostCount = 0, hnCommentCount = 0, hnPostsRaw = 0;
@@ -1700,9 +1705,38 @@ export async function POST(req: NextRequest) {
           redditPosts.length > 0 ? extractRedditClaims(redditPosts, query, openai) : Promise.resolve([]),
         ]);
 
-        const hnClaimsRaw = hnExtracted.status === "fulfilled" ? hnExtracted.value : [];
+        let hnClaimsRaw = hnExtracted.status === "fulfilled" ? hnExtracted.value : [];
         const redditClaimsRaw = redditExtracted.status === "fulfilled" ? redditExtracted.value : [];
         console.log(`[Community] claims: HN=${hnClaimsRaw.length} Reddit=${redditClaimsRaw.length}`);
+
+        // Raw-comment fallback: if extraction returned 0 HN claims but posts have comments,
+        // use comment texts directly. generatePerspectives will synthesize them into bullets.
+        // This handles: extraction LLM too strict, off-topic comments, API issues.
+        if (hnClaimsRaw.length === 0 && submittedHNPosts.length > 0) {
+          const rawCommentClaims: HNClaim[] = submittedHNPosts
+            .flatMap((p, pi) =>
+              p.top_comments.slice(0, 3).map((c, ci): HNClaim => ({
+                id: `hn_raw_${pi}_${ci}`,
+                subreddit: "HN",
+                post_score: p.score,
+                text: c.text.slice(0, 250),
+                evidence: c.text.slice(0, 200),
+                source_type: "comment",
+                support_count: 1,
+                sentiment: "neutral",
+                claim_type: "opinion",
+                created_at: p.created_at,
+                source_url: p.url,
+                source_title: p.title,
+              }))
+            )
+            .filter(c => c.text.length > 30)
+            .slice(0, 12);
+          if (rawCommentClaims.length > 0) {
+            console.log(`[HN] LLM extraction returned 0 claims — raw-comment fallback: ${rawCommentClaims.length} comments`);
+            hnClaimsRaw = rawCommentClaims;
+          }
+        }
 
         // Reddit claims are structurally identical to HNClaim — merge safely
         hnClaims = [...hnClaimsRaw, ...(redditClaimsRaw as unknown as HNClaim[])];
