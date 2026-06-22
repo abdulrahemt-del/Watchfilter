@@ -1893,7 +1893,12 @@ export async function POST(req: NextRequest) {
       // keywords ["startups","first","customers"] — missing "distribution","outreach","sales".
       // Domain vocab fixes this: customer_acquisition includes those exact terms.
       const domainAllowed = DOMAIN_VOCABULARY[queryDomain].allowed;
+      // Community claims (source: "reddit") bypass the vocab/relevance gate:
+      // they were retrieved by domain-specific HN/Reddit search, so the extraction
+      // LLM already filtered for topic relevance. Re-filtering here throws away
+      // valid practitioner insights that use different vocabulary than the query.
       const perspectiveClaims = rawClaims.filter(c =>
+        c.source === "reddit" ||
         c.queryRelevance >= intentThresholds.relevanceGate ||
         domainAllowed.some(term => c.claim.toLowerCase().includes(term.toLowerCase()))
       );

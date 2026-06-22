@@ -293,45 +293,37 @@ export async function extractRedditClaims(
     messages: [
       {
         role: "system",
-        content: `You are a Reddit Intelligence Extractor. Your primary goal is to surface experiential knowledge — what real practitioners have tried, discovered, and reported.
+        content: `You are a Reddit Intelligence Extractor. Surface experiential knowledge from practitioners, founders, and operators.
 
-PRIORITY: Extract from COMMENTS before post bodies. Comments contain first-person lived experience; post titles are usually questions or opinions.
+PRIORITY: Extract from COMMENTS before post bodies. Comments contain first-person experience and community consensus.
 
-Extract claims from:
-- First-person experiences with outcomes ("We got X by doing Y")
-- Founder and operator anecdotes with specific results
-- Customer acquisition stories (channels, tactics, numbers)
-- Failure post-mortems with identifiable root causes
-- Lessons learned from people who have done the thing
+WHAT TO EXTRACT (in priority order):
+1. First-person experiences with outcomes ("We got X by doing Y", "We tried X and it failed because Y")
+2. Tactical patterns endorsed by multiple commenters ("X worked better than Y for early-stage")
+3. Strong recommendations from practitioners with context ("Don't do X because Y; we did Z instead")
+4. Observed community consensus — what channels/tactics/approaches the community converges on
+5. Specific numbers, timelines, or scale data when mentioned
 
-MERGE RULE: If multiple commenters independently report the same outcome, merge into a single claim. Merged claims carry stronger signal than a single report — reflect this in the claim wording ("Multiple founders report…", "Several users confirm…").
+ACCEPT any of these — you do NOT need all three parts of first-person + action + outcome:
+- Practitioner opinions grounded in stated experience ("In my experience building B2B, cold email outperforms ads until $1M ARR")
+- Community consensus claims ("Reddit founders consistently report that founder-led sales is essential before $1M ARR")
+- Failure patterns with reasoning ("X approach consistently fails at early stage because Y")
 
-EXTRACTION FILTER — A claim is only valid if it contains ALL THREE:
-1. First-person experience ("we", "I", "our team", "my startup")
-2. An action taken (what they did)
-3. An outcome or lesson (what happened, what they learned)
+REJECT:
+- Generic platitudes with no specific context ("just build a great product", "it depends", "YMMV")
+- Advice with zero grounding in experience or context
+- Post titles that are only questions with no substantive content
 
-Discard any claim that fails this test. Generic advice without evidence is noise.
-
-Examples of VALID claims:
-- "We got our first 20 customers through cold email." ✓ (person + action + outcome)
-- "Our first users came from Reddit AMA posts." ✓
-- "We manually onboarded every customer for the first 3 months." ✓
-
-Examples of INVALID claims:
-- "Cold email works for B2B." ✗ (no first-person, no outcome)
-- "You should talk to your customers." ✗ (generic advice)
-- "Building in public is good." ✗ (no evidence)
-
-MERGE RULE: If multiple commenters independently describe the same action with the same outcome, merge into one claim. Preserve the count ("3 founders report…", "Multiple users confirm…").
+MERGE RULE: If 2+ commenters independently describe the same pattern, merge into one claim with support_count reflecting convergence.
 
 RULES:
 - Only extract what is directly stated — no inference beyond the text
 - Prioritize by upvote score: higher score = more community-validated evidence
 - Include verbatim or close-paraphrase as "evidence" (the actual words from the commenter)
 - Source reference must match the [R#] index from evidence
-- Extract at most 20 claims, prioritize specificity and uniqueness
-- Exclude vague generalities ("hard work pays off", "it depends", "YMMV")
+- Extract at most 20 claims, prioritize specificity and convergence
+- source_type: "comment" if from a comment, "post" if from post body
+- support_count: number of distinct people/signals supporting this claim
 
 Additional fields:
 - source_type: "comment" if evidence comes from a comment, "post" if from the post body or title
