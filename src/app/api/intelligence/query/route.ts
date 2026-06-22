@@ -906,7 +906,10 @@ type DecisionResult = {
   directional: string;
   decision_summary: string;
   priority_actions: PriorityAction[];
-  source_perspectives: Partial<Record<"youtube" | "reddit" | "web", { bullets: string[]; common_view: string }>>;
+};
+
+type PerspectiveResult = {
+  perspectives: Partial<Record<"youtube" | "reddit" | "web", { bullets: string[]; common_view: string }>>;
   cross_source_synthesis: Partial<Record<"youtube" | "reddit" | "web", string>>;
 };
 
@@ -914,9 +917,7 @@ async function generateDecision(
   query: string,
   clusters: ClaimCluster[],
   stageInterpretation: ExtractorOutput["stage_interpretation"],
-  workingClaims: NormalizedClaim[],
 ): Promise<DecisionResult> {
-  // Quality-gated claims (from clusters) → used for decision/actions
   const allFlat = clusters.flatMap(c => c.claims);
   const topBySource = (src: NormalizedClaim["source"]) =>
     allFlat
@@ -925,139 +926,46 @@ async function generateDecision(
       .slice(0, 8)
       .map(c => ({ claim: c.claim, type: c.type }));
 
-  // Perspective pool (passed in as workingClaims param): keyword-relevant OR domain-vocab matched.
-  // Sort by strength only — queryRelevance is low for domain-vocab matches even when semantically
-  // relevant (e.g. "distribution" or "outreach" don't keyword-match "first 100 customers")
-  const perspBySource = (src: NormalizedClaim["source"]) =>
-    workingClaims
-      .filter(c => c.source === src)
-      .sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a))
-      .slice(0, 10)
-      .map(c => ({ claim: c.claim, type: c.type }));
-
   const input = {
     question: query,
     creator_signals:   topBySource("youtube"),
     community_signals: topBySource("reddit"),
     web_signals:       topBySource("web"),
-    creator_raw:       perspBySource("youtube"),
-    community_raw:     perspBySource("reddit"),
-    web_raw:           perspBySource("web"),
-    precomputed: { agreement_score: null, confidence: null },
     stage_observations: stageInterpretation,
   };
 
   const res = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.3,
-    max_tokens: 2800,
+    max_tokens: 1600,
     response_format: { type: "json_object" },
     messages: [
       {
         role: "system",
         content: `You are the Decision Intelligence Synthesizer for WatchFilter.
+Transform clustered evidence into a structured decision. Work only from provided signals — do not invent facts.
 
-Transform clustered evidence (Creator, Community, Web) into a structured decision intelligence report.
-You do NOT browse, search, or invent facts. Work only from provided signals.
-
-# HARD RULES
-
-1. Never output confidence scores, agreement percentages, rankings, or numeric probabilities — computed externally.
-
-2. Source agnosticism: do NOT name specific platforms (YouTube, Reddit, HN, Twitter) in your output. Refer only to signal content, not signal origin.
-
-3. Consensus first: lead with what high-quality sources agree on. Only surface disagreements if they materially change the decision — do not manufacture conflict from framing differences.
-
-4. Source fidelity: every insight must trace to at least one provided signal. No hallucinated synthesis.
-
-5. Priority actions: generate 3–5 actions. Each action MUST be:
-   - Immediately executable — specific verb + specific target (e.g. "reach out to 50 prospects this week", not "build relationships")
-   - Grounded in evidence — derives from a specific signal, not general startup wisdom
-   - Measurable — contains a number, frequency, or clear done/not-done criterion
-
-   evidence_strength: "High" if 4+ signals support it, "Medium" if 2–3 signals, "Low" if 1 signal
-   supporting_signals: count of distinct evidence signals backing this action
-
-   GOOD action: "Reach out directly to 50 target prospects this week, focusing on the problem before the product"
-   GOOD action: "Conduct 3 customer interviews per week to identify the single most painful problem"
-   BAD action: "Develop clearly defined marketing campaigns"
-   BAD action: "Create a community"
-   BAD action: "Build a value proposition"
-
-6. source_perspectives: Generate from EACH SOURCE'S OWN EVIDENCE ONLY.
-   CRITICAL: Do NOT synthesize a source's perspective from decision_summary or another source's signals.
-   That is circular reasoning — all three would echo the same decision content.
-
-   Rules:
-   A. If *_raw has 1+ entries → synthesize 3–5 bullets from those signals only. common_view: one sentence.
-   B. If *_raw has 0 entries → OMIT that source key entirely from source_perspectives.
-   C. Do NOT fabricate content. Do NOT copy raw text verbatim.
-
-   Source angles (only when signals exist):
-   - creator_raw → youtube: "What do experienced operators believe?" → mental models, tactical principles, recurring themes.
-   - community_raw → reddit: "What actually happened in practice?" → outcomes, what worked, real-world patterns.
-   - web_raw → web: "What is generally recommended?" → published playbooks, research-backed strategies.
-
-   SPECIFICITY RULES — CRITICAL — READ CAREFULLY:
-   The objective is INTELLIGENCE DENSITY, not elegance. Preserve the actual language from the evidence.
-
-   Specificity bias: specific > abstract | tactic > principle | behavior > value | action > slogan
-
-   Vocabulary preservation: when the evidence uses specific startup terms (founder-led sales, cold outreach,
-   narrow ICP, referrals, distribution, customer interviews, warm intros, outbound), KEEP those terms in the output.
-   Do NOT replace them with generic abstractions.
-
-   BAD transformations — these DESTROY intelligence:
-   - "Founder-led sales" → "Build trust" [WRONG — over-generalized]
-   - "Customer interviews" → "Understand your customers" [WRONG — removes the tactic]
-   - "Cold outreach" → "Engage your audience" [WRONG — meaningless abstraction]
-   - "Referrals" → "Relationships matter" [WRONG — loses the mechanism]
-   - "Narrow ICP" → "Know your target market" [WRONG — drops the operator concept]
-
-   GOOD synthesis — preserves the tactic while adding structure:
-   - "Operators repeatedly emphasize founder-led sales and direct outreach before investing in scalable channels"
-   - "Practitioners report referrals outperform paid acquisition before product-market fit"
-   - "Narrow ICP targeting and customer interviews surface repeatedly as early traction drivers"
-
-   If a tactic or term appears in multiple signals: NAME IT EXPLICITLY in the bullet.
-   If signals mention channel names (LinkedIn, YC network, communities): PRESERVE THEM.
-   Bullets must answer: what specifically did they do? Not: what value did they express?
-
-   Confidence and existence are separate. A single signal still produces a perspective — mark it via signal volume.
-   Even with just 1–2 signals: extract the theme, synthesize the bullet, do not omit.
-
-7. cross_source_synthesis: One sentence per source that HAS signals (1+ raw entries). Omit sources with 0 raw signals.
-   Each sentence must capture that source's unique contribution. Apply the same specificity rules — preserve tactics, channels, and operator vocabulary.
-
-8. Directional must be EXACTLY one of:
+RULES:
+1. Never output confidence scores or numeric probabilities.
+2. Do NOT name platforms (YouTube, Reddit, HN). Refer to signal content only.
+3. Lead with what sources agree on. Only surface disagreements if they materially change the decision.
+4. Every insight must trace to at least one provided signal. No hallucinated synthesis.
+5. priority_actions: Generate 3–5 IMMEDIATELY EXECUTABLE actions.
+   Each MUST have: specific verb + specific target + measurable criterion (number/frequency/binary).
+   evidence_strength: "High" if 4+ signals, "Medium" if 2–3, "Low" if 1.
+   GOOD: "Reach out directly to 50 target prospects this week, focusing on the problem before the product"
+   GOOD: "Conduct 3 customer interviews per week to identify the single most painful problem"
+   BAD: "Build relationships" | "Develop marketing campaigns" | "Create a community" | "Build value propositions"
+6. directional MUST be EXACTLY one of:
    "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)"
-
-# STYLE
-- Precise, not conversational
-- Preserve genuine uncertainty — do NOT smooth ambiguity
-- Only name contradictions that materially change the decision
-- Avoid motivational language and "best practice" framing
-
-# OUTPUT
 
 Return ONLY valid JSON:
 {
-  "directional": "one of the five allowed labels",
-  "decision_summary": "2–3 sentences: what the evidence shows, what is genuinely disputed, what matters most for this decision.",
+  "directional": "...",
+  "decision_summary": "2–3 sentences: what the evidence shows, what is genuinely disputed, what matters most.",
   "priority_actions": [
-    { "action": "specific immediately executable action", "evidence_strength": "High|Medium|Low", "supporting_signals": 5 },
-    { "action": "...", "evidence_strength": "...", "supporting_signals": 3 }
-  ],
-  "source_perspectives": {
-    "youtube": { "bullets": ["3–5 synthesized operator beliefs"], "common_view": "One sentence" },
-    "reddit":  { "bullets": ["3–5 practitioner observations"], "common_view": "One sentence" },
-    "web":     { "bullets": ["3–5 synthesized recommendations"], "common_view": "One sentence" }
-  },
-  "cross_source_synthesis": {
-    "youtube": "One sentence: what operators uniquely contribute to answering this question",
-    "reddit":  "One sentence: what community experiences uniquely contribute",
-    "web":     "One sentence: what established guidance uniquely contributes"
-  }
+    { "action": "specific immediately executable action", "evidence_strength": "High|Medium|Low", "supporting_signals": 5 }
+  ]
 }`,
       },
       { role: "user", content: JSON.stringify(input) },
@@ -1075,33 +983,7 @@ Return ONLY valid JSON:
       directional?: string;
       decision_summary?: string;
       priority_actions?: Array<{ action?: string; evidence_strength?: string; supporting_signals?: number }>;
-      source_perspectives?: Record<string, { bullets?: unknown[]; common_view?: string }>;
-      cross_source_synthesis?: Record<string, unknown>;
     };
-
-    const VALID_SRCS = new Set(["youtube", "reddit", "web"]);
-
-    const parsedPerspectives: DecisionResult["source_perspectives"] = {};
-    if (p.source_perspectives && typeof p.source_perspectives === "object") {
-      for (const [src, val] of Object.entries(p.source_perspectives)) {
-        if (VALID_SRCS.has(src) && val && Array.isArray(val.bullets)) {
-          parsedPerspectives[src as "youtube" | "reddit" | "web"] = {
-            bullets: val.bullets.filter((b): b is string => typeof b === "string" && b.length > 5).slice(0, 6),
-            common_view: typeof val.common_view === "string" ? val.common_view : "",
-          };
-        }
-      }
-    }
-
-    const parsedSynthesis: DecisionResult["cross_source_synthesis"] = {};
-    if (p.cross_source_synthesis && typeof p.cross_source_synthesis === "object") {
-      for (const [src, val] of Object.entries(p.cross_source_synthesis)) {
-        if (VALID_SRCS.has(src) && typeof val === "string" && val.length > 5) {
-          parsedSynthesis[src as "youtube" | "reddit" | "web"] = val;
-        }
-      }
-    }
-
     return {
       directional:      VALID_DIRECTIONALS.has(p.directional ?? "") ? p.directional! : "Neutral / Tradeoff",
       decision_summary: p.decision_summary ?? "Insufficient evidence to synthesize a decision.",
@@ -1114,17 +996,118 @@ Return ONLY valid JSON:
                 supporting_signals: Math.max(1, Math.round(a.supporting_signals ?? 1)),
               }))
         : [],
-      source_perspectives:    parsedPerspectives,
-      cross_source_synthesis: parsedSynthesis,
     };
-  } catch {
+  } catch (err) {
+    console.error("[generateDecision] JSON parse failed:", err instanceof Error ? err.message : err);
     return {
       directional:      "Neutral / Tradeoff",
       decision_summary: "Insufficient evidence to synthesize a decision.",
       priority_actions: [],
-      source_perspectives:    {},
-      cross_source_synthesis: {},
     };
+  }
+}
+
+// ── Perspective extraction — dedicated single-job call ────────────────────────
+
+async function generatePerspectives(
+  query: string,
+  creatorRaw: Array<{ claim: string; type: string }>,
+  communityRaw: Array<{ claim: string; type: string }>,
+  webRaw: Array<{ claim: string; type: string }>,
+): Promise<PerspectiveResult> {
+  const hasAny = creatorRaw.length > 0 || communityRaw.length > 0 || webRaw.length > 0;
+  if (!hasAny) return { perspectives: {}, cross_source_synthesis: {} };
+
+  const res = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.2,
+    max_tokens: 2000,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `You are a startup intelligence analyst. SINGLE TASK: extract source-specific perspectives from evidence.
+
+For each source with 1+ evidence items, synthesize what that source reveals about the question:
+- creator_evidence → "youtube": What do experienced operators and founders believe? Recurring mental models, tactical beliefs, strategic themes.
+- community_evidence → "reddit": What actually happened in practice? Real outcomes, observed patterns, what worked or failed.
+- web_evidence → "web": What is generally recommended? Published playbooks, frameworks, consensus advice.
+
+RULES (CRITICAL):
+1. Synthesize ONLY from that source's own evidence. Never cross-contaminate with another source.
+2. Source has 0 items → OMIT that key entirely from output.
+3. Source has 1+ items → ALWAYS generate. No exceptions. Even 1 signal produces a perspective.
+4. PRESERVE specific startup vocabulary: "founder-led sales", "cold outreach", "narrow ICP", "customer interviews", "referrals", "distribution", "warm intros", "outbound", "inbound", "early adopters"
+5. Do NOT replace tactics with abstractions:
+   "founder-led sales" stays "founder-led sales" — NOT "build trust"
+   "cold outreach" stays "cold outreach" — NOT "engage your audience"
+   "customer interviews" stays "customer interviews" — NOT "understand your customers"
+6. Bullets must answer: what specifically did they do or believe? (Not: what value did they express?)
+7. 3–5 bullets per active source. common_view: one sentence capturing the central pattern.
+8. cross_source_synthesis: for each active source (1+ items), one sentence capturing its unique contribution to answering the question.
+
+Return ONLY valid JSON:
+{
+  "youtube": { "bullets": ["..."], "common_view": "..." },
+  "reddit":  { "bullets": ["..."], "common_view": "..." },
+  "web":     { "bullets": ["..."], "common_view": "..." },
+  "cross_source_synthesis": {
+    "youtube": "One sentence on creators' unique contribution",
+    "reddit":  "One sentence on community's unique contribution",
+    "web":     "One sentence on web's unique contribution"
+  }
+}
+Omit source keys with 0 evidence. cross_source_synthesis only includes active sources.`,
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          question: query,
+          creator_evidence:   creatorRaw,
+          community_evidence: communityRaw,
+          web_evidence:       webRaw,
+        }),
+      },
+    ],
+  });
+
+  const VALID_SRCS = new Set(["youtube", "reddit", "web"] as const);
+
+  try {
+    type RawPersp = Record<string, { bullets?: unknown[]; common_view?: string } | string>;
+    const p = JSON.parse(res.choices[0]?.message?.content ?? "{}") as RawPersp & {
+      cross_source_synthesis?: Record<string, unknown>;
+    };
+
+    const perspectives: PerspectiveResult["perspectives"] = {};
+    for (const src of VALID_SRCS) {
+      const val = p[src];
+      if (val && typeof val === "object" && !Array.isArray(val) && "bullets" in val && Array.isArray(val.bullets)) {
+        const bullets = (val.bullets as unknown[]).filter((b): b is string => typeof b === "string" && b.length > 5).slice(0, 6);
+        if (bullets.length > 0) {
+          perspectives[src] = {
+            bullets,
+            common_view: typeof val.common_view === "string" ? val.common_view : "",
+          };
+        }
+      }
+    }
+
+    const cross_source_synthesis: PerspectiveResult["cross_source_synthesis"] = {};
+    if (p.cross_source_synthesis && typeof p.cross_source_synthesis === "object") {
+      for (const src of VALID_SRCS) {
+        const val = p.cross_source_synthesis[src];
+        if (typeof val === "string" && val.length > 5) {
+          cross_source_synthesis[src] = val;
+        }
+      }
+    }
+
+    console.log(`[generatePerspectives] result: creator=${!!perspectives.youtube} community=${!!perspectives.reddit} web=${!!perspectives.web}`);
+    return { perspectives, cross_source_synthesis };
+  } catch (err) {
+    console.error("[generatePerspectives] JSON parse failed:", err instanceof Error ? err.message : err);
+    return { perspectives: {}, cross_source_synthesis: {} };
   }
 }
 
@@ -1300,6 +1283,7 @@ function assembleMemo(
   extractor:          ExtractorOutput,
   confidenceResult:   ConfidenceResult,
   decision:           DecisionResult,
+  perspResult:        PerspectiveResult,
   rawCounts:          { youtube: number; reddit: number; web: number },
   redditDiag:         IntelligenceMemo["reddit_diagnostics"],
   qualityScores:      Record<"youtube" | "reddit" | "web", SourceQualityResult>,
@@ -1412,38 +1396,37 @@ function assembleMemo(
       normalized: gatedClaims.length,
       synthesized: clusters.length,
     },
-    // source_perspective: not gated by quality exclusion — perspectives are synthesized from
-    // the pre-quality-gate working pool so sources with 2+ relevant signals always contribute
+    // source_perspective: generated by dedicated generatePerspectives call (not bundled with decision)
     source_perspective: {
-      youtube: !(decision.source_perspectives.youtube?.bullets?.length)
+      youtube: !(perspResult.perspectives.youtube?.bullets?.length)
         ? null
         : {
-            bullets:     decision.source_perspectives.youtube.bullets,
-            common_view: decision.source_perspectives.youtube.common_view,
+            bullets:     perspResult.perspectives.youtube.bullets,
+            common_view: perspResult.perspectives.youtube.common_view,
             confidence:  qualityScores.youtube.score >= 70 ? "High" : qualityScores.youtube.score >= 50 ? "Medium" : "Low",
             weak_signal: qualityScores.youtube.excluded || qualityScores.youtube.score < 60,
           },
-      reddit: !(decision.source_perspectives.reddit?.bullets?.length)
+      reddit: !(perspResult.perspectives.reddit?.bullets?.length)
         ? null
         : {
-            bullets:     decision.source_perspectives.reddit.bullets,
-            common_view: decision.source_perspectives.reddit.common_view,
+            bullets:     perspResult.perspectives.reddit.bullets,
+            common_view: perspResult.perspectives.reddit.common_view,
             confidence:  qualityScores.reddit.score >= 70 ? "High" : qualityScores.reddit.score >= 50 ? "Medium" : "Low",
             weak_signal: qualityScores.reddit.excluded || qualityScores.reddit.score < 60,
           },
-      web: !(decision.source_perspectives.web?.bullets?.length)
+      web: !(perspResult.perspectives.web?.bullets?.length)
         ? null
         : {
-            bullets:     decision.source_perspectives.web.bullets,
-            common_view: decision.source_perspectives.web.common_view,
+            bullets:     perspResult.perspectives.web.bullets,
+            common_view: perspResult.perspectives.web.common_view,
             confidence:  qualityScores.web.score >= 70 ? "High" : qualityScores.web.score >= 50 ? "Medium" : "Low",
             weak_signal: qualityScores.web.excluded || qualityScores.web.score < 60,
           },
     },
     cross_source_synthesis: {
-      youtube: qualityScores.youtube.excluded ? null : (decision.cross_source_synthesis.youtube ?? null),
-      reddit:  qualityScores.reddit.excluded  ? null : (decision.cross_source_synthesis.reddit  ?? null),
-      web:     qualityScores.web.excluded     ? null : (decision.cross_source_synthesis.web     ?? null),
+      youtube: qualityScores.youtube.excluded ? null : (perspResult.cross_source_synthesis.youtube ?? null),
+      reddit:  qualityScores.reddit.excluded  ? null : (perspResult.cross_source_synthesis.reddit  ?? null),
+      web:     qualityScores.web.excluded     ? null : (perspResult.cross_source_synthesis.web     ?? null),
     },
     perspective_raw: perspRaw,
   };
@@ -1902,7 +1885,7 @@ export async function POST(req: NextRequest) {
         confidenceResult = { ...confidenceResult, confidence: Math.min(0.60, confidenceResult.confidence) };
       }
 
-      // Stage 7: Decision
+      // Stage 7: Decision + Perspectives (parallel)
       emit({ type: "stage", agent: "Decision", message: "Generating decision intelligence…" });
 
       // Perspective evidence pool: keyword-relevant OR domain-vocabulary-matched claims.
@@ -1915,19 +1898,50 @@ export async function POST(req: NextRequest) {
         domainAllowed.some(term => c.claim.toLowerCase().includes(term.toLowerCase()))
       );
 
-      const decision = await generateDecision(query, clusters, extractor.stage_interpretation, perspectiveClaims);
-
-      // Capture what was fed to the perspective LLM per source (for compression audit in debug mode)
       const sortByStrength = (cs: NormalizedClaim[]) =>
         [...cs].sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a));
+      const perspBySource = (src: NormalizedClaim["source"]) =>
+        sortByStrength(perspectiveClaims.filter(c => c.source === src))
+          .slice(0, 10)
+          .map(c => ({ claim: c.claim, type: c.type }));
+
+      const creatorRaw   = perspBySource("youtube");
+      const communityRaw = perspBySource("reddit");
+      const webRaw       = perspBySource("web");
+
+      console.log(`[Perspective] raw_counts: creator=${creatorRaw.length} community=${communityRaw.length} web=${webRaw.length}`);
+
+      // Run decision + perspective extraction in parallel (separated so each call has one focused job)
+      const [decision, perspResult] = await Promise.all([
+        generateDecision(query, clusters, extractor.stage_interpretation),
+        generatePerspectives(query, creatorRaw, communityRaw, webRaw),
+      ]);
+
+      // Instrument: log what was generated vs. what had evidence
+      console.log(`[Perspective] generated: creator=${!!perspResult.perspectives.youtube?.bullets?.length} community=${!!perspResult.perspectives.reddit?.bullets?.length} web=${!!perspResult.perspectives.web?.bullets?.length}`);
+
+      // Hard assertion + raw-claim fallback — guarantee perspective whenever evidence exists
+      const PERSP_SRCS = ["youtube", "reddit", "web"] as const;
+      for (const src of PERSP_SRCS) {
+        const raw = src === "youtube" ? creatorRaw : src === "reddit" ? communityRaw : webRaw;
+        if (raw.length > 0 && !perspResult.perspectives[src]?.bullets?.length) {
+          console.error(`[SOURCE ATTRIBUTION FAILURE] ${src}: ${raw.length} raw signals — LLM dropped perspective. Applying raw-claim fallback.`);
+          perspResult.perspectives[src] = {
+            bullets: raw.slice(0, 4).map(c => c.claim),
+            common_view: `Observed ${src === "youtube" ? "creator" : src === "reddit" ? "community" : "web"} themes — synthesis unavailable.`,
+          };
+        }
+      }
+
+      // perspRaw for compression audit in debug mode
       const perspRaw: Record<"youtube" | "reddit" | "web", string[]> = {
-        youtube: sortByStrength(perspectiveClaims.filter(c => c.source === "youtube")).slice(0, 10).map(c => c.claim),
-        reddit:  sortByStrength(perspectiveClaims.filter(c => c.source === "reddit")).slice(0, 10).map(c => c.claim),
-        web:     sortByStrength(perspectiveClaims.filter(c => c.source === "web")).slice(0, 10).map(c => c.claim),
+        youtube: creatorRaw.map(c => c.claim),
+        reddit:  communityRaw.map(c => c.claim),
+        web:     webRaw.map(c => c.claim),
       };
 
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
-      const memo = assembleMemo(query, gatedClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw);
+      const memo = assembleMemo(query, gatedClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw);
 
       emit({ type: "complete", memo });
 
