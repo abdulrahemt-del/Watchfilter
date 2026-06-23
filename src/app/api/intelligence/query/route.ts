@@ -181,6 +181,25 @@ export type IntelligenceMemo = {
       top_rejections: Array<{ claim: string; relevance_score: number; reason: string }>;
     };
   } | null;
+  decision_drivers: {
+    positive_signals: Array<{
+      insight: string;
+      source_types: Array<"creator" | "community" | "web">;
+      source_count: number;
+      confidence_score: number;
+      is_cross_source: boolean;
+    }>;
+    negative_signals: Array<{
+      insight: string;
+      source_types: Array<"creator" | "community" | "web">;
+      source_count: number;
+      confidence_score: number;
+    }>;
+    uncertainty_factors: string[];
+    decision_justification: string;
+    decision_strength: "Strong" | "Moderate" | "Weak";
+    missing_evidence: string[];
+  };
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -1422,6 +1441,151 @@ function buildCrossSourceConsensus(
     .slice(0, 5);
 }
 
+// ── Decision explainability — all deterministic, no LLM ──────────────────────
+
+function buildDecisionDrivers(
+  clusters:               ClaimCluster[],
+  extractor:              ExtractorOutput,
+  qualityScores:          Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+  confidenceResult:       ConfidenceResult,
+  decision:               DecisionResult,
+  creatorIntelligence:    IntelligenceMemo["creator_intelligence"],
+  sourcesUsed:            Array<"youtube" | "reddit" | "web">,
+  hardContradictionCount: number,
+  tradeoffCount:          number,
+): IntelligenceMemo["decision_drivers"] {
+  type SrcLabel = "creator" | "community" | "web";
+  const SRC_TO_LABEL: Record<"youtube" | "reddit" | "web", SrcLabel> = {
+    youtube: "creator", reddit: "community", web: "web",
+  };
+  const POSITIVE_TYPES = new Set(["success", "recommendation"]);
+  const NEGATIVE_TYPES = new Set(["failure", "pain_point"]);
+
+  const positiveSignals: IntelligenceMemo["decision_drivers"]["positive_signals"] = [];
+  const negativeSignals: IntelligenceMemo["decision_drivers"]["negative_signals"] = [];
+
+  for (const cluster of clusters) {
+    const dom = dominantType(cluster);
+    const isPositive = POSITIVE_TYPES.has(dom);
+    const isNegative = NEGATIVE_TYPES.has(dom);
+    if (!isPositive && !isNegative) continue;
+
+    const clusterSrcs = [...new Set(
+      cluster.claims.filter(c => !qualityScores[c.source].excluded).map(c => c.source)
+    )];
+    if (clusterSrcs.length === 0) continue;
+
+    const source_types: SrcLabel[] = clusterSrcs.map(s => SRC_TO_LABEL[s]);
+    const source_count = clusterSrcs.length;
+    const confidence_score = Math.round(
+      cluster.claims.reduce((s, c) => s + c.queryRelevance, 0) / cluster.claims.length
+    );
+    const ec = extractor.insight_clusters.find(e => e.theme === cluster.theme);
+    const insight = ec?.key_themes?.[0] ?? ec?.summary ?? cluster.theme;
+
+    if (isPositive) {
+      positiveSignals.push({ insight, source_types, source_count, confidence_score, is_cross_source: source_count >= 2 });
+    } else {
+      negativeSignals.push({ insight, source_types, source_count, confidence_score });
+    }
+  }
+
+  positiveSignals.sort((a, b) => b.confidence_score - a.confidence_score || b.source_count - a.source_count);
+  negativeSignals.sort((a, b) => b.confidence_score - a.confidence_score || b.source_count - a.source_count);
+
+  const bd = confidenceResult.breakdown;
+  const confPct = Math.round(confidenceResult.confidence * 100);
+
+  // Uncertainty factors — derived from coverage gaps, exclusions, contradictions
+  const uncertaintyFactors: string[] = [];
+  if (creatorIntelligence?.coverage.level === "Low") {
+    uncertaintyFactors.push(
+      `Creator corpus coverage is low (${creatorIntelligence.coverage.coverage_score}%) — limited creator evidence on this specific topic`
+    );
+  } else if (creatorIntelligence?.coverage.level === "Medium" && (creatorIntelligence.coverage.coverage_score ?? 100) < 40) {
+    uncertaintyFactors.push(
+      `Creator coverage is moderate (${creatorIntelligence.coverage.coverage_score}%) — some creator evidence found but not comprehensive`
+    );
+  }
+  if (qualityScores.reddit.excluded && qualityScores.youtube.excluded) {
+    uncertaintyFactors.push("Evidence limited to web sources only — community and creator perspectives unavailable");
+  } else if (qualityScores.reddit.excluded) {
+    uncertaintyFactors.push("Community intelligence excluded — practitioner signal quality below threshold");
+  } else if (qualityScores.youtube.excluded) {
+    uncertaintyFactors.push("Creator intelligence excluded — no strong creator signal found for this query");
+  }
+  if (hardContradictionCount > 0) {
+    uncertaintyFactors.push(
+      `${hardContradictionCount} direct contradiction${hardContradictionCount !== 1 ? "s" : ""} detected — sources disagree on specific outcomes`
+    );
+  }
+  if (bd.signalDensity < 50) {
+    uncertaintyFactors.push("Evidence volume is lower than optimal — fewer distinct perspectives sampled");
+  }
+  if (bd.sourceCoverage < 50) {
+    uncertaintyFactors.push("Source diversity is limited — most evidence comes from a single source type");
+  }
+
+  const decision_strength: "Strong" | "Moderate" | "Weak" =
+    confPct >= 80 ? "Strong" : confPct >= 55 ? "Moderate" : "Weak";
+
+  const crossSourceCount = clusters.filter(c =>
+    new Set(c.claims.filter(cl => !qualityScores[cl.source].excluded).map(cl => cl.source)).size >= 2
+  ).length;
+
+  const sourcesUsedFriendly = sourcesUsed.map(s =>
+    s === "youtube" ? "Creator" : s === "reddit" ? "Community" : "Web"
+  );
+  const agrStr = bd.agreement >= 65 ? "strong" : bd.agreement >= 40 ? "moderate" : "limited";
+
+  let justification = "";
+  if (decision.directional.includes("YES")) {
+    justification = `Positive evidence outweighs identified risks across ${sourcesUsedFriendly.join(", ")} sources, with ${agrStr} agreement (${bd.agreement}%).`;
+    if (crossSourceCount >= 2) {
+      justification += ` ${crossSourceCount} insights corroborated independently across multiple source types.`;
+    }
+    if (decision_strength !== "Strong") {
+      const reason = uncertaintyFactors[0]
+        ?? (negativeSignals.length > 0 ? `${negativeSignals.length} risk area${negativeSignals.length !== 1 ? "s" : ""} present` : "limited evidence volume");
+      justification += ` Not "Strong YES" because: ${reason.toLowerCase()}.`;
+    }
+  } else if (decision.directional.includes("NO")) {
+    justification = `Negative signals and risks outweigh positive evidence across ${sourcesUsedFriendly.join(", ")} sources, with ${agrStr} agreement (${bd.agreement}%).`;
+    if (positiveSignals.length > 0) {
+      justification += ` ${positiveSignals.length} positive signal${positiveSignals.length !== 1 ? "s" : ""} exist but are insufficient to overcome identified risks.`;
+    }
+  } else {
+    justification = `Evidence is balanced across ${sourcesUsedFriendly.join(", ")} sources — ${tradeoffCount > 0 ? `${tradeoffCount} tradeoff${tradeoffCount !== 1 ? "s" : ""} identified` : "no clear directional consensus"}, with ${agrStr} agreement (${bd.agreement}%).`;
+    if (positiveSignals.length > 0 && negativeSignals.length > 0) {
+      justification += ` ${positiveSignals.length} positive and ${negativeSignals.length} negative signals are roughly balanced.`;
+    }
+  }
+
+  // Missing evidence — what would raise confidence
+  const missingEvidence: string[] = [];
+  if (qualityScores.youtube.excluded) missingEvidence.push("More creator content indexed on this specific topic");
+  if (qualityScores.reddit.excluded)  missingEvidence.push("Additional practitioner discussion on this topic (HN/Reddit)");
+  if (creatorIntelligence?.coverage.level === "Low" && !qualityScores.youtube.excluded) {
+    missingEvidence.push("More creators discussing this topic specifically");
+  }
+  if (crossSourceCount === 0) {
+    missingEvidence.push("Cross-source corroboration — different evidence types reaching the same conclusion");
+  }
+  if (confPct < 70) missingEvidence.push("Higher signal volume: more distinct practitioner perspectives");
+  if (hardContradictionCount > 0) {
+    missingEvidence.push("Clearer practitioner consensus — current evidence shows conflicting outcomes");
+  }
+
+  return {
+    positive_signals:       positiveSignals.slice(0, 4),
+    negative_signals:       negativeSignals.slice(0, 3),
+    uncertainty_factors:    uncertaintyFactors.slice(0, 4),
+    decision_justification: justification,
+    decision_strength,
+    missing_evidence:       missingEvidence.slice(0, 5),
+  };
+}
+
 // ── Memo assembly (pure, no LLM) ──────────────────────────────────────────────
 
 // ── Source detail + attribution ───────────────────────────────────────────────
@@ -1579,6 +1743,17 @@ function assembleMemo(
 
   const bestEvidence = buildBestEvidenceRanking(gatedClaims, extractor);
   const crossSourceConsensus = buildCrossSourceConsensus(clusters, extractor, qualityScores);
+  const decisionDrivers = buildDecisionDrivers(
+    clusters,
+    extractor,
+    qualityScores,
+    confidenceResult,
+    decision,
+    creatorIntelligence,
+    sourcesUsed,
+    hardContradictions.length,
+    filteredTradeoffs.length,
+  );
 
   // Build new insight clusters format: synthesized themes, not raw excerpts
   const clusterByTheme = new Map(clusters.map(c => [c.theme, c]));
@@ -1690,6 +1865,7 @@ function assembleMemo(
     },
     perspective_raw: perspRaw,
     creator_intelligence: creatorIntelligence,
+    decision_drivers: decisionDrivers,
   };
 }
 

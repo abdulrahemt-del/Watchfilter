@@ -29,11 +29,20 @@ const DIRECTIONAL_STYLE: Record<string, { bg: string; color: string; bar: string
   "Strong NO (conditional)":  { bg: "#7f1d1d", color: "#fca5a5", bar: "#f87171" },
 };
 
+const STRENGTH_STYLE: Record<string, { bg: string; color: string; border: string }> = {
+  Strong:   { bg: "#dcfce7", color: "#14532d", border: "#86efac" },
+  Moderate: { bg: "#fef3c7", color: "#92400e", border: "#fcd34d" },
+  Weak:     { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5" },
+};
+
 function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
   const ds = DIRECTIONAL_STYLE[memo.directional] ?? { bg: "#1e293b", color: "#94a3b8", bar: "#475569" };
+  const dd = memo.decision_drivers;
+  const strengthStyle = dd ? (STRENGTH_STYLE[dd.decision_strength] ?? STRENGTH_STYLE.Moderate) : null;
+
   return (
     <div style={{ background: "#0f172a", borderRadius: 12, padding: "1.5rem 1.75rem", borderLeft: `4px solid ${ds.bar}` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.85rem", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
         <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#475569" }}>
           Decision
         </span>
@@ -42,10 +51,21 @@ function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
             {memo.directional}
           </span>
         )}
+        {dd && strengthStyle && (
+          <span style={{ fontSize: "0.55rem", fontWeight: 700, padding: "1px 8px", borderRadius: 20, background: strengthStyle.bg, color: strengthStyle.color, border: `1px solid ${strengthStyle.border}` }}>
+            {dd.decision_strength} signal
+          </span>
+        )}
       </div>
-      <p style={{ margin: "0 0 1.1rem", fontSize: "1rem", color: "#f8fafc", lineHeight: 1.75, fontWeight: 400 }}>
+      <p style={{ margin: "0 0 0.75rem", fontSize: "1rem", color: "#f8fafc", lineHeight: 1.75, fontWeight: 400 }}>
         {memo.decision_summary}
       </p>
+      {dd?.decision_justification && (
+        <div style={{ marginBottom: "0.85rem", padding: "0.55rem 0.75rem", background: "#1e293b", borderRadius: 8, borderLeft: "3px solid #334155" }}>
+          <p style={{ margin: "0 0 0.2rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Why this decision</p>
+          <p style={{ margin: 0, fontSize: "0.75rem", color: "#94a3b8", lineHeight: 1.6 }}>{dd.decision_justification}</p>
+        </div>
+      )}
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#475569" }}>Sources</span>
         {(memo.sources_used ?? []).map(s => <SourceTag key={s} src={s} />)}
@@ -132,6 +152,140 @@ function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
         </div>
 
       </div>
+    </section>
+  );
+}
+
+// ── Decision Drivers ─────────────────────────────────────────────────────────
+
+const DD_SRC_META = {
+  creator:   { icon: "▶", color: "#ef4444", bg: "#fee2e2", border: "#fca5a5", label: "Creator" },
+  community: { icon: "▲", color: "#10b981", bg: "#f0fdf4", border: "#86efac", label: "Community" },
+  web:       { icon: "⬡", color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe", label: "Web" },
+} as const;
+
+function SignalSourceBadges({ srcs }: { srcs: Array<"creator" | "community" | "web"> }) {
+  return (
+    <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
+      {srcs.map(s => {
+        const m = DD_SRC_META[s];
+        return (
+          <span key={s} style={{ fontSize: "0.55rem", fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: m.bg, color: m.color, border: `1px solid ${m.border}` }}>
+            {m.icon} {m.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function DecisionDriversSection({ memo }: { memo: IntelligenceMemo }) {
+  const dd = memo.decision_drivers;
+  if (!dd) return null;
+  const hasDrivers = dd.positive_signals.length > 0 || dd.negative_signals.length > 0 || dd.uncertainty_factors.length > 0;
+  if (!hasDrivers) return null;
+
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Decision Drivers
+      </h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "0.75rem" }}>
+
+        {/* Positive Signals */}
+        {dd.positive_signals.length > 0 && (
+          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "0.85rem 1rem" }}>
+            <p style={{ margin: "0 0 0.5rem", fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#15803d" }}>
+              ↑ Positive Signals
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+              {dd.positive_signals.map((sig, i) => {
+                const scoreColor = sig.confidence_score >= 60 ? "#15803d" : sig.confidence_score >= 35 ? "#d97706" : "#991b1b";
+                return (
+                  <div key={i} style={{ paddingBottom: i < dd.positive_signals.length - 1 ? "0.6rem" : 0, borderBottom: i < dd.positive_signals.length - 1 ? "1px solid #dcfce7" : "none" }}>
+                    {sig.is_cross_source && (
+                      <span style={{ fontSize: "0.52rem", fontWeight: 700, padding: "1px 6px", borderRadius: 10, background: "#8b5cf620", color: "#7c3aed", border: "1px solid #c4b5fd", display: "inline-block", marginBottom: "0.25rem" }}>
+                        ✦ Cross-Source
+                      </span>
+                    )}
+                    <p style={{ margin: "0 0 0.35rem", fontSize: "0.73rem", color: "#166534", lineHeight: 1.5, fontWeight: 500 }}>{sig.insight}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                      <SignalSourceBadges srcs={sig.source_types} />
+                      <span style={{ fontSize: "0.58rem", fontWeight: 700, color: scoreColor, marginLeft: "auto" }}>
+                        {sig.confidence_score}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Negative Signals */}
+        {dd.negative_signals.length > 0 && (
+          <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10, padding: "0.85rem 1rem" }}>
+            <p style={{ margin: "0 0 0.5rem", fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#c2410c" }}>
+              ↓ Negative Signals
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+              {dd.negative_signals.map((sig, i) => {
+                const scoreColor = sig.confidence_score >= 60 ? "#15803d" : sig.confidence_score >= 35 ? "#d97706" : "#991b1b";
+                return (
+                  <div key={i} style={{ paddingBottom: i < dd.negative_signals.length - 1 ? "0.6rem" : 0, borderBottom: i < dd.negative_signals.length - 1 ? "1px solid #fed7aa" : "none" }}>
+                    <p style={{ margin: "0 0 0.35rem", fontSize: "0.73rem", color: "#9a3412", lineHeight: 1.5, fontWeight: 500 }}>{sig.insight}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                      <SignalSourceBadges srcs={sig.source_types} />
+                      <span style={{ fontSize: "0.58rem", fontWeight: 700, color: scoreColor, marginLeft: "auto" }}>
+                        {sig.confidence_score}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Uncertainty Factors */}
+        {dd.uncertainty_factors.length > 0 && (
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1rem" }}>
+            <p style={{ margin: "0 0 0.5rem", fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b" }}>
+              ◌ Uncertainty Factors
+            </p>
+            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+              {dd.uncertainty_factors.map((f, i) => (
+                <li key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
+                  <span style={{ color: "#94a3b8", fontSize: "0.65rem", paddingTop: 1, flexShrink: 0 }}>•</span>
+                  <span style={{ fontSize: "0.7rem", color: "#475569", lineHeight: 1.5 }}>{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+      </div>
+    </section>
+  );
+}
+
+// ── Missing Evidence ──────────────────────────────────────────────────────────
+
+function MissingEvidenceSection({ items }: { items: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <section style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1.1rem" }}>
+      <h2 style={{ margin: "0 0 0.5rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        What Would Increase Confidence?
+      </h2>
+      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+        {items.map((item, i) => (
+          <li key={i} style={{ display: "flex", gap: "0.45rem", alignItems: "flex-start" }}>
+            <span style={{ color: "#6366f1", fontSize: "0.65rem", paddingTop: 2, flexShrink: 0 }}>+</span>
+            <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{item}</span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -928,10 +1082,11 @@ function ConsensusSection({
 
 // ── Contradictions ────────────────────────────────────────────────────────────
 
-const CONFLICT_STYLE = {
+const CONFLICT_STYLE: Record<string, { bg: string; color: string; label: string }> = {
   direct:     { bg: "#fee2e2", color: "#991b1b", label: "Direct conflict" },
   partial:    { bg: "#fff7ed", color: "#c2410c", label: "Partial conflict" },
   contextual: { bg: "#eff6ff", color: "#1d4ed8", label: "Context-dependent" },
+  tradeoff:   { bg: "#f1f5f9", color: "#475569", label: "Tradeoff" },
 };
 
 function Contradictions({ items }: { items: IntelligenceMemo["contradictions"] }) {
@@ -1363,40 +1518,46 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
-      {/* 1. Decision */}
+      {/* 1. Decision + inline "Why this decision" justification */}
       <DecisionCard memo={memo} />
 
-      {/* 2. Intelligence Perspectives — Creator / Community / Web */}
+      {/* 2. Decision Drivers — Positive / Negative / Uncertainty */}
+      <DecisionDriversSection memo={memo} />
+
+      {/* 3. Intelligence Perspectives — Creator / Community / Web */}
       <SourceBreakdown memo={memo} />
 
-      {/* 3. Cross-Source Consensus */}
+      {/* 4. Cross-Source Consensus */}
       <CrossSourceConsensusSection items={memo.cross_source_consensus ?? []} />
 
-      {/* 4. Highest Confidence Evidence (with source attribution) */}
+      {/* 5. Highest Confidence Evidence (with source attribution) */}
       <AttributedEvidence evidence={memo.attributed_evidence ?? memo.best_evidence_ranking?.map(r => ({ claim: r, sources: [] })) ?? []} />
 
-      {/* 4. Reasoning (Evidence Themes) */}
+      {/* 6. Reasoning (Evidence Themes) */}
       <InsightClusters clusters={memo.insight_clusters} />
 
-      {/* 5. Priority Actions */}
+      {/* 7. Priority Actions */}
       <PriorityActions actions={memo.decision_recommendation.priority_actions} />
 
-      {/* 6. Confidence */}
+      {/* 8. Confidence Breakdown */}
       <ConfidenceSection memo={memo} />
 
-      {/* 8. Consensus */}
+      {/* 9. What Would Increase Confidence? */}
+      <MissingEvidenceSection items={memo.decision_drivers?.missing_evidence ?? []} />
+
+      {/* 10. Consensus */}
       <ConsensusSection consensus={memo.consensus} tradeoffs={memo.tradeoffs ?? []} contradictions={memo.contradictions} />
 
-      {/* 9. Tradeoffs */}
+      {/* 11. Tradeoffs */}
       <TradeoffsSection items={memo.tradeoffs ?? []} />
 
-      {/* 10. Contradictions (hard only) */}
+      {/* 12. Contradictions (hard only) */}
       <Contradictions items={memo.contradictions} />
 
-      {/* 11. Stage Playbook */}
+      {/* 13. Stage Playbook */}
       <StageActions rec={memo.decision_recommendation} />
 
-      {/* 12. Prediction Intelligence (conditional on relevance) */}
+      {/* 14. Prediction Intelligence (conditional on relevance) */}
       <PredictionIntelligenceCard query={query} />
 
       {/* Debug panel — pipeline diagnostics, hidden by default */}
