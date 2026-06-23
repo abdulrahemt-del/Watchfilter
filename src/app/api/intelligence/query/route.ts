@@ -22,10 +22,11 @@ export type IntelligenceMemo = {
   reddit_gap: boolean;
   confidence_score: number;
   confidence_breakdown: {
-    agreement: number;       // 0-100
-    sourceCoverage: number;  // 0-100
-    contradictionPenalty: number; // 0-100
-    signalDensity: number;   // 0-100
+    agreement: number;           // 0-100
+    sourceCoverage: number;      // 0-100
+    contradictionPenalty: number;// 0-100
+    signalDensity: number;       // 0-100
+    crossSourceBonus: number;    // 0-15
   };
   consensus: {
     agreement_score: number; // 0-100
@@ -47,6 +48,14 @@ export type IntelligenceMemo = {
     claim_a: string;
     claim_b: string;
     why_it_matters: string;
+  }>;
+  cross_source_consensus: Array<{
+    insight: string;
+    source_types: Array<"creator" | "community" | "web">;
+    source_count: number;
+    source_detail: Partial<Record<"creator" | "community" | "web", { evidence_count: number }>>;
+    confidence_score: number;
+    agreement: "High" | "Medium" | "Low";
   }>;
   decision_recommendation: {
     stage_based_actions: {
@@ -200,6 +209,7 @@ type ConfidenceResult = {
     sourceCoverage: number;       // 0-100
     contradictionPenalty: number; // 0-100
     signalDensity: number;        // 0-100
+    crossSourceBonus: number;     // 0-15
   };
 };
 
@@ -542,7 +552,7 @@ function computeFinalConfidence(
 ): ConfidenceResult {
   if (!clusters.length) return {
     confidence: 0,
-    breakdown: { agreement: 0, sourceCoverage: 0, contradictionPenalty: 0, signalDensity: 0 },
+    breakdown: { agreement: 0, sourceCoverage: 0, contradictionPenalty: 0, signalDensity: 0, crossSourceBonus: 0 },
   };
 
   const rawAgreementPct = computeClaimAgreement(clusters);
@@ -567,9 +577,14 @@ function computeFinalConfidence(
     ? (gatedArr.reduce((s, k) => s + qualityScores[k].score, 0) / gatedArr.length / 100) * 0.10
     : 0;
 
+  // Cross-source convergence bonus: reward when multiple distinct source types agree in the same cluster
+  // Uses the highest-diversity cluster as the signal (one fully corroborated cluster is enough)
+  const maxSourceDiversity = Math.max(...clusters.map(c => new Set(c.claims.map(cl => cl.source)).size), 0);
+  const crossSourceBonus = maxSourceDiversity >= 3 ? 0.15 : maxSourceDiversity >= 2 ? 0.07 : 0;
+
   return {
     confidence: clamp(
-      agreement * 0.40 + sourceCoverage * 0.25 + signalDensity * 0.15 + qualityBonus - penalty * 0.10,
+      agreement * 0.40 + sourceCoverage * 0.25 + signalDensity * 0.15 + qualityBonus + crossSourceBonus - penalty * 0.10,
       0, 1,
     ),
     breakdown: {
@@ -577,6 +592,7 @@ function computeFinalConfidence(
       sourceCoverage:       Math.round(sourceCoverage * 100),
       contradictionPenalty: Math.round(penalty * 100),
       signalDensity:        Math.round(signalDensity * 100),
+      crossSourceBonus:     Math.round(crossSourceBonus * 100),
     },
   };
 }
@@ -1351,6 +1367,61 @@ function buildCreatorIntelligence(
   };
 }
 
+// ── Cross-source consensus — clusters where 2+ distinct source types agree ────
+
+function buildCrossSourceConsensus(
+  clusters:     ClaimCluster[],
+  extractor:    ExtractorOutput,
+  qualityScores: Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+): IntelligenceMemo["cross_source_consensus"] {
+  type SrcLabel = "creator" | "community" | "web";
+  const SRC_TO_LABEL: Record<"youtube" | "reddit" | "web", SrcLabel> = {
+    youtube: "creator",
+    reddit:  "community",
+    web:     "web",
+  };
+  const SRC_KEYS = ["youtube", "reddit", "web"] as const;
+
+  const results: IntelligenceMemo["cross_source_consensus"] = [];
+
+  for (const cluster of clusters) {
+    // Count claims per source (only non-excluded sources)
+    const countBySrc: Partial<Record<"youtube" | "reddit" | "web", number>> = {};
+    for (const c of cluster.claims) {
+      if (!qualityScores[c.source].excluded) {
+        countBySrc[c.source] = (countBySrc[c.source] ?? 0) + 1;
+      }
+    }
+    const activeSrcs = SRC_KEYS.filter(s => (countBySrc[s] ?? 0) > 0);
+    if (activeSrcs.length < 2) continue; // skip single-source clusters
+
+    const ec = extractor.insight_clusters.find(e => e.theme === cluster.theme);
+    const insight = ec?.key_themes?.[0] ?? ec?.summary ?? cluster.theme;
+
+    const source_types: SrcLabel[] = activeSrcs.map(s => SRC_TO_LABEL[s]);
+    const source_detail: IntelligenceMemo["cross_source_consensus"][0]["source_detail"] = {};
+    let totalQuality = 0;
+    for (const src of activeSrcs) {
+      source_detail[SRC_TO_LABEL[src]] = { evidence_count: countBySrc[src]! };
+      totalQuality += qualityScores[src].score;
+    }
+
+    const source_count = activeSrcs.length;
+    const avgQuality = totalQuality / source_count;
+    const baseScore  = source_count >= 3 ? 80 : 60;
+    const qualAdj    = Math.round((avgQuality - 65) * 0.35);
+    const confidence_score = Math.min(100, Math.max(20, baseScore + qualAdj));
+    const agreement: "High" | "Medium" | "Low" =
+      source_count >= 3 ? "High" : confidence_score >= 70 ? "Medium" : "Low";
+
+    results.push({ insight, source_types, source_count, source_detail, confidence_score, agreement });
+  }
+
+  return results
+    .sort((a, b) => b.source_count - a.source_count || b.confidence_score - a.confidence_score)
+    .slice(0, 5);
+}
+
 // ── Memo assembly (pure, no LLM) ──────────────────────────────────────────────
 
 // ── Source detail + attribution ───────────────────────────────────────────────
@@ -1507,6 +1578,7 @@ function assembleMemo(
   const primaryThemes = clusters.slice(0, 5).map(c => c.theme);
 
   const bestEvidence = buildBestEvidenceRanking(gatedClaims, extractor);
+  const crossSourceConsensus = buildCrossSourceConsensus(clusters, extractor, qualityScores);
 
   // Build new insight clusters format: synthesized themes, not raw excerpts
   const clusterByTheme = new Map(clusters.map(c => [c.theme, c]));
@@ -1537,6 +1609,7 @@ function assembleMemo(
       sourceCoverage:       confidenceResult.breakdown.sourceCoverage,
       contradictionPenalty: confidenceResult.breakdown.contradictionPenalty,
       signalDensity:        confidenceResult.breakdown.signalDensity,
+      crossSourceBonus:     confidenceResult.breakdown.crossSourceBonus,
     },
     consensus: {
       agreement_score: agreementScore,
@@ -1552,6 +1625,7 @@ function assembleMemo(
     },
     contradictions: filteredContradictions,
     tradeoffs: filteredTradeoffs,
+    cross_source_consensus: crossSourceConsensus,
     decision_recommendation: {
       stage_based_actions: {
         pre_product:  extractor.stage_interpretation.pre_product?.observations?.slice(0, 3) ?? [],

@@ -74,9 +74,10 @@ function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
 
   // Weighted contributions (sum ≈ confidence_score)
   const contributions = [
-    { label: "Agreement Strength", value: Math.round(bd.agreement * 0.40), max: 40, color: "#10b981" },
-    { label: "Source Coverage",    value: Math.round(bd.sourceCoverage * 0.25), max: 25, color: "#3b82f6" },
-    { label: "Signal Density",     value: Math.round(bd.signalDensity * 0.15), max: 15, color: "#f59e0b" },
+    { label: "Agreement Strength",       value: Math.round(bd.agreement * 0.40),     max: 40, color: "#10b981" },
+    { label: "Source Coverage",          value: Math.round(bd.sourceCoverage * 0.25), max: 25, color: "#3b82f6" },
+    { label: "Signal Density",           value: Math.round(bd.signalDensity * 0.15),  max: 15, color: "#f59e0b" },
+    { label: "Cross-Source Convergence", value: bd.crossSourceBonus ?? 0,              max: 15, color: "#8b5cf6" },
   ];
   const penalty = Math.round(bd.contradictionPenalty * 0.10);
 
@@ -513,6 +514,79 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ── Cross-source consensus ────────────────────────────────────────────────────
+
+const CS_SRC_META = {
+  creator:   { icon: "▶", color: "#ef4444", bg: "#fee2e2", border: "#fca5a5" },
+  community: { icon: "▲", color: "#10b981", bg: "#f0fdf4", border: "#86efac" },
+  web:       { icon: "⬡", color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
+} as const;
+
+const CS_AGREE_META = {
+  High:   { bg: "#dcfce7", color: "#14532d", border: "#86efac" },
+  Medium: { bg: "#fef3c7", color: "#92400e", border: "#fcd34d" },
+  Low:    { bg: "#f1f5f9", color: "#475569", border: "#cbd5e1" },
+} as const;
+
+function CrossSourceConsensusSection({ items }: { items: IntelligenceMemo["cross_source_consensus"] }) {
+  if (!items?.length) return null;
+  const ALL_SRC = ["creator", "community", "web"] as const;
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Cross-Source Consensus ({items.length})
+      </h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+        {items.map((item, i) => {
+          const scoreColor = item.confidence_score >= 75 ? "#10b981" : item.confidence_score >= 55 ? "#d97706" : "#ef4444";
+          const agreeMeta  = CS_AGREE_META[item.agreement];
+          return (
+            <div key={i} style={{ background: "white", border: "1px solid #e2e8f0", borderTop: `3px solid #8b5cf6`, borderRadius: 10, padding: "0.85rem 1rem" }}>
+
+              {/* Insight */}
+              <p style={{ margin: "0 0 0.6rem", fontSize: "0.8rem", fontWeight: 500, color: "#0f172a", lineHeight: 1.55 }}>
+                {item.insight}
+              </p>
+
+              {/* Source badges */}
+              <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
+                {ALL_SRC.map(src => {
+                  const meta   = CS_SRC_META[src];
+                  const detail = item.source_detail[src];
+                  const active = !!detail;
+                  return (
+                    <span key={src} style={{
+                      fontSize: "0.6rem", fontWeight: 700, padding: "2px 9px", borderRadius: 20,
+                      background: active ? meta.bg : "#f8fafc",
+                      color: active ? meta.color : "#cbd5e1",
+                      border: `1px solid ${active ? meta.border : "#e2e8f0"}`,
+                    }}>
+                      {meta.icon} {src.charAt(0).toUpperCase() + src.slice(1)}{active ? ` ✓ (${detail.evidence_count})` : " —"}
+                    </span>
+                  );
+                })}
+              </div>
+
+              {/* Confidence + agreement */}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.62rem", fontWeight: 800, color: scoreColor }}>
+                  Confidence: {item.confidence_score} / 100
+                </span>
+                <span style={{ fontSize: "0.57rem", fontWeight: 700, padding: "1px 8px", borderRadius: 20, background: agreeMeta.bg, color: agreeMeta.color, border: `1px solid ${agreeMeta.border}` }}>
+                  {item.agreement} Agreement
+                </span>
+                <span style={{ fontSize: "0.57rem", color: "#94a3b8", marginLeft: "auto" }}>
+                  {item.source_count} source{item.source_count !== 1 ? "s" : ""} converging
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -1295,7 +1369,10 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
       {/* 2. Intelligence Perspectives — Creator / Community / Web */}
       <SourceBreakdown memo={memo} />
 
-      {/* 3. Highest Confidence Evidence (with source attribution) */}
+      {/* 3. Cross-Source Consensus */}
+      <CrossSourceConsensusSection items={memo.cross_source_consensus ?? []} />
+
+      {/* 4. Highest Confidence Evidence (with source attribution) */}
       <AttributedEvidence evidence={memo.attributed_evidence ?? memo.best_evidence_ranking?.map(r => ({ claim: r, sources: [] })) ?? []} />
 
       {/* 4. Reasoning (Evidence Themes) */}
