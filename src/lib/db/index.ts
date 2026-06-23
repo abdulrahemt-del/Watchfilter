@@ -684,6 +684,54 @@ export type DeepResearchRow = {
   upload_date: string | null;
 };
 
+// Returns total count of matching creator segments — no LIMIT cap.
+// Used to distinguish corpus gaps (count = 0) from retrieval failures (count > 0 but nothing surfaced).
+export async function countCreatorCorpusMatches(keywords: string[]): Promise<number> {
+  if (keywords.length === 0) return 0;
+  const c = await db();
+  const kws = keywords.slice(0, 8);
+  const conditions = kws
+    .map(() => `(LOWER(ri.quote) LIKE ? OR LOWER(COALESCE(ri.insight,'')) LIKE ? OR LOWER(COALESCE(ri.category,'')) LIKE ? OR LOWER(COALESCE(ri.video_title,'')) LIKE ?)`)
+    .join(" OR ");
+  const args = kws.flatMap(kw => [`%${kw}%`, `%${kw}%`, `%${kw}%`, `%${kw}%`]);
+  const { rows } = await c.execute({
+    sql: `SELECT COUNT(*) as n FROM research_index ri WHERE ri.quote IS NOT NULL AND ri.quote != '' AND (${conditions})`,
+    args,
+  });
+  return Number(rows[0]?.n ?? 0);
+}
+
+let _gapsTableCreated = false;
+
+// Logs queries where creator coverage was missing or retrieval failed.
+// Data becomes the ingestion roadmap for expanding the creator corpus.
+export async function logCreatorCoverageGap(
+  query: string,
+  topic: string,
+  coverageStatus: string,
+  corpusMatches: number,
+): Promise<void> {
+  const c = await db();
+  if (!_gapsTableCreated) {
+    await c.execute({
+      sql: `CREATE TABLE IF NOT EXISTS creator_coverage_gaps (
+        id TEXT PRIMARY KEY,
+        query TEXT NOT NULL,
+        topic TEXT NOT NULL,
+        coverage_status TEXT NOT NULL,
+        corpus_matches INTEGER NOT NULL DEFAULT 0,
+        queried_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      args: [],
+    });
+    _gapsTableCreated = true;
+  }
+  await c.execute({
+    sql: `INSERT INTO creator_coverage_gaps (id, query, topic, coverage_status, corpus_matches) VALUES (?, ?, ?, ?, ?)`,
+    args: [randomUUID(), query, topic, coverageStatus, corpusMatches],
+  });
+}
+
 export async function getDeepResearchEvidence(
   keywords: string[],
   limit = 60,

@@ -448,17 +448,30 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
             </div>
           </div>
         );
-      }) : coverageStatus === "Contaminated" ? (
-        <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "0.65rem 0.9rem" }}>
-          <p style={{ margin: "0 0 0.25rem", fontSize: "0.72rem", fontWeight: 700, color: "#9a3412" }}>
+      }) : coverageStatus === "Contaminated" || coverageStatus === "No Coverage" ? (
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "0.65rem 0.9rem" }}>
+          <p style={{ margin: "0 0 0.3rem", fontSize: "0.72rem", fontWeight: 700, color: "#475569" }}>
             Creator Intelligence — Coverage Unavailable
           </p>
-          <p style={{ margin: 0, fontSize: "0.67rem", color: "#9a3412", lineHeight: 1.6 }}>
-            The creator corpus currently lacks sufficient relevant evidence for this topic.
-            {coverage.off_topic_count > 0
-              ? ` ${coverage.off_topic_count} retrieved creator segment${coverage.off_topic_count !== 1 ? "s" : ""} (${coverage.off_topic_ratio}%) were rejected as off-topic and excluded from the analysis.`
-              : ""}
-          </p>
+          {coverage.root_cause === "Missing Corpus Content" ? (
+            <p style={{ margin: 0, fontSize: "0.67rem", color: "#64748b", lineHeight: 1.6 }}>
+              The creator corpus currently contains insufficient content on this topic. No creator evidence contributed to the final decision.
+              {coverage.corpus_matches === 0 && (
+                <span style={{ display: "block", marginTop: "0.25rem", fontSize: "0.62rem", color: "#94a3b8" }}>
+                  Corpus scan returned 0 matching segments — this topic is not yet covered in the creator library.
+                </span>
+              )}
+            </p>
+          ) : (
+            <p style={{ margin: 0, fontSize: "0.67rem", color: "#64748b", lineHeight: 1.6 }}>
+              Creator content exists for this topic ({coverage.corpus_matches} corpus match{coverage.corpus_matches !== 1 ? "es" : ""}), but retrieval surfaced mostly unrelated material.
+              {coverage.off_topic_count > 0 && (
+                <span style={{ display: "block", marginTop: "0.25rem", fontSize: "0.62rem", color: "#94a3b8" }}>
+                  {coverage.off_topic_count} retrieved segment{coverage.off_topic_count !== 1 ? "s" : ""} ({coverage.off_topic_ratio}%) rejected as off-topic. Consider reviewing retrieval thresholds or embeddings.
+                </span>
+              )}
+            </p>
+          )}
         </div>
       ) : (
         <div>
@@ -494,12 +507,14 @@ function CreatorDiagnostics({ memo }: { memo: IntelligenceMemo }) {
           {/* Stats row */}
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
             {[
+              { label: "Corpus Matches", value: coverage.corpus_matches != null ? coverage.corpus_matches : "—" },
               { label: "Retrieved", value: coverage.retrieved },
               { label: "Accepted", value: coverage.accepted },
               { label: "Rejected", value: coverage.rejected },
               { label: "Off-Topic", value: coverage.off_topic_count != null ? coverage.off_topic_count : "—" },
               { label: "Off-Topic Rate", value: coverage.off_topic_ratio != null ? `${coverage.off_topic_ratio}%` : "—" },
               { label: "Status", value: coverage.coverage_status ?? coverage.level },
+              { label: "Root Cause", value: coverage.root_cause ?? "—" },
               { label: "Coverage", value: `${coverage.coverage_score}%` },
               { label: "Avg Similarity", value: coverage.avg_similarity != null ? `${coverage.avg_similarity}` : "—" },
               { label: "Unique Creators", value: coverage.unique_creators != null ? coverage.unique_creators : "—" },

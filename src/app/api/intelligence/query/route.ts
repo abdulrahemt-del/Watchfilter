@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import OpenAI from "openai";
-import { getDeepResearchEvidence, type DeepResearchRow } from "@/lib/db";
+import { getDeepResearchEvidence, countCreatorCorpusMatches, logCreatorCoverageGap, type DeepResearchRow } from "@/lib/db";
 import { searchHN, extractHNClaims, type HNClaim } from "@/lib/hnSkill";
 import { searchReddit, extractRedditClaims } from "@/lib/redditSkill";
 import { intelligenceWebSearch, type IntelligenceArticle } from "@/lib/webSearch";
@@ -182,6 +182,8 @@ export type IntelligenceMemo = {
       coverage_status: "Good" | "Weak" | "Contaminated" | "No Coverage";
       off_topic_count: number;
       off_topic_ratio: number;
+      corpus_matches: number;
+      root_cause: "Missing Corpus Content" | "Retrieval Quality" | "None";
     };
   } | null;
   decision_drivers: {
@@ -1277,6 +1279,7 @@ function buildCreatorIntelligence(
   clusters:         ClaimCluster[],
   relevanceGate:    number,
   ytOffTopicClaims: NormalizedClaim[] = [],
+  corpusMatchCount: number = 0,
 ): IntelligenceMemo["creator_intelligence"] {
   if (ytRows.length === 0) return null;
 
@@ -1387,6 +1390,12 @@ function buildCreatorIntelligence(
     : ytOffTopicCount >= 3 && offTopicRatio >= 0.70 ? "Contaminated"
     : "No Coverage";
 
+  // Root cause: was the problem corpus coverage or retrieval quality?
+  const root_cause: "Missing Corpus Content" | "Retrieval Quality" | "None" =
+    accepted > 0           ? "None"
+    : corpusMatchCount === 0 ? "Missing Corpus Content"
+    :                          "Retrieval Quality";
+
   return {
     claims: coverage_status === "Contaminated" ? [] : claimItems,
     coverage: {
@@ -1403,6 +1412,8 @@ function buildCreatorIntelligence(
       coverage_status,
       off_topic_count: ytOffTopicCount,
       off_topic_ratio: Math.round(offTopicRatio * 100),
+      corpus_matches: corpusMatchCount,
+      root_cause,
     },
   };
 }
@@ -1519,13 +1530,26 @@ function buildDecisionDrivers(
 
   // Uncertainty factors — derived from coverage gaps, exclusions, contradictions
   const uncertaintyFactors: string[] = [];
-  if (creatorIntelligence?.coverage.level === "Low") {
+  const cov = creatorIntelligence?.coverage;
+  if (cov?.coverage_status === "Contaminated") {
     uncertaintyFactors.push(
-      `Creator corpus coverage is low (${creatorIntelligence.coverage.coverage_score}%) — limited creator evidence on this specific topic`
+      cov.root_cause === "Missing Corpus Content"
+        ? "Creator evidence absent from corpus for this topic — creator signal could not contribute to analysis"
+        : `Creator retrieval surfaced mostly off-topic content (${cov.off_topic_ratio}% off-topic) — creator signal excluded`
     );
-  } else if (creatorIntelligence?.coverage.level === "Medium" && (creatorIntelligence.coverage.coverage_score ?? 100) < 40) {
+  } else if (cov?.coverage_status === "No Coverage") {
     uncertaintyFactors.push(
-      `Creator coverage is moderate (${creatorIntelligence.coverage.coverage_score}%) — some creator evidence found but not comprehensive`
+      cov.root_cause === "Missing Corpus Content"
+        ? "No creator content found in corpus for this topic — creator signal absent"
+        : "Creator content may exist but retrieval did not surface relevant material — creator signal absent"
+    );
+  } else if (cov?.level === "Low") {
+    uncertaintyFactors.push(
+      `Creator corpus coverage is low (${cov.coverage_score}%) — limited creator evidence on this specific topic`
+    );
+  } else if (cov?.level === "Medium" && (cov.coverage_score ?? 100) < 40) {
+    uncertaintyFactors.push(
+      `Creator coverage is moderate (${cov.coverage_score}%) — some creator evidence found but not comprehensive`
     );
   }
   if (qualityScores.reddit.excluded && qualityScores.youtube.excluded) {
@@ -2063,9 +2087,13 @@ export async function POST(req: NextRequest) {
     try {
       const keywords = extractKeywords(query);
 
-      // Stage 1: YouTube
+      // Stage 1: YouTube — evidence retrieval + corpus count run in parallel (zero extra latency)
       emit({ type: "stage", source: "youtube", message: "Searching creator library…" });
-      const ytRows = await getDeepResearchEvidence(keywords, 50);
+      const [ytRows, corpusMatchCount] = await Promise.all([
+        getDeepResearchEvidence(keywords, 50),
+        countCreatorCorpusMatches(keywords),
+      ]);
+      console.log(`[CorpusAudit] keywords=${JSON.stringify(keywords)} corpusMatches=${corpusMatchCount} retrieved=${ytRows.length}`);
       emit({ type: "stage", source: "youtube", message: `Found ${ytRows.length} creator evidence points`, count: ytRows.length });
 
       // Stage 2: Community (HN + Reddit in parallel)
@@ -2472,7 +2500,18 @@ export async function POST(req: NextRequest) {
       };
 
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
-      const creatorIntelligence = buildCreatorIntelligence(ytRows, rawClaims, pipelineClaims, clusters, intentThresholds.relevanceGate, ytOffTopicClaims);
+      const creatorIntelligence = buildCreatorIntelligence(ytRows, rawClaims, pipelineClaims, clusters, intentThresholds.relevanceGate, ytOffTopicClaims, corpusMatchCount);
+
+      // Fire-and-forget gap logging — data becomes the creator corpus ingestion roadmap
+      if (creatorIntelligence?.coverage.root_cause !== "None") {
+        void logCreatorCoverageGap(
+          query,
+          keywords.join(" "),
+          creatorIntelligence!.coverage.coverage_status,
+          creatorIntelligence!.coverage.corpus_matches,
+        ).catch(e => console.warn("[CoverageGap] log failed:", e));
+      }
+
       const memo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence);
 
       emit({ type: "complete", memo });
