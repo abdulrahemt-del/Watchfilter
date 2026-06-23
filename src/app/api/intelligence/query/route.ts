@@ -159,6 +159,7 @@ export type IntelligenceMemo = {
       creator_count: number;
       evidence_count: number;
       avg_similarity: number;
+      avg_alignment: number;           // avg question_alignment_score across evidence (0.0–1.0)
       evidence: Array<{
         creator: string;
         video_title: string | null;
@@ -166,6 +167,7 @@ export type IntelligenceMemo = {
         timestamp: string | null;
         quote: string;
         relevance_score: number;
+        question_alignment_score: number; // 0.0–1.0: how directly this claim answers the query
       }>;
     }>;
     coverage: {
@@ -215,6 +217,24 @@ export type IntelligenceMemo = {
         retrieval_rank: number;
       }>;
       evidence_lost_at_stage: Record<string, number>;
+      alignment: {
+        accepted_claims: number;
+        high_alignment_claims: number;
+        average_alignment: number;
+      };
+      top_answering_claims: Array<{
+        creator: string;
+        quote: string;
+        alignment: number;
+        video_title: string | null;
+        theme: string;
+      }>;
+      off_question_claims: Array<{
+        creator: string;
+        quote: string;
+        alignment: number;
+        theme: string;
+      }>;
     };
   } | null;
   decision_drivers: {
@@ -333,6 +353,31 @@ function scoreClaimRelevance(text: string, keywords: string[]): number {
   const lower = text.toLowerCase();
   const matched = keywords.filter(kw => keywordVariants(kw).some(v => lower.includes(v))).length;
   return Math.round((matched / keywords.length) * 100);
+}
+
+// Question alignment score — measures how directly a claim answers the user's query (0.0–1.0).
+// Combines keyword overlap with bigram phrase matching and off-topic penalty.
+function computeQuestionAlignment(text: string, keywords: string[]): number {
+  if (!keywords.length) return 0.5;
+  const lower = text.toLowerCase();
+
+  const keywordScore = scoreClaimRelevance(text, keywords) / 100;
+
+  // Bonus when 2 adjacent keywords appear together in the claim
+  const bigrams = keywords.slice(0, -1).map((w, i) => `${w} ${keywords[i + 1]}`);
+  let phraseBonus = 0;
+  for (const phrase of bigrams) {
+    if (lower.includes(phrase)) { phraseBonus = 0.25; break; }
+  }
+
+  // Penalty for explicit off-topic markers
+  const offTopicMarkers = [
+    "self-leadership", "personal development", "wealth mindset", "life lesson",
+    "motivat", "lead yourself", "leadership principle", "self-improvement",
+  ];
+  const penalty = offTopicMarkers.some(m => lower.includes(m)) ? 0.5 : 0;
+
+  return Math.max(0, Math.min(1, keywordScore * 0.75 + phraseBonus - penalty));
 }
 
 // ── Query intent classification ───────────────────────────────────────────────
@@ -947,7 +992,29 @@ REQUIRED: Every insight_cluster.theme must name a specific ${vocab.label} tactic
 Example GOOD: "Founder-Led Direct Outreach" / "Trust as a Conversion Driver" / "Early Adopter Tolerance"
 Example BAD: "Foundational Insights" / "Key Principles" / "Business Fundamentals"`;
 
-  const systemPrompt = EXTRACTOR_PROMPT + domainLock;
+  const queryIntentLock = `
+
+---
+
+# 🎯 QUERY INTENT LOCK
+
+You are answering EXACTLY this question: "${query}"
+
+For each insight_cluster, ask: "Does this theme directly answer '${query}'?"
+
+ACCEPT themes that:
+- Directly discuss the specific action, decision, or strategy asked about
+- Provide evidence FOR or AGAINST the proposition in the question
+- Describe conditions or tradeoffs that change the answer
+
+REJECT themes that:
+- Discuss the general topic area but not the specific question
+- Cover tangentially related mindsets, principles, or leadership approaches not asked about
+- Would make sense as an insight in ANY startup question
+
+SELF-CHECK RULE: Mentally replace the question with "How do I improve my morning routine?" — if the theme would still apply, DISCARD IT. The theme must be specific to: "${query}"`;
+
+  const systemPrompt = EXTRACTOR_PROMPT + domainLock + queryIntentLock;
 
   const toInput = (c: NormalizedClaim) => ({
     id: c.id,
@@ -1313,6 +1380,7 @@ function buildCreatorIntelligence(
   corpusMatchCount: number = 0,
   relevantYtClaims: NormalizedClaim[] = [],
   keywords:         string[] = [],
+  query:            string = "",
 ): IntelligenceMemo["creator_intelligence"] {
   if (ytRows.length === 0) return null;
 
@@ -1359,9 +1427,25 @@ function buildCreatorIntelligence(
       };
     });
 
+  // Pre-compute question alignment for each cluster (for sorting by query relevance)
+  type ClusterWithAlign = { cluster: ClaimCluster; avgAlignment: number };
+  const clusterWithAlignment: ClusterWithAlign[] = clusters.map(cluster => {
+    const ytInCluster = cluster.claims.filter(c => c.source === "youtube");
+    if (ytInCluster.length === 0) return { cluster, avgAlignment: 0 };
+    const aligns = ytInCluster.map(c => computeQuestionAlignment(c.claim, keywords));
+    return { cluster, avgAlignment: aligns.reduce((s, a) => s + a, 0) / aligns.length };
+  });
+  // Sort clusters so most query-relevant themes appear first
+  const sortedClusters = [...clusterWithAlignment].sort((a, b) => b.avgAlignment - a.avgAlignment);
+
+  // Evidence items across all clusters — for global alignment diagnostics
+  const allEvidenceItems: Array<{
+    creator: string; quote: string; alignment: number; video_title: string | null; theme: string;
+  }> = [];
+
   // One evidence card per cluster — only clusters with at least one YT claim
   const claimItems: NonNullable<IntelligenceMemo["creator_intelligence"]>["claims"] = [];
-  for (const cluster of clusters) {
+  for (const { cluster, avgAlignment } of sortedClusters) {
     const ytInCluster = cluster.claims.filter(c => c.source === "youtube");
     if (ytInCluster.length === 0) continue;
 
@@ -1371,13 +1455,14 @@ function buildCreatorIntelligence(
       ytInCluster.reduce((s, c) => s + c.queryRelevance, 0) / ytInCluster.length
     );
 
-    // Dedup by creator for display (keep best-relevance quote per creator)
+    // Dedup by creator — keep best-aligned quote per creator
     const byCreator = new Map<string, NonNullable<IntelligenceMemo["creator_intelligence"]>["claims"][0]["evidence"][0]>();
     for (const c of ytInCluster) {
+      const alignment = computeQuestionAlignment(c.claim, keywords);
       const row = rowByClaimId.get(c.id);
       const creator = row?.channel_name ?? "Unknown Creator";
       const existing = byCreator.get(creator);
-      if (!existing || c.queryRelevance > existing.relevance_score) {
+      if (!existing || alignment > existing.question_alignment_score) {
         byCreator.set(creator, {
           creator,
           video_title: row?.video_title ?? null,
@@ -1385,12 +1470,25 @@ function buildCreatorIntelligence(
           timestamp:   row?.timestamp_str ?? null,
           quote:       (row?.quote ?? c.claim).slice(0, 300),
           relevance_score: c.queryRelevance,
+          question_alignment_score: Math.round(alignment * 100) / 100,
         });
       }
     }
 
     const creator_count = byCreator.size;
     const evidence = [...byCreator.values()];
+    const avg_alignment = Math.round(avgAlignment * 100) / 100;
+
+    // Collect for alignment diagnostics
+    for (const ev of evidence) {
+      allEvidenceItems.push({
+        creator: ev.creator,
+        quote:   ev.quote,
+        alignment: ev.question_alignment_score,
+        video_title: ev.video_title,
+        theme: cluster.theme,
+      });
+    }
 
     const consensus: "Anecdotal" | "Emerging Consensus" | "Strong Consensus" | "Broad Consensus" =
       creator_count >= 7 ? "Broad Consensus"
@@ -1411,8 +1509,32 @@ function buildCreatorIntelligence(
     const confidence: "High" | "Medium" | "Low" =
       confidence_score >= 60 ? "High" : confidence_score >= 35 ? "Medium" : "Low";
 
-    claimItems.push({ theme: cluster.theme, confidence, confidence_score, consensus, creator_count, evidence_count, avg_similarity, evidence });
+    claimItems.push({ theme: cluster.theme, confidence, confidence_score, consensus, creator_count, evidence_count, avg_similarity, avg_alignment, evidence });
   }
+
+  // Alignment diagnostics
+  const HIGH_ALIGNMENT_THRESHOLD = 0.60;
+  const OFF_QUESTION_THRESHOLD   = 0.30;
+  const allAlignVals = allEvidenceItems.map(e => e.alignment);
+  const avgAlignmentVal = allAlignVals.length > 0
+    ? Math.round((allAlignVals.reduce((s, a) => s + a, 0) / allAlignVals.length) * 100) / 100
+    : 0;
+  const highAlignmentCount = allEvidenceItems.filter(e => e.alignment >= HIGH_ALIGNMENT_THRESHOLD).length;
+
+  const top_answering_claims = [...allEvidenceItems]
+    .sort((a, b) => b.alignment - a.alignment)
+    .slice(0, 5);
+
+  const off_question_claims = allEvidenceItems
+    .filter(e => e.alignment < OFF_QUESTION_THRESHOLD)
+    .sort((a, b) => a.alignment - b.alignment)
+    .slice(0, 8);
+
+  const alignment_debug = {
+    accepted_claims:      allEvidenceItems.length,
+    high_alignment_claims: highAlignmentCount,
+    average_alignment:    avgAlignmentVal,
+  };
 
   const ytOffTopicCount   = ytOffTopicClaims.length;
   const totalQualityGated = accepted + ytOffTopicCount;
@@ -1543,6 +1665,9 @@ function buildCreatorIntelligence(
       rejection_breakdown,
       missed_evidence,
       evidence_lost_at_stage,
+      alignment:           alignment_debug,
+      top_answering_claims,
+      off_question_claims,
     },
   };
 }
@@ -2632,7 +2757,7 @@ export async function POST(req: NextRequest) {
       };
 
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
-      const creatorIntelligence = buildCreatorIntelligence(ytRows, rawClaims, pipelineClaims, clusters, intentThresholds.relevanceGate, ytOffTopicClaims, corpusMatchCount, workingYtClaims, keywords);
+      const creatorIntelligence = buildCreatorIntelligence(ytRows, rawClaims, pipelineClaims, clusters, intentThresholds.relevanceGate, ytOffTopicClaims, corpusMatchCount, workingYtClaims, keywords, query);
 
       // Fire-and-forget gap logging — data becomes the creator corpus ingestion roadmap
       if (creatorIntelligence?.coverage.root_cause !== "None") {

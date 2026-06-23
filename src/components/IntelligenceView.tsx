@@ -367,6 +367,27 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
         </div>
       </div>
 
+      {/* Signal quality note — shown when coverage and alignment diverge */}
+      {(() => {
+        const avgAlign = ci.debug?.alignment?.average_alignment ?? null;
+        if (avgAlign == null) return null;
+        if (coverage.level !== "Low" && avgAlign < 0.35) {
+          return (
+            <p style={{ margin: 0, fontSize: "0.62rem", color: "#d97706", lineHeight: 1.5 }}>
+              Strong coverage · Weak alignment — creator content exists but addresses different aspects of this topic.
+            </p>
+          );
+        }
+        if (coverage.level === "Low" && avgAlign >= 0.60) {
+          return (
+            <p style={{ margin: 0, fontSize: "0.62rem", color: "#64748b", lineHeight: 1.5 }}>
+              Weak coverage · Strong alignment — few claims found, but available evidence is highly relevant to the query.
+            </p>
+          );
+        }
+        return null;
+      })()}
+
       {/* Low-coverage warning */}
       {coverageStatus === "Weak" || (!coverageStatus && coverage.level === "Low") ? (
         <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "0.5rem 0.75rem" }}>
@@ -412,39 +433,50 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
 
             {/* Evidence list */}
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-              {claim.evidence.map((ev, ev_i) => (
-                <div key={ev_i} style={{ padding: "0.65rem 0.85rem", borderBottom: ev_i < claim.evidence.length - 1 ? "1px solid #f8fafc" : "none" }}>
+              {claim.evidence.map((ev, ev_i) => {
+                const alignPct = ev.question_alignment_score != null ? Math.round(ev.question_alignment_score * 100) : null;
+                const alignColor = alignPct == null ? "#94a3b8" : alignPct >= 60 ? "#10b981" : alignPct >= 30 ? "#d97706" : "#ef4444";
+                return (
+                  <div key={ev_i} style={{ padding: "0.65rem 0.85rem", borderBottom: ev_i < claim.evidence.length - 1 ? "1px solid #f8fafc" : "none" }}>
 
-                  {/* Creator + source line */}
-                  <div style={{ display: "flex", alignItems: "baseline", gap: "0.4rem", marginBottom: "0.3rem", flexWrap: "wrap" }}>
-                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#0f172a" }}>{ev.creator}</span>
-                    {ev.video_title && (
-                      <>
-                        <span style={{ fontSize: "0.6rem", color: "#cbd5e1" }}>·</span>
-                        {ev.video_id ? (
-                          <a href={`https://www.youtube.com/watch?v=${ev.video_id}${ev.timestamp ? `&t=${ev.timestamp.replace(":", "m")}s` : ""}`} target="_blank" rel="noopener noreferrer"
-                            style={{ fontSize: "0.63rem", color: acc, textDecoration: "none", fontStyle: "italic" }}>
-                            {ev.video_title.slice(0, 60)}{ev.video_title.length > 60 ? "…" : ""}
-                          </a>
-                        ) : (
-                          <span style={{ fontSize: "0.63rem", color: "#64748b", fontStyle: "italic" }}>{ev.video_title.slice(0, 60)}{ev.video_title.length > 60 ? "…" : ""}</span>
-                        )}
-                        {ev.timestamp && (
-                          <>
-                            <span style={{ fontSize: "0.6rem", color: "#cbd5e1" }}>·</span>
-                            <span style={{ fontSize: "0.6rem", color: "#94a3b8", fontFamily: "monospace" }}>{ev.timestamp}</span>
-                          </>
-                        )}
-                      </>
-                    )}
+                    {/* Creator + source line */}
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "0.4rem", marginBottom: "0.3rem", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#0f172a" }}>{ev.creator}</span>
+                      {ev.video_title && (
+                        <>
+                          <span style={{ fontSize: "0.6rem", color: "#cbd5e1" }}>·</span>
+                          {ev.video_id ? (
+                            <a href={`https://www.youtube.com/watch?v=${ev.video_id}${ev.timestamp ? `&t=${ev.timestamp.replace(":", "m")}s` : ""}`} target="_blank" rel="noopener noreferrer"
+                              style={{ fontSize: "0.63rem", color: acc, textDecoration: "none", fontStyle: "italic" }}>
+                              {ev.video_title.slice(0, 60)}{ev.video_title.length > 60 ? "…" : ""}
+                            </a>
+                          ) : (
+                            <span style={{ fontSize: "0.63rem", color: "#64748b", fontStyle: "italic" }}>{ev.video_title.slice(0, 60)}{ev.video_title.length > 60 ? "…" : ""}</span>
+                          )}
+                          {ev.timestamp && (
+                            <>
+                              <span style={{ fontSize: "0.6rem", color: "#cbd5e1" }}>·</span>
+                              <span style={{ fontSize: "0.6rem", color: "#94a3b8", fontFamily: "monospace" }}>{ev.timestamp}</span>
+                            </>
+                          )}
+                        </>
+                      )}
+                      {alignPct != null && (
+                        <span style={{ fontSize: "0.53rem", fontWeight: 700, padding: "1px 6px", borderRadius: 10,
+                          background: `${alignColor}18`, color: alignColor, border: `1px solid ${alignColor}44`,
+                          marginLeft: "auto", flexShrink: 0 }}>
+                          {alignPct}% aligned
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Quote */}
+                    <blockquote style={{ margin: 0, padding: "0.3rem 0 0.3rem 0.6rem", borderLeft: `2px solid ${acc}44`, fontSize: "0.7rem", color: "#475569", lineHeight: 1.6, fontStyle: "italic" }}>
+                      "{ev.quote}"
+                    </blockquote>
                   </div>
-
-                  {/* Quote */}
-                  <blockquote style={{ margin: 0, padding: "0.3rem 0 0.3rem 0.6rem", borderLeft: `2px solid ${acc}44`, fontSize: "0.7rem", color: "#475569", lineHeight: 1.6, fontStyle: "italic" }}>
-                    "{ev.quote}"
-                  </blockquote>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );
@@ -582,6 +614,81 @@ function CreatorDiagnostics({ memo }: { memo: IntelligenceMemo }) {
             <DiagStat label="Evidence Lost"  value={coverage.evidence_lost ?? 0} />
             <DiagStat label="Top Rejection"  value={coverage.most_common_rejection ?? "—"} />
           </div>
+
+          {/* Creator Relevance Audit */}
+          {debug?.alignment && (
+            <div style={{ background: "#1e293b", borderRadius: 8, padding: "0.65rem 0.9rem" }}>
+              <p style={{ margin: "0 0 0.5rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>
+                Creator Relevance Audit
+              </p>
+              <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+                <DiagStat label="Accepted Claims" value={debug.alignment.accepted_claims} />
+                <DiagStat label="Avg Alignment"   value={`${Math.round(debug.alignment.average_alignment * 100)}%`}
+                  accent={debug.alignment.average_alignment >= 0.60 ? "#10b981" : debug.alignment.average_alignment >= 0.35 ? "#d97706" : "#ef4444"} />
+                <DiagStat label="High Alignment"  value={debug.alignment.high_alignment_claims} accent="#10b981" />
+                <DiagStat label="Off-Question"    value={debug.off_question_claims?.length ?? 0}
+                  accent={(debug.off_question_claims?.length ?? 0) > 0 ? "#f97316" : "#64748b"} />
+              </div>
+              {debug.alignment.average_alignment < 0.40 && (
+                <p style={{ margin: "0.5rem 0 0", fontSize: "0.62rem", color: "#f97316", lineHeight: 1.5 }}>
+                  Most accepted creator claims do not directly answer the query (avg {Math.round(debug.alignment.average_alignment * 100)}% aligned). Consider adjusting the query or reviewing corpus coverage.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Top query-relevant claims */}
+          {debug?.top_answering_claims && debug.top_answering_claims.length > 0 && (
+            <div>
+              <p style={{ margin: "0 0 0.35rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>
+                Top Query-Relevant Claims
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                {debug.top_answering_claims.map((c, i) => {
+                  const pct = Math.round(c.alignment * 100);
+                  const col = pct >= 60 ? "#10b981" : pct >= 30 ? "#d97706" : "#ef4444";
+                  return (
+                    <div key={i} style={{ background: "#1e293b", borderRadius: 6, padding: "0.4rem 0.65rem", display: "flex", gap: "0.6rem", alignItems: "flex-start" }}>
+                      <span style={{ fontSize: "0.65rem", fontWeight: 800, color: col, flexShrink: 0, minWidth: "2.8rem" }}>
+                        {pct}%
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "#cbd5e1", display: "block" }}>{c.creator}</span>
+                        <span style={{ fontSize: "0.59rem", color: "#64748b", fontStyle: "italic", lineHeight: 1.4, display: "block" }}>
+                          "{c.quote.length > 140 ? c.quote.slice(0, 140) + "…" : c.quote}"
+                        </span>
+                        <span style={{ fontSize: "0.5rem", color: "#334155" }}>theme: {c.theme}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Off-question claims */}
+          {debug?.off_question_claims && debug.off_question_claims.length > 0 && (
+            <div>
+              <p style={{ margin: "0 0 0.35rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>
+                Off-Question Claims ({debug.off_question_claims.length}) — accepted but low alignment
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                {debug.off_question_claims.slice(0, 6).map((c, i) => (
+                  <div key={i} style={{ background: "#0f172a", borderRadius: 5, padding: "0.35rem 0.6rem", display: "flex", gap: "0.5rem", alignItems: "baseline" }}>
+                    <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "#ef4444", flexShrink: 0, minWidth: "2.2rem" }}>
+                      {Math.round(c.alignment * 100)}%
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: "0.6rem", fontWeight: 600, color: "#64748b", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {c.creator} — {c.quote.length > 90 ? c.quote.slice(0, 90) + "…" : c.quote}
+                      </span>
+                      <span style={{ fontSize: "0.5rem", color: "#334155" }}>theme: {c.theme}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Retrieval funnel */}
           {debug?.retrieval_funnel && <FunnelViz funnel={debug.retrieval_funnel} />}
