@@ -41,7 +41,12 @@ export type IntelligenceMemo = {
     claim_a: string;
     claim_b: string;
     why_it_matters: string;
-    conflict_type: "direct" | "partial" | "contextual";
+    conflict_type: "direct" | "partial" | "contextual" | "tradeoff";
+  }>;
+  tradeoffs: Array<{
+    claim_a: string;
+    claim_b: string;
+    why_it_matters: string;
   }>;
   decision_recommendation: {
     stage_based_actions: {
@@ -216,7 +221,7 @@ type ExtractorOutput = {
   contradictions: Array<{
     claim_a: string;
     claim_b: string;
-    conflict_type: "direct" | "partial" | "contextual";
+    conflict_type: "direct" | "partial" | "contextual" | "tradeoff";
     explanation: string;
   }>;
   source_map: {
@@ -669,7 +674,7 @@ Return ONLY valid JSON:
     {
       "claim_a": string,
       "claim_b": string,
-      "conflict_type": "direct" | "partial" | "contextual",
+      "conflict_type": "direct" | "partial" | "contextual" | "tradeoff",
       "explanation": string
     }
   ],
@@ -746,24 +751,32 @@ Weight claims by specificity and grounding — anecdotal claims need explicit ev
 
 ---
 
-# ⚖️ CONTRADICTION RULES
+# ⚖️ TRADEOFF vs CONTRADICTION RULES (CRITICAL — read before classifying)
 
-ONLY extract contradictions when:
-- Two or more claims from HIGH-quality inputs directly oppose each other
-- The disagreement would materially change the decision
+Most apparent conflicts in startup evidence are TRADEOFFS, not contradictions.
 
-DO NOT extract contradictions for:
-- Wording differences
-- Framing differences ("hard" vs "very hard")
-- Context differences (different company stages)
-- Weak-source disagreements
+TRADEOFF (conflict_type: "tradeoff") — Both claims can simultaneously be true:
+- Different consequences of the same action: "X creates benefit Y" AND "X creates risk Z"
+- Benefit vs cost: "Cold outreach generates leads" AND "Cold outreach is time-consuming"
+- Different dimensions: "Building in public builds community" AND "Building in public attracts copycats"
+- These describe separate outcomes, not opposing recommendations
 
-If sources largely agree: return an empty contradictions array.
+CONTRADICTION (conflict_type: "direct" or "partial") — Claims CANNOT both be true:
+- Opposite recommendations: "Founders should build in public" vs "Founders should NOT build in public"
+- Opposite effectiveness: "Cold email works for SaaS" vs "Cold email does not work for SaaS"
+- Opposite conclusions on the SAME specific outcome
 
-Classify:
-- direct → explicit contradiction
-- partial → same theme, meaningfully different conditions
-- contextual → differs by stage, scale, or audience
+CONTEXTUAL (conflict_type: "contextual") — Stage or context splits the truth:
+- "X works at early stage" vs "X fails at scale" — both can be true in different contexts
+
+THREE-PART TEST — all three must pass to classify as direct/partial contradiction:
+1. Both claims discuss the SAME specific action or decision
+2. Both claims discuss the SAME specific outcome
+3. Conclusions point in OPPOSITE directions
+→ If any test fails: use "tradeoff" or omit entirely
+
+MANDATE: When in doubt, use "tradeoff" not "direct". True contradictions are rare.
+Include 2–5 tradeoffs when present — they are useful signal, not noise.
 
 DO NOT resolve contradictions. DO NOT choose sides.
 
@@ -1464,16 +1477,27 @@ function assembleMemo(
   const agreementScore = confidenceResult.breakdown.agreement; // already 0-100
   const sourcesUsed = (["youtube", "reddit", "web"] as const).filter(s => !qualityScores[s].excluded);
 
-  // Suppress contradictions when sources are largely aligned
-  const hasRealContrad = agreementScore < 70 && extractor.contradictions.length > 0;
+  // Split extractor output into hard contradictions and tradeoffs
+  const hardContradictions = extractor.contradictions.filter(c => c.conflict_type !== "tradeoff");
+  const softTradeoffs      = extractor.contradictions.filter(c => c.conflict_type === "tradeoff");
+
+  // Suppress hard contradictions when sources are largely aligned
+  const hasRealContrad = agreementScore < 70 && hardContradictions.length > 0;
   const filteredContradictions = hasRealContrad
-    ? extractor.contradictions.slice(0, 3).map(c => ({
+    ? hardContradictions.slice(0, 3).map(c => ({
         claim_a: c.claim_a,
         claim_b: c.claim_b,
         why_it_matters: c.explanation,
         conflict_type: c.conflict_type ?? "direct" as const,
       }))
     : [];
+
+  // Tradeoffs always surface (they're useful context, not negative signal)
+  const filteredTradeoffs = softTradeoffs.slice(0, 5).map(c => ({
+    claim_a: c.claim_a,
+    claim_b: c.claim_b,
+    why_it_matters: c.explanation,
+  }));
 
   // Insight density: unique themes vs total signals
   const uniqueInsights = clusters.length;
@@ -1518,7 +1542,7 @@ function assembleMemo(
       agreement_score: agreementScore,
       shared_insights: sharedInsights,
       disagreements: hasRealContrad
-        ? extractor.contradictions.slice(0, 3).map(c => c.explanation)
+        ? hardContradictions.slice(0, 3).map(c => c.explanation)
         : [],
     },
     source_breakdown: {
@@ -1527,6 +1551,7 @@ function assembleMemo(
       web:     { count: rawCounts.web,     key_signals: bySource("web").slice(0, 4).map(c => c.claim) },
     },
     contradictions: filteredContradictions,
+    tradeoffs: filteredTradeoffs,
     decision_recommendation: {
       stage_based_actions: {
         pre_product:  extractor.stage_interpretation.pre_product?.observations?.slice(0, 3) ?? [],
@@ -2091,7 +2116,8 @@ export async function POST(req: NextRequest) {
       emit({ type: "stage", agent: "Extractor", message: `Formed ${clusters.length} domain-scoped insight clusters${offDomainRemoved > 0 ? ` (${offDomainRemoved} off-domain removed)` : ""}` });
 
       // Stage 6: Score (deterministic; cap confidence in recovery mode)
-      const extractorHasContrad = extractor.contradictions.length > 0;
+      // Only hard contradictions (not tradeoffs) should penalise confidence
+      const extractorHasContrad = extractor.contradictions.some(c => c.conflict_type !== "tradeoff");
       let confidenceResult = computeFinalConfidence(clusters, qualityScores, extractorHasContrad);
       if (isRecovery) {
         confidenceResult = { ...confidenceResult, confidence: Math.min(0.60, confidenceResult.confidence) };

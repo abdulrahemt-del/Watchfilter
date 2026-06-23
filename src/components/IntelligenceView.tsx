@@ -59,8 +59,8 @@ function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
 function agreeLabel(score: number): string {
   if (score >= 81) return "Strong Consensus";
   if (score >= 61) return "General Consensus";
-  if (score >= 31) return "Partial Consensus";
-  return "Major Disagreement";
+  if (score >= 31) return "Emerging Consensus";
+  return "Low Consensus";
 }
 
 function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
@@ -773,26 +773,59 @@ function PriorityActions({ actions }: { actions: IntelligenceMemo["decision_reco
 
 // ── Consensus section ─────────────────────────────────────────────────────────
 
-function ConsensusSection({ consensus }: { consensus: IntelligenceMemo["consensus"] }) {
+function ConsensusSection({
+  consensus,
+  tradeoffs,
+  contradictions,
+}: {
+  consensus: IntelligenceMemo["consensus"];
+  tradeoffs: IntelligenceMemo["tradeoffs"];
+  contradictions: IntelligenceMemo["contradictions"];
+}) {
   const score = consensus.agreement_score;
   const agreeColor = score >= 65 ? "#10b981" : score >= 40 ? "#f59e0b" : "#ef4444";
 
-  if (!consensus.shared_insights.length && !consensus.disagreements.length) return null;
+  const hasContent = consensus.shared_insights.length > 0 || (tradeoffs?.length ?? 0) > 0 || contradictions.length > 0;
+  if (!hasContent) return null;
 
   return (
     <section style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1.1rem" }}>
+
+      {/* Header row: label + agreement bar + counts */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.65rem", flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-          Consensus
+          Agreement
         </h2>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginLeft: "auto" }}>
+
+        {/* Agreement bar */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
           <div style={{ width: 80, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
             <div style={{ width: `${score}%`, height: "100%", background: agreeColor, borderRadius: 2 }} />
           </div>
-          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>{agreeLabel(score)}</span>
-          <span style={{ fontSize: "0.58rem", color: "#94a3b8" }}>({score}%)</span>
+          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>{score}%</span>
+          <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>— {agreeLabel(score)}</span>
+        </div>
+
+        {/* Tradeoff + contradiction counts */}
+        <div style={{ display: "flex", gap: "0.5rem", marginLeft: "auto", flexWrap: "wrap" }}>
+          {(tradeoffs?.length ?? 0) > 0 && (
+            <span style={{ fontSize: "0.57rem", fontWeight: 700, padding: "1px 8px", borderRadius: 20, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}>
+              {tradeoffs!.length} tradeoff{tradeoffs!.length !== 1 ? "s" : ""}
+            </span>
+          )}
+          {contradictions.length > 0 ? (
+            <span style={{ fontSize: "0.57rem", fontWeight: 700, padding: "1px 8px", borderRadius: 20, background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5" }}>
+              {contradictions.length} contradiction{contradictions.length !== 1 ? "s" : ""}
+            </span>
+          ) : (
+            <span style={{ fontSize: "0.57rem", fontWeight: 700, padding: "1px 8px", borderRadius: 20, background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}>
+              0 contradictions
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Shared insights */}
       {consensus.shared_insights.length > 0 && (
         <div style={{ marginBottom: consensus.disagreements.length > 0 ? "0.65rem" : 0 }}>
           <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10b981" }}>Sources agree</p>
@@ -803,9 +836,11 @@ function ConsensusSection({ consensus }: { consensus: IntelligenceMemo["consensu
           </ul>
         </div>
       )}
+
+      {/* Direct contradictions (only hard ones — tradeoffs rendered in TradeoffsSection) */}
       {consensus.disagreements.length > 0 && (
         <div>
-          <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#f59e0b" }}>Points of dispute</p>
+          <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#f59e0b" }}>Direct disputes</p>
           <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
             {consensus.disagreements.map((d, i) => (
               <li key={i} style={{ fontSize: "0.74rem", color: "#374151", marginBottom: "0.2rem", lineHeight: 1.5 }}>{d}</li>
@@ -854,6 +889,36 @@ function Contradictions({ items }: { items: IntelligenceMemo["contradictions"] }
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+// ── Tradeoffs ─────────────────────────────────────────────────────────────────
+
+function TradeoffsSection({ items }: { items: IntelligenceMemo["tradeoffs"] }) {
+  if (!items?.length) return null;
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Tradeoffs ({items.length})
+      </h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        {items.map((t, i) => (
+          <div key={i} style={{ background: "white", border: "1px solid #e2e8f0", borderLeft: "3px solid #6366f1", borderRadius: 10, padding: "0.75rem 1rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem", marginBottom: "0.55rem" }}>
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 7, padding: "0.5rem 0.65rem" }}>
+                <p style={{ margin: "0 0 0.1rem", fontSize: "0.56rem", fontWeight: 800, textTransform: "uppercase", color: "#15803d" }}>Benefit</p>
+                <p style={{ margin: 0, fontSize: "0.72rem", color: "#166534", lineHeight: 1.45 }}>{t.claim_a}</p>
+              </div>
+              <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 7, padding: "0.5rem 0.65rem" }}>
+                <p style={{ margin: "0 0 0.1rem", fontSize: "0.56rem", fontWeight: 800, textTransform: "uppercase", color: "#c2410c" }}>Risk / Cost</p>
+                <p style={{ margin: 0, fontSize: "0.72rem", color: "#9a3412", lineHeight: 1.45 }}>{t.claim_b}</p>
+              </div>
+            </div>
+            <p style={{ margin: 0, fontSize: "0.7rem", color: "#6366f1", lineHeight: 1.5 }}>⇄ {t.why_it_matters}</p>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -1243,15 +1308,18 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
       <ConfidenceSection memo={memo} />
 
       {/* 8. Consensus */}
-      <ConsensusSection consensus={memo.consensus} />
+      <ConsensusSection consensus={memo.consensus} tradeoffs={memo.tradeoffs ?? []} contradictions={memo.contradictions} />
 
-      {/* 9. Contradictions */}
+      {/* 9. Tradeoffs */}
+      <TradeoffsSection items={memo.tradeoffs ?? []} />
+
+      {/* 10. Contradictions (hard only) */}
       <Contradictions items={memo.contradictions} />
 
-      {/* 10. Stage Playbook */}
+      {/* 11. Stage Playbook */}
       <StageActions rec={memo.decision_recommendation} />
 
-      {/* 11. Prediction Intelligence (conditional on relevance) */}
+      {/* 12. Prediction Intelligence (conditional on relevance) */}
       <PredictionIntelligenceCard query={query} />
 
       {/* Debug panel — pipeline diagnostics, hidden by default */}
