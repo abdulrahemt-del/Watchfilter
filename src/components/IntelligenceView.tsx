@@ -169,6 +169,13 @@ const SRC_SYNTH_LABEL: Record<"youtube" | "reddit" | "web", string> = {
 
 // ── Creator Evidence Section — evidence-backed claims with source attribution ──
 
+const CONSENSUS_META: Record<string, { bg: string; color: string; border: string }> = {
+  "Broad Consensus":    { bg: "#dcfce7", color: "#14532d", border: "#86efac" },
+  "Strong Consensus":   { bg: "#d1fae5", color: "#065f46", border: "#6ee7b7" },
+  "Emerging Consensus": { bg: "#fef3c7", color: "#92400e", border: "#fcd34d" },
+  "Anecdotal":          { bg: "#f1f5f9", color: "#475569", border: "#cbd5e1" },
+};
+
 function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
   const ci = memo.creator_intelligence;
   const acc = SRC_DISPLAY.youtube.accent;
@@ -181,14 +188,21 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
 
-      {/* Coverage badge */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      {/* Coverage badge row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: "0.67rem", fontStyle: "italic", color: "#64748b" }}>
           {SRC_QUESTION.youtube}
         </p>
-        <span style={{ fontSize: "0.58rem", fontWeight: 800, padding: "2px 8px", borderRadius: 20, background: `${coverageColor}18`, color: coverageColor, border: `1px solid ${coverageColor}44`, whiteSpace: "nowrap" }}>
-          Coverage: {coverage.level} ({coverage.coverage_score}%)
-        </span>
+        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
+          {coverage.unique_creators != null && coverage.unique_creators > 0 && (
+            <span style={{ fontSize: "0.57rem", color: "#94a3b8" }}>
+              {coverage.unique_creators} creator{coverage.unique_creators !== 1 ? "s" : ""} · {coverage.accepted} segments
+            </span>
+          )}
+          <span style={{ fontSize: "0.58rem", fontWeight: 800, padding: "2px 8px", borderRadius: 20, background: `${coverageColor}18`, color: coverageColor, border: `1px solid ${coverageColor}44`, whiteSpace: "nowrap" }}>
+            Coverage: {coverage.level} ({coverage.coverage_score}%)
+          </span>
+        </div>
       </div>
 
       {/* Low-coverage warning */}
@@ -201,61 +215,78 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
       )}
 
       {/* Evidence claims */}
-      {claims.length > 0 ? claims.map((claim, ci_i) => (
-        <div key={ci_i} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 9, overflow: "hidden" }}>
+      {claims.length > 0 ? claims.map((claim, ci_i) => {
+        const consensusMeta = CONSENSUS_META[claim.consensus ?? "Anecdotal"] ?? CONSENSUS_META["Anecdotal"];
+        const scoreColor = (claim.confidence_score ?? 0) >= 60 ? "#10b981" : (claim.confidence_score ?? 0) >= 35 ? "#d97706" : "#ef4444";
+        return (
+          <div key={ci_i} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 9, overflow: "hidden" }}>
 
-          {/* Claim header */}
-          <div style={{ padding: "0.6rem 0.85rem 0.5rem", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem" }}>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: "0 0 0.15rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Claim</p>
-              <p style={{ margin: 0, fontSize: "0.75rem", fontWeight: 600, color: "#0f172a", lineHeight: 1.5 }}>{claim.theme}</p>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.2rem", flexShrink: 0 }}>
-              <span style={{ fontSize: "0.56rem", fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: claim.confidence === "High" ? "#f0fdf4" : claim.confidence === "Medium" ? "#fffbeb" : "#fef2f2", color: claim.confidence === "High" ? "#15803d" : claim.confidence === "Medium" ? "#b45309" : "#dc2626", border: `1px solid ${claim.confidence === "High" ? "#bbf7d0" : claim.confidence === "Medium" ? "#fde68a" : "#fecaca"}` }}>
-                {claim.confidence}
-              </span>
-              <span style={{ fontSize: "0.56rem", color: "#94a3b8" }}>{claim.evidence_count} creator{claim.evidence_count !== 1 ? "s" : ""}</span>
-            </div>
-          </div>
-
-          {/* Evidence list */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-            {claim.evidence.map((ev, ev_i) => (
-              <div key={ev_i} style={{ padding: "0.65rem 0.85rem", borderBottom: ev_i < claim.evidence.length - 1 ? "1px solid #f8fafc" : "none" }}>
-
-                {/* Creator + source line */}
-                <div style={{ display: "flex", alignItems: "baseline", gap: "0.4rem", marginBottom: "0.3rem", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#0f172a" }}>{ev.creator}</span>
-                  {ev.video_title && (
-                    <>
-                      <span style={{ fontSize: "0.6rem", color: "#cbd5e1" }}>·</span>
-                      {ev.video_id ? (
-                        <a href={`https://www.youtube.com/watch?v=${ev.video_id}${ev.timestamp ? `&t=${ev.timestamp.replace(":", "m")}s` : ""}`} target="_blank" rel="noopener noreferrer"
-                          style={{ fontSize: "0.63rem", color: acc, textDecoration: "none", fontStyle: "italic" }}>
-                          {ev.video_title.slice(0, 60)}{ev.video_title.length > 60 ? "…" : ""}
-                        </a>
-                      ) : (
-                        <span style={{ fontSize: "0.63rem", color: "#64748b", fontStyle: "italic" }}>{ev.video_title.slice(0, 60)}{ev.video_title.length > 60 ? "…" : ""}</span>
-                      )}
-                      {ev.timestamp && (
-                        <>
-                          <span style={{ fontSize: "0.6rem", color: "#cbd5e1" }}>·</span>
-                          <span style={{ fontSize: "0.6rem", color: "#94a3b8", fontFamily: "monospace" }}>{ev.timestamp}</span>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Quote */}
-                <blockquote style={{ margin: 0, padding: "0.3rem 0 0.3rem 0.6rem", borderLeft: `2px solid ${acc}44`, fontSize: "0.7rem", color: "#475569", lineHeight: 1.6, fontStyle: "italic" }}>
-                  "{ev.quote}"
-                </blockquote>
+            {/* Claim header */}
+            <div style={{ padding: "0.65rem 0.85rem 0.55rem", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.75rem" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: "0 0 0.15rem", fontSize: "0.57rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>Claim</p>
+                <p style={{ margin: 0, fontSize: "0.75rem", fontWeight: 600, color: "#0f172a", lineHeight: 1.5 }}>{claim.theme}</p>
               </div>
-            ))}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem", flexShrink: 0 }}>
+                {/* Consensus label */}
+                <span style={{ fontSize: "0.56rem", fontWeight: 800, padding: "1px 8px", borderRadius: 20, background: consensusMeta.bg, color: consensusMeta.color, border: `1px solid ${consensusMeta.border}`, whiteSpace: "nowrap" }}>
+                  {claim.consensus ?? "Anecdotal"}
+                </span>
+                {/* Confidence score */}
+                {claim.confidence_score != null && (
+                  <span style={{ fontSize: "0.6rem", fontWeight: 800, color: scoreColor }}>
+                    {claim.confidence_score} / 100
+                  </span>
+                )}
+                {/* Creator + evidence count */}
+                <span style={{ fontSize: "0.55rem", color: "#94a3b8", whiteSpace: "nowrap" }}>
+                  {claim.creator_count ?? claim.evidence.length} creator{(claim.creator_count ?? claim.evidence.length) !== 1 ? "s" : ""}
+                  {claim.evidence_count != null && claim.evidence_count !== (claim.creator_count ?? claim.evidence.length)
+                    ? ` · ${claim.evidence_count} mentions`
+                    : ""}
+                </span>
+              </div>
+            </div>
+
+            {/* Evidence list */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {claim.evidence.map((ev, ev_i) => (
+                <div key={ev_i} style={{ padding: "0.65rem 0.85rem", borderBottom: ev_i < claim.evidence.length - 1 ? "1px solid #f8fafc" : "none" }}>
+
+                  {/* Creator + source line */}
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "0.4rem", marginBottom: "0.3rem", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#0f172a" }}>{ev.creator}</span>
+                    {ev.video_title && (
+                      <>
+                        <span style={{ fontSize: "0.6rem", color: "#cbd5e1" }}>·</span>
+                        {ev.video_id ? (
+                          <a href={`https://www.youtube.com/watch?v=${ev.video_id}${ev.timestamp ? `&t=${ev.timestamp.replace(":", "m")}s` : ""}`} target="_blank" rel="noopener noreferrer"
+                            style={{ fontSize: "0.63rem", color: acc, textDecoration: "none", fontStyle: "italic" }}>
+                            {ev.video_title.slice(0, 60)}{ev.video_title.length > 60 ? "…" : ""}
+                          </a>
+                        ) : (
+                          <span style={{ fontSize: "0.63rem", color: "#64748b", fontStyle: "italic" }}>{ev.video_title.slice(0, 60)}{ev.video_title.length > 60 ? "…" : ""}</span>
+                        )}
+                        {ev.timestamp && (
+                          <>
+                            <span style={{ fontSize: "0.6rem", color: "#cbd5e1" }}>·</span>
+                            <span style={{ fontSize: "0.6rem", color: "#94a3b8", fontFamily: "monospace" }}>{ev.timestamp}</span>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Quote */}
+                  <blockquote style={{ margin: 0, padding: "0.3rem 0 0.3rem 0.6rem", borderLeft: `2px solid ${acc}44`, fontSize: "0.7rem", color: "#475569", lineHeight: 1.6, fontStyle: "italic" }}>
+                    "{ev.quote}"
+                  </blockquote>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )) : (
+        );
+      }) : (
         <div>
           <p style={{ margin: "0 0 0.2rem", fontSize: "0.72rem", color: "#94a3b8" }}>No attributable creator claims found for this query.</p>
           <p style={{ margin: 0, fontSize: "0.62rem", fontWeight: 700, color: "#cbd5e1" }}>Signal Strength: None</p>
@@ -293,6 +324,9 @@ function CreatorDiagnostics({ memo }: { memo: IntelligenceMemo }) {
               { label: "Accepted", value: coverage.accepted },
               { label: "Rejected", value: coverage.rejected },
               { label: "Coverage", value: `${coverage.coverage_score}%` },
+              { label: "Avg Similarity", value: coverage.avg_similarity != null ? `${coverage.avg_similarity}` : "—" },
+              { label: "Unique Creators", value: coverage.unique_creators != null ? coverage.unique_creators : "—" },
+              { label: "Density", value: coverage.evidence_density_level ?? "—" },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 <span style={{ fontSize: "0.55rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>{label}</span>

@@ -140,7 +140,11 @@ export type IntelligenceMemo = {
     claims: Array<{
       theme: string;
       confidence: "High" | "Medium" | "Low";
+      confidence_score: number;
+      consensus: "Anecdotal" | "Emerging Consensus" | "Strong Consensus" | "Broad Consensus";
+      creator_count: number;
       evidence_count: number;
+      avg_similarity: number;
       evidence: Array<{
         creator: string;
         video_title: string | null;
@@ -156,6 +160,10 @@ export type IntelligenceMemo = {
       rejected: number;
       coverage_score: number;
       level: "High" | "Medium" | "Low";
+      avg_similarity: number;
+      unique_creators: number;
+      evidence_density: number;
+      evidence_density_level: "High" | "Medium" | "Low";
       top_rejections: Array<{ claim: string; relevance_score: number; reason: string }>;
     };
   } | null;
@@ -1222,12 +1230,27 @@ function buildCreatorIntelligence(
 
   const gatedYtIds = new Set(gatedClaims.filter(c => c.source === "youtube").map(c => c.id));
   const rawYtClaims = rawClaims.filter(c => c.source === "youtube");
+  const acceptedYtClaims = gatedClaims.filter(c => c.source === "youtube");
 
   const retrieved    = ytRows.length;
   const accepted     = gatedYtIds.size;
   const coverageScore = retrieved > 0 ? Math.round((accepted / retrieved) * 100) : 0;
   const coverageLevel: "High" | "Medium" | "Low" =
     coverageScore >= 50 ? "High" : coverageScore >= 20 ? "Medium" : "Low";
+
+  // Coverage-level aggregate metrics
+  const coverageAvgSimilarity = acceptedYtClaims.length > 0
+    ? Math.round(acceptedYtClaims.reduce((s, c) => s + c.queryRelevance, 0) / acceptedYtClaims.length)
+    : 0;
+  const coverageCreatorNames = new Set(
+    acceptedYtClaims.map(c => rowByClaimId.get(c.id)?.channel_name).filter((n): n is string => !!n)
+  );
+  const uniqueCreators = coverageCreatorNames.size;
+  const evidenceDensity = uniqueCreators > 0
+    ? Math.round((accepted / uniqueCreators) * 10) / 10
+    : 0;
+  const evidenceDensityLevel: "High" | "Medium" | "Low" =
+    evidenceDensity >= 3 ? "High" : evidenceDensity >= 1.5 ? "Medium" : "Low";
 
   // Top rejections: raw YT claims that didn't reach gated, highest relevance first
   const topRejections = rawYtClaims
@@ -1243,13 +1266,19 @@ function buildCreatorIntelligence(
       };
     });
 
-  // One evidence card per cluster — only clusters that have at least one YT claim
-  const claims: NonNullable<IntelligenceMemo["creator_intelligence"]>["claims"] = [];
+  // One evidence card per cluster — only clusters with at least one YT claim
+  const claimItems: NonNullable<IntelligenceMemo["creator_intelligence"]>["claims"] = [];
   for (const cluster of clusters) {
     const ytInCluster = cluster.claims.filter(c => c.source === "youtube");
     if (ytInCluster.length === 0) continue;
 
-    // Build evidence items, deduped by creator (keep best relevance per creator)
+    // Total segment count and average similarity across all segments
+    const evidence_count = ytInCluster.length;
+    const avg_similarity = Math.round(
+      ytInCluster.reduce((s, c) => s + c.queryRelevance, 0) / ytInCluster.length
+    );
+
+    // Dedup by creator for display (keep best-relevance quote per creator)
     const byCreator = new Map<string, NonNullable<IntelligenceMemo["creator_intelligence"]>["claims"][0]["evidence"][0]>();
     for (const c of ytInCluster) {
       const row = rowByClaimId.get(c.id);
@@ -1267,16 +1296,45 @@ function buildCreatorIntelligence(
       }
     }
 
+    const creator_count = byCreator.size;
     const evidence = [...byCreator.values()];
-    const confidence: "High" | "Medium" | "Low" =
-      evidence.length >= 3 ? "High" : evidence.length >= 2 ? "Medium" : "Low";
 
-    claims.push({ theme: cluster.theme, confidence, evidence_count: evidence.length, evidence });
+    const consensus: "Anecdotal" | "Emerging Consensus" | "Strong Consensus" | "Broad Consensus" =
+      creator_count >= 7 ? "Broad Consensus"
+      : creator_count >= 4 ? "Strong Consensus"
+      : creator_count >= 2 ? "Emerging Consensus"
+      : "Anecdotal";
+
+    // Confidence score: 40% creator diversity + 25% avg similarity + 20% evidence volume + 15% corpus coverage
+    const creatorWeight  = Math.min(100, (creator_count / 7) * 100);
+    const evidenceWeight = Math.min(100, (evidence_count / 10) * 100);
+    const confidence_score = Math.round(
+      creatorWeight  * 0.40 +
+      avg_similarity * 0.25 +
+      evidenceWeight * 0.20 +
+      coverageScore  * 0.15
+    );
+
+    const confidence: "High" | "Medium" | "Low" =
+      confidence_score >= 60 ? "High" : confidence_score >= 35 ? "Medium" : "Low";
+
+    claimItems.push({ theme: cluster.theme, confidence, confidence_score, consensus, creator_count, evidence_count, avg_similarity, evidence });
   }
 
   return {
-    claims,
-    coverage: { retrieved, accepted, rejected: retrieved - accepted, coverage_score: coverageScore, level: coverageLevel, top_rejections: topRejections },
+    claims: claimItems,
+    coverage: {
+      retrieved,
+      accepted,
+      rejected: retrieved - accepted,
+      coverage_score: coverageScore,
+      level: coverageLevel,
+      avg_similarity: coverageAvgSimilarity,
+      unique_creators: uniqueCreators,
+      evidence_density: evidenceDensity,
+      evidence_density_level: evidenceDensityLevel,
+      top_rejections: topRejections,
+    },
   };
 }
 
