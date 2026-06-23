@@ -184,6 +184,37 @@ export type IntelligenceMemo = {
       off_topic_ratio: number;
       corpus_matches: number;
       root_cause: "Missing Corpus Content" | "Retrieval Quality" | "None";
+      primary_failure_stage: string;
+      evidence_lost: number;
+      most_common_rejection: string;
+    };
+    debug: {
+      retrieval_funnel: {
+        corpus_matches: number;
+        retrieved: number;
+        passed_strength: number;
+        passed_relevance: number;
+        passed_quality: number;
+        passed_topic_gate: number;
+        accepted: number;
+      };
+      retrieval_trace: Array<{
+        creator: string;
+        video: string;
+        keyword_score: number;
+        retrieval_rank: number;
+        accepted: boolean;
+        rejection_reason?: string;
+      }>;
+      rejection_breakdown: Record<string, number>;
+      missed_evidence: Array<{
+        creator: string;
+        video: string;
+        keyword_score: number;
+        reason_not_selected: string;
+        retrieval_rank: number;
+      }>;
+      evidence_lost_at_stage: Record<string, number>;
     };
   } | null;
   decision_drivers: {
@@ -1280,6 +1311,8 @@ function buildCreatorIntelligence(
   relevanceGate:    number,
   ytOffTopicClaims: NormalizedClaim[] = [],
   corpusMatchCount: number = 0,
+  relevantYtClaims: NormalizedClaim[] = [],
+  keywords:         string[] = [],
 ): IntelligenceMemo["creator_intelligence"] {
   if (ytRows.length === 0) return null;
 
@@ -1390,11 +1423,89 @@ function buildCreatorIntelligence(
     : ytOffTopicCount >= 3 && offTopicRatio >= 0.70 ? "Contaminated"
     : "No Coverage";
 
-  // Root cause: was the problem corpus coverage or retrieval quality?
   const root_cause: "Missing Corpus Content" | "Retrieval Quality" | "None" =
     accepted > 0           ? "None"
     : corpusMatchCount === 0 ? "Missing Corpus Content"
     :                          "Retrieval Quality";
+
+  // ── Retrieval trace — first-failure attribution for every retrieved segment ──
+  const rawYtIdSet     = new Set(rawClaims.filter(c => c.source === "youtube").map(c => c.id));
+  const workingYtIdSet = new Set(relevantYtClaims.map(c => c.id));
+  const offTopicIdSet  = new Set(ytOffTopicClaims.map(c => c.id));
+  const topicPassedIds = new Set(gatedClaims.filter(c => c.source === "youtube").map(c => c.id));
+  const clusterYtIds   = new Set(clusters.flatMap(cl => cl.claims.filter(c => c.source === "youtube").map(c => c.id)));
+
+  const passedStrength  = rawYtIdSet.size;
+  const passedRelevance = workingYtIdSet.size;
+  const passedQuality   = offTopicIdSet.size + topicPassedIds.size;
+  const passedTopicGate = topicPassedIds.size;
+  const usedInClusters  = clusterYtIds.size;
+
+  const retrieval_trace = ytRows.map((row, i) => {
+    const id          = `yt-${i}`;
+    const creator     = row.channel_name ?? "Unknown";
+    const video       = (row.video_title ?? "").slice(0, 80);
+    const rawClaim    = rawYtIdSet.has(id) ? rawClaims.find(c => c.id === id) : null;
+    const keyword_score = rawClaim
+      ? rawClaim.queryRelevance
+      : scoreClaimRelevance(row.insight ?? row.quote ?? "", keywords);
+
+    let accepted_flag   = false;
+    let rejection_reason: string | undefined;
+
+    if (clusterYtIds.has(id)) {
+      accepted_flag = true;
+    } else if (topicPassedIds.has(id)) {
+      rejection_reason = "DOMAIN_MISMATCH";
+    } else if (offTopicIdSet.has(id)) {
+      rejection_reason = "OFF_TOPIC";
+    } else if (workingYtIdSet.has(id)) {
+      rejection_reason = "LOW_QUALITY";    // passed relevance gate but quality-excluded
+    } else if (rawYtIdSet.has(id)) {
+      rejection_reason = "LOW_SIMILARITY"; // passed strength but failed relevance gate
+    } else {
+      rejection_reason = "LOW_QUALITY";    // failed strength filter
+    }
+
+    return { creator, video, keyword_score, retrieval_rank: i, accepted: accepted_flag, rejection_reason };
+  });
+
+  const rejection_breakdown: Record<string, number> = {};
+  for (const t of retrieval_trace) {
+    if (!t.accepted && t.rejection_reason) {
+      rejection_breakdown[t.rejection_reason] = (rejection_breakdown[t.rejection_reason] ?? 0) + 1;
+    }
+  }
+
+  const missed_evidence = [...retrieval_trace]
+    .filter(t => !t.accepted)
+    .sort((a, b) => b.keyword_score - a.keyword_score)
+    .slice(0, 5)
+    .map(t => ({
+      creator: t.creator,
+      video: t.video,
+      keyword_score: t.keyword_score,
+      reason_not_selected: t.rejection_reason ?? "UNKNOWN",
+      retrieval_rank: t.retrieval_rank,
+    }));
+
+  const evidence_lost_at_stage: Record<string, number> = {
+    "Retrieval":   Math.max(0, corpusMatchCount - retrieved),
+    "Strength":    Math.max(0, retrieved - passedStrength),
+    "Relevance":   Math.max(0, passedStrength - passedRelevance),
+    "Quality":     Math.max(0, passedRelevance - passedQuality),
+    "Topic Gate":  ytOffTopicCount,
+    "Cluster":     Math.max(0, passedTopicGate - usedInClusters),
+  };
+
+  const primary_failure_stage = Object.entries(evidence_lost_at_stage)
+    .filter(([, n]) => n > 0)
+    .sort(([, a], [, b]) => b - a)[0]?.[0] ?? "None";
+
+  const evidence_lost = Math.max(0, evidence_lost_at_stage[primary_failure_stage] ?? 0);
+
+  const most_common_rejection = Object.entries(rejection_breakdown)
+    .sort(([, a], [, b]) => b - a)[0]?.[0] ?? "NONE";
 
   return {
     claims: coverage_status === "Contaminated" ? [] : claimItems,
@@ -1414,6 +1525,24 @@ function buildCreatorIntelligence(
       off_topic_ratio: Math.round(offTopicRatio * 100),
       corpus_matches: corpusMatchCount,
       root_cause,
+      primary_failure_stage,
+      evidence_lost,
+      most_common_rejection,
+    },
+    debug: {
+      retrieval_funnel: {
+        corpus_matches: corpusMatchCount,
+        retrieved,
+        passed_strength:   passedStrength,
+        passed_relevance:  passedRelevance,
+        passed_quality:    passedQuality,
+        passed_topic_gate: passedTopicGate,
+        accepted:          usedInClusters,
+      },
+      retrieval_trace,
+      rejection_breakdown,
+      missed_evidence,
+      evidence_lost_at_stage,
     },
   };
 }
@@ -2341,6 +2470,9 @@ export async function POST(req: NextRequest) {
         close();
         return;
       }
+      // Snapshot YT claims at this stage — used in retrieval trace to pinpoint
+      // where in the pipeline each creator segment was lost
+      const workingYtClaims = workingClaims.filter(c => c.source === "youtube");
 
       // Stage 4: Source quality scoring (intent-adjusted exclusion threshold)
       const qualityScores = {
@@ -2500,7 +2632,7 @@ export async function POST(req: NextRequest) {
       };
 
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
-      const creatorIntelligence = buildCreatorIntelligence(ytRows, rawClaims, pipelineClaims, clusters, intentThresholds.relevanceGate, ytOffTopicClaims, corpusMatchCount);
+      const creatorIntelligence = buildCreatorIntelligence(ytRows, rawClaims, pipelineClaims, clusters, intentThresholds.relevanceGate, ytOffTopicClaims, corpusMatchCount, workingYtClaims, keywords);
 
       // Fire-and-forget gap logging — data becomes the creator corpus ingestion roadmap
       if (creatorIntelligence?.coverage.root_cause !== "None") {

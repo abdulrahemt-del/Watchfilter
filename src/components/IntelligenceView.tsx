@@ -483,68 +483,202 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
   );
 }
 
-// ── Creator Retrieval Diagnostics (debug) ─────────────────────────────────────
+// ── Creator Retrieval Diagnostics v2 ─────────────────────────────────────────
+
+const REJECTION_LABEL: Record<string, string> = {
+  OFF_TOPIC:      "Off Topic",
+  LOW_SIMILARITY: "Low Similarity",
+  LOW_QUALITY:    "Low Quality",
+  DUPLICATE:      "Duplicate",
+  COVERAGE_GATE:  "Coverage Gate",
+  DOMAIN_MISMATCH:"Domain Mismatch",
+  RETRIEVAL_CUTOFF:"Retrieval Cutoff",
+  UNKNOWN:        "Unknown",
+};
+
+function DiagStat({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: "0.52rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>{label}</span>
+      <span style={{ fontSize: "0.82rem", fontWeight: 700, color: accent ?? "#e2e8f0" }}>{value}</span>
+    </div>
+  );
+}
+
+function FunnelViz({ funnel }: { funnel: NonNullable<IntelligenceMemo["creator_intelligence"]>["debug"]["retrieval_funnel"] }) {
+  const steps = [
+    { label: "Corpus", value: funnel.corpus_matches },
+    { label: "Retrieved", value: funnel.retrieved },
+    { label: "Strength", value: funnel.passed_strength },
+    { label: "Relevance", value: funnel.passed_relevance },
+    { label: "Quality", value: funnel.passed_quality },
+    { label: "Topic", value: funnel.passed_topic_gate },
+    { label: "Accepted", value: funnel.accepted },
+  ];
+  const maxVal = Math.max(...steps.map(s => s.value), 1);
+  return (
+    <div>
+      <p style={{ margin: "0 0 0.4rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Retrieval Funnel</p>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: "2px" }}>
+        {steps.map((s, i) => {
+          const pct = Math.round((s.value / maxVal) * 100);
+          const isLast = i === steps.length - 1;
+          return (
+            <div key={s.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flex: 1 }}>
+              <span style={{ fontSize: "0.62rem", fontWeight: 700, color: isLast ? "#10b981" : "#94a3b8" }}>{s.value}</span>
+              <div style={{ width: "100%", height: 32, background: "#1e293b", borderRadius: 3, display: "flex", alignItems: "flex-end" }}>
+                <div style={{ width: "100%", height: `${Math.max(pct, 4)}%`, background: isLast ? "#10b981" : "#334155", borderRadius: 3, transition: "height 0.3s" }} />
+              </div>
+              <span style={{ fontSize: "0.48rem", color: "#475569", textAlign: "center", lineHeight: 1.2 }}>{s.label}</span>
+              {i < steps.length - 1 && (
+                <span style={{ fontSize: "0.5rem", color: "#334155" }}>→</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {/* Compact linear display */}
+      <p style={{ margin: "0.35rem 0 0", fontSize: "0.6rem", color: "#64748b", fontFamily: "monospace" }}>
+        {steps.map(s => s.value).join(" → ")}
+      </p>
+    </div>
+  );
+}
 
 function CreatorDiagnostics({ memo }: { memo: IntelligenceMemo }) {
   const [open, setOpen] = useState(false);
+  const [traceOpen, setTraceOpen] = useState(false);
   const ci = memo.creator_intelligence;
   if (!ci) return null;
-  const { coverage } = ci;
+  const { coverage, debug } = ci;
+
+  const primaryColor =
+    coverage.coverage_status === "Good"        ? "#10b981"
+    : coverage.coverage_status === "Weak"      ? "#d97706"
+    : coverage.coverage_status === "Contaminated" ? "#ef4444"
+    : "#94a3b8";
 
   return (
     <div style={{ background: "#0f172a", borderRadius: 10, overflow: "hidden" }}>
       <button type="button" onClick={() => setOpen(o => !o)}
         style={{ width: "100%", padding: "0.65rem 1rem", background: "transparent", border: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#475569" }}>
-          ▶ Creator Retrieval Diagnostics
+          ▶ Creator Retrieval Diagnostics v2
         </span>
         <span style={{ fontSize: "0.6rem", color: "#475569" }}>{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
-        <div style={{ padding: "0 1rem 1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <div style={{ padding: "0 1rem 1rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
 
-          {/* Stats row */}
+          {/* Coverage summary */}
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-            {[
-              { label: "Corpus Matches", value: coverage.corpus_matches != null ? coverage.corpus_matches : "—" },
-              { label: "Retrieved", value: coverage.retrieved },
-              { label: "Accepted", value: coverage.accepted },
-              { label: "Rejected", value: coverage.rejected },
-              { label: "Off-Topic", value: coverage.off_topic_count != null ? coverage.off_topic_count : "—" },
-              { label: "Off-Topic Rate", value: coverage.off_topic_ratio != null ? `${coverage.off_topic_ratio}%` : "—" },
-              { label: "Status", value: coverage.coverage_status ?? coverage.level },
-              { label: "Root Cause", value: coverage.root_cause ?? "—" },
-              { label: "Coverage", value: `${coverage.coverage_score}%` },
-              { label: "Avg Similarity", value: coverage.avg_similarity != null ? `${coverage.avg_similarity}` : "—" },
-              { label: "Unique Creators", value: coverage.unique_creators != null ? coverage.unique_creators : "—" },
-              { label: "Density", value: coverage.evidence_density_level ?? "—" },
-            ].map(({ label, value }) => (
-              <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <span style={{ fontSize: "0.55rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>{label}</span>
-                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#e2e8f0" }}>{value}</span>
-              </div>
-            ))}
+            <DiagStat label="Corpus Matches" value={coverage.corpus_matches ?? "—"} />
+            <DiagStat label="Retrieved"      value={coverage.retrieved} />
+            <DiagStat label="Accepted"       value={coverage.accepted} />
+            <DiagStat label="Status"         value={coverage.coverage_status ?? coverage.level} accent={primaryColor} />
+            <DiagStat label="Root Cause"     value={coverage.root_cause ?? "—"} accent={coverage.root_cause !== "None" ? "#f97316" : "#64748b"} />
+            <DiagStat label="Primary Failure" value={coverage.primary_failure_stage ?? "—"} accent={coverage.primary_failure_stage !== "None" ? "#fb923c" : "#64748b"} />
+            <DiagStat label="Evidence Lost"  value={coverage.evidence_lost ?? 0} />
+            <DiagStat label="Top Rejection"  value={coverage.most_common_rejection ?? "—"} />
           </div>
 
-          {/* Top rejections */}
-          {coverage.top_rejections.length > 0 && (
+          {/* Retrieval funnel */}
+          {debug?.retrieval_funnel && <FunnelViz funnel={debug.retrieval_funnel} />}
+
+          {/* Rejection breakdown */}
+          {debug?.rejection_breakdown && Object.keys(debug.rejection_breakdown).length > 0 && (
             <div>
-              <p style={{ margin: "0 0 0.35rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>
-                Top Rejections
+              <p style={{ margin: "0 0 0.35rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>
+                Top Rejection Reasons
               </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                {coverage.top_rejections.map((r, i) => (
-                  <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "baseline" }}>
-                    <span style={{ fontSize: "0.6rem", color: "#f97316", flexShrink: 0 }}>·</span>
-                    <span style={{ fontSize: "0.62rem", color: "#94a3b8", lineHeight: 1.4 }}>
-                      {r.claim} <span style={{ color: "#475569" }}>— score: {r.relevance_score} — {r.reason}</span>
-                    </span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                {Object.entries(debug.rejection_breakdown)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([reason, count]) => (
+                    <div key={reason} style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f97316", flexShrink: 0 }} />
+                      <span style={{ fontSize: "0.62rem", color: "#94a3b8", flex: 1 }}>{REJECTION_LABEL[reason] ?? reason}</span>
+                      <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#e2e8f0", fontFamily: "monospace" }}>{count}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Missed evidence */}
+          {debug?.missed_evidence && debug.missed_evidence.length > 0 && (
+            <div>
+              <p style={{ margin: "0 0 0.35rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>
+                Missed Evidence (top by keyword score)
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                {debug.missed_evidence.map((m, i) => (
+                  <div key={i} style={{ background: "#1e293b", borderRadius: 6, padding: "0.4rem 0.6rem", display: "flex", gap: "0.75rem", alignItems: "baseline" }}>
+                    <span style={{ fontSize: "0.55rem", color: "#475569", fontFamily: "monospace", flexShrink: 0 }}>#{m.retrieval_rank + 1}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "#cbd5e1", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.creator}</span>
+                      <span style={{ fontSize: "0.57rem", color: "#475569", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.video || "—"}</span>
+                    </div>
+                    <div style={{ flexShrink: 0, textAlign: "right" }}>
+                      <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "#94a3b8", display: "block" }}>score {m.keyword_score}</span>
+                      <span style={{ fontSize: "0.55rem", color: "#f97316" }}>{REJECTION_LABEL[m.reason_not_selected] ?? m.reason_not_selected}</span>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
+
+          {/* Evidence lost per stage */}
+          {debug?.evidence_lost_at_stage && (
+            <div>
+              <p style={{ margin: "0 0 0.35rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>
+                Evidence Lost Per Stage
+              </p>
+              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                {Object.entries(debug.evidence_lost_at_stage)
+                  .filter(([, n]) => n > 0)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([stage, n]) => (
+                    <div key={stage} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span style={{ fontSize: "0.52rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>{stage}</span>
+                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f97316" }}>{n}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Retrieval trace (collapsible) */}
+          {debug?.retrieval_trace && debug.retrieval_trace.length > 0 && (
+            <div>
+              <button type="button" onClick={() => setTraceOpen(o => !o)}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.35rem" }}>
+                <span style={{ fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>
+                  Retrieval Trace ({debug.retrieval_trace.length} segments)
+                </span>
+                <span style={{ fontSize: "0.55rem", color: "#334155" }}>{traceOpen ? "▲" : "▼"}</span>
+              </button>
+              {traceOpen && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", maxHeight: 300, overflowY: "auto" }}>
+                  {debug.retrieval_trace.map((t, i) => (
+                    <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "center", padding: "0.25rem 0.4rem", borderRadius: 4, background: t.accepted ? "#052e1640" : "#1e293b" }}>
+                      <span style={{ fontSize: "0.52rem", color: "#334155", fontFamily: "monospace", flexShrink: 0, minWidth: "1.6rem" }}>#{t.retrieval_rank + 1}</span>
+                      <span style={{ fontSize: "0.58rem", fontWeight: 600, color: t.accepted ? "#34d399" : "#94a3b8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.creator}</span>
+                      <span style={{ fontSize: "0.55rem", color: "#475569", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.video}</span>
+                      <span style={{ fontSize: "0.55rem", color: "#64748b", fontFamily: "monospace", flexShrink: 0 }}>{t.keyword_score}</span>
+                      {t.accepted
+                        ? <span style={{ fontSize: "0.52rem", fontWeight: 700, color: "#10b981", flexShrink: 0 }}>✓</span>
+                        : <span style={{ fontSize: "0.52rem", color: "#f97316", flexShrink: 0 }}>{REJECTION_LABEL[t.rejection_reason ?? ""] ?? t.rejection_reason}</span>
+                      }
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       )}
     </div>
