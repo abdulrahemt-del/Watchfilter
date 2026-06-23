@@ -179,6 +179,9 @@ export type IntelligenceMemo = {
       evidence_density: number;
       evidence_density_level: "High" | "Medium" | "Low";
       top_rejections: Array<{ claim: string; relevance_score: number; reason: string }>;
+      coverage_status: "Good" | "Weak" | "Contaminated" | "No Coverage";
+      off_topic_count: number;
+      off_topic_ratio: number;
     };
   } | null;
   decision_drivers: {
@@ -322,6 +325,11 @@ const INTENT_THRESHOLDS: Record<QueryIntent, { relevanceGate: number; qualityExc
   prediction:     { relevanceGate: 40, qualityExclude: 45 },
   research:       { relevanceGate: 45, qualityExclude: 50 },
 };
+
+// Minimum query relevance for YouTube claims to enter the pipeline.
+// Applied after the quality gate — off-topic YT claims are tracked but excluded
+// from clustering, confidence scoring, cross-source consensus, and decision drivers.
+const CREATOR_TOPIC_GATE = 50;
 
 // ── Query domain classification ───────────────────────────────────────────────
 
@@ -1263,11 +1271,12 @@ const SOURCE_FRIENDLY: Record<string, string> = {
 // ── Creator Intelligence — evidence-backed claims with source attribution ─────
 
 function buildCreatorIntelligence(
-  ytRows:       DeepResearchRow[],
-  rawClaims:    NormalizedClaim[],
-  gatedClaims:  NormalizedClaim[],
-  clusters:     ClaimCluster[],
-  relevanceGate: number,
+  ytRows:           DeepResearchRow[],
+  rawClaims:        NormalizedClaim[],
+  gatedClaims:      NormalizedClaim[],
+  clusters:         ClaimCluster[],
+  relevanceGate:    number,
+  ytOffTopicClaims: NormalizedClaim[] = [],
 ): IntelligenceMemo["creator_intelligence"] {
   if (ytRows.length === 0) return null;
 
@@ -1369,8 +1378,17 @@ function buildCreatorIntelligence(
     claimItems.push({ theme: cluster.theme, confidence, confidence_score, consensus, creator_count, evidence_count, avg_similarity, evidence });
   }
 
+  const ytOffTopicCount   = ytOffTopicClaims.length;
+  const totalQualityGated = accepted + ytOffTopicCount;
+  const offTopicRatio     = totalQualityGated > 0 ? ytOffTopicCount / totalQualityGated : 0;
+  const coverage_status: "Good" | "Weak" | "Contaminated" | "No Coverage" =
+    accepted >= 3             ? "Good"
+    : accepted > 0            ? "Weak"
+    : ytOffTopicCount >= 3 && offTopicRatio >= 0.70 ? "Contaminated"
+    : "No Coverage";
+
   return {
-    claims: claimItems,
+    claims: coverage_status === "Contaminated" ? [] : claimItems,
     coverage: {
       retrieved,
       accepted,
@@ -1382,6 +1400,9 @@ function buildCreatorIntelligence(
       evidence_density: evidenceDensity,
       evidence_density_level: evidenceDensityLevel,
       top_rejections: topRejections,
+      coverage_status,
+      off_topic_count: ytOffTopicCount,
+      off_topic_ratio: Math.round(offTopicRatio * 100),
     },
   };
 }
@@ -2354,11 +2375,25 @@ export async function POST(req: NextRequest) {
       };
 
       const evidenceMap = buildEvidenceMap(ytRows, hnClaims, articles);
-      const claimIndex = new Map(gatedClaims.map(c => [c.id, c]));
+
+      // Creator-specific topic gate — stricter than the general relevance gate.
+      // Off-topic YT claims are tracked for coverage reporting but excluded from
+      // clustering, confidence scoring, cross-source consensus, and decision drivers.
+      const creatorTopicGate = Math.max(CREATOR_TOPIC_GATE, intentThresholds.relevanceGate);
+      const ytOffTopicClaims = gatedClaims.filter(c => c.source === "youtube" && c.queryRelevance < creatorTopicGate);
+      const pipelineClaims   = gatedClaims.filter(c => c.source !== "youtube" || c.queryRelevance >= creatorTopicGate);
+      if (ytOffTopicClaims.length > 0) {
+        const ytTotal = gatedClaims.filter(c => c.source === "youtube").length;
+        const pct = Math.round((ytOffTopicClaims.length / ytTotal) * 100);
+        console.log(`[CreatorGate/${queryIntent}] ${ytOffTopicClaims.length}/${ytTotal} (${pct}%) YT claims excluded as off-topic (gate=${creatorTopicGate})`);
+        emit({ type: "stage", agent: "Creator Gate", message: `${ytOffTopicClaims.length} off-topic creator claim${ytOffTopicClaims.length !== 1 ? "s" : ""} excluded (${pct}% of YT pool)`, count: pipelineClaims.filter(c => c.source === "youtube").length });
+      }
+
+      const claimIndex = new Map(pipelineClaims.map(c => [c.id, c]));
 
       // Stage 5: Extract + cluster (domain-locked prompt) + domain safety filter
-      emit({ type: "stage", agent: "Extractor", message: `Extracting and clustering ${gatedClaims.length} signals [domain: ${queryDomain}]…` });
-      const extractor = await runExtractor(query, queryDomain, gatedClaims, evidenceMap);
+      emit({ type: "stage", agent: "Extractor", message: `Extracting and clustering ${pipelineClaims.length} signals [domain: ${queryDomain}]…` });
+      const extractor = await runExtractor(query, queryDomain, pipelineClaims, evidenceMap);
       const rawClusters = buildClusters(extractor, claimIndex);
       const clusters = filterClustersByDomain(rawClusters, extractor, queryDomain);
       const offDomainRemoved = rawClusters.length - clusters.length;
@@ -2385,11 +2420,14 @@ export async function POST(req: NextRequest) {
       // they were retrieved by domain-specific HN/Reddit search, so the extraction
       // LLM already filtered for topic relevance. Re-filtering here throws away
       // valid practitioner insights that use different vocabulary than the query.
-      const perspectiveClaims = rawClaims.filter(c =>
-        c.source === "reddit" ||
-        c.queryRelevance >= intentThresholds.relevanceGate ||
-        domainAllowed.some(term => c.claim.toLowerCase().includes(term.toLowerCase()))
-      );
+      const perspectiveClaims = rawClaims.filter(c => {
+        if (c.source === "reddit") return true;
+        // Creator claims use the stricter topic gate — off-topic creator content
+        // must not contribute to perspective generation either
+        if (c.source === "youtube") return c.queryRelevance >= creatorTopicGate;
+        return c.queryRelevance >= intentThresholds.relevanceGate ||
+          domainAllowed.some(term => c.claim.toLowerCase().includes(term.toLowerCase()));
+      });
 
       const sortByStrength = (cs: NormalizedClaim[]) =>
         [...cs].sort((a, b) => computeClaimStrength(b) - computeClaimStrength(a));
@@ -2434,8 +2472,8 @@ export async function POST(req: NextRequest) {
       };
 
       const rawCounts = { youtube: ytRows.length, reddit: hnClaims.length, web: articles.length };
-      const creatorIntelligence = buildCreatorIntelligence(ytRows, rawClaims, gatedClaims, clusters, intentThresholds.relevanceGate);
-      const memo = assembleMemo(query, gatedClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence);
+      const creatorIntelligence = buildCreatorIntelligence(ytRows, rawClaims, pipelineClaims, clusters, intentThresholds.relevanceGate, ytOffTopicClaims);
+      const memo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence);
 
       emit({ type: "complete", memo });
 

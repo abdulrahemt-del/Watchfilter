@@ -338,7 +338,14 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
   if (!ci) return null;
 
   const { claims, coverage } = ci;
-  const coverageColor = coverage.level === "High" ? "#10b981" : coverage.level === "Medium" ? "#d97706" : "#ef4444";
+  const coverageStatus = coverage.coverage_status;
+  const coverageColor =
+    coverageStatus === "Good"         ? "#10b981"
+    : coverageStatus === "Weak"       ? "#d97706"
+    : coverageStatus === "Contaminated" ? "#dc2626"
+    : coverageStatus === "No Coverage"  ? "#94a3b8"
+    : coverage.level === "High" ? "#10b981" : coverage.level === "Medium" ? "#d97706" : "#ef4444";
+  const coverageLabel = coverageStatus ?? coverage.level;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
@@ -349,25 +356,25 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
           {SRC_QUESTION.youtube}
         </p>
         <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
-          {coverage.unique_creators != null && coverage.unique_creators > 0 && (
+          {coverage.unique_creators != null && coverage.unique_creators > 0 && coverageStatus !== "Contaminated" && (
             <span style={{ fontSize: "0.57rem", color: "#94a3b8" }}>
               {coverage.unique_creators} creator{coverage.unique_creators !== 1 ? "s" : ""} · {coverage.accepted} segments
             </span>
           )}
           <span style={{ fontSize: "0.58rem", fontWeight: 800, padding: "2px 8px", borderRadius: 20, background: `${coverageColor}18`, color: coverageColor, border: `1px solid ${coverageColor}44`, whiteSpace: "nowrap" }}>
-            Coverage: {coverage.level} ({coverage.coverage_score}%)
+            {coverageLabel} ({coverage.coverage_score}%)
           </span>
         </div>
       </div>
 
       {/* Low-coverage warning */}
-      {coverage.level === "Low" && (
+      {coverageStatus === "Weak" || (!coverageStatus && coverage.level === "Low") ? (
         <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "0.5rem 0.75rem" }}>
           <p style={{ margin: 0, fontSize: "0.67rem", color: "#9a3412", lineHeight: 1.5 }}>
             Limited creator content found for this topic. {coverage.retrieved > 0 ? `${coverage.accepted} of ${coverage.retrieved} retrieved segments matched — results may draw from loosely related content.` : "No creator segments retrieved."}
           </p>
         </div>
-      )}
+      ) : null}
 
       {/* Evidence claims */}
       {claims.length > 0 ? claims.map((claim, ci_i) => {
@@ -441,7 +448,19 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
             </div>
           </div>
         );
-      }) : (
+      }) : coverageStatus === "Contaminated" ? (
+        <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "0.65rem 0.9rem" }}>
+          <p style={{ margin: "0 0 0.25rem", fontSize: "0.72rem", fontWeight: 700, color: "#9a3412" }}>
+            Creator Intelligence — Coverage Unavailable
+          </p>
+          <p style={{ margin: 0, fontSize: "0.67rem", color: "#9a3412", lineHeight: 1.6 }}>
+            The creator corpus currently lacks sufficient relevant evidence for this topic.
+            {coverage.off_topic_count > 0
+              ? ` ${coverage.off_topic_count} retrieved creator segment${coverage.off_topic_count !== 1 ? "s" : ""} (${coverage.off_topic_ratio}%) were rejected as off-topic and excluded from the analysis.`
+              : ""}
+          </p>
+        </div>
+      ) : (
         <div>
           <p style={{ margin: "0 0 0.2rem", fontSize: "0.72rem", color: "#94a3b8" }}>No attributable creator claims found for this query.</p>
           <p style={{ margin: 0, fontSize: "0.62rem", fontWeight: 700, color: "#cbd5e1" }}>Signal Strength: None</p>
@@ -478,6 +497,9 @@ function CreatorDiagnostics({ memo }: { memo: IntelligenceMemo }) {
               { label: "Retrieved", value: coverage.retrieved },
               { label: "Accepted", value: coverage.accepted },
               { label: "Rejected", value: coverage.rejected },
+              { label: "Off-Topic", value: coverage.off_topic_count != null ? coverage.off_topic_count : "—" },
+              { label: "Off-Topic Rate", value: coverage.off_topic_ratio != null ? `${coverage.off_topic_ratio}%` : "—" },
+              { label: "Status", value: coverage.coverage_status ?? coverage.level },
               { label: "Coverage", value: `${coverage.coverage_score}%` },
               { label: "Avg Similarity", value: coverage.avg_similarity != null ? `${coverage.avg_similarity}` : "—" },
               { label: "Unique Creators", value: coverage.unique_creators != null ? coverage.unique_creators : "—" },
