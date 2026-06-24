@@ -431,7 +431,8 @@ const CREATOR_TOPIC_GATE = 50;
 // Minimum question_alignment_score (0.0–1.0) for a YT claim to influence theme clustering.
 // Claims below this threshold pass coverage tracking but are excluded from the extractor input,
 // preventing generic founder advice from steering theme generation.
-const MIN_THEME_ALIGNMENT = 0.50;
+// 0.35 = floor(1/2 * 100) * 0.75 — allows 1-of-2 keyword matches to qualify for themes.
+const MIN_THEME_ALIGNMENT = 0.35;
 
 // ── Query domain classification ───────────────────────────────────────────────
 
@@ -2784,7 +2785,12 @@ export async function POST(req: NextRequest) {
       // Creator-specific topic gate — stricter than the general relevance gate.
       // Off-topic YT claims are tracked for coverage reporting but excluded from
       // clustering, confidence scoring, cross-source consensus, and decision drivers.
-      const creatorTopicGate = Math.max(CREATOR_TOPIC_GATE, intentThresholds.relevanceGate);
+      // Scale with keyword count: with N keywords, 1 keyword match = floor(100/N).
+      // This ensures short-concept queries (3+ keywords) allow 1-keyword matches through
+      // while 2-keyword queries keep the 50% threshold. Floored at 25, capped at 50.
+      const oneKeywordPct = Math.floor(100 / Math.max(1, keywords.length));
+      const dynamicCreatorGate = Math.max(25, Math.min(CREATOR_TOPIC_GATE, oneKeywordPct));
+      const creatorTopicGate = Math.max(dynamicCreatorGate, intentThresholds.relevanceGate);
       const ytOffTopicClaims = gatedClaims.filter(c => c.source === "youtube" && c.queryRelevance < creatorTopicGate);
       const pipelineClaims   = gatedClaims.filter(c => c.source !== "youtube" || c.queryRelevance >= creatorTopicGate);
       if (ytOffTopicClaims.length > 0) {
