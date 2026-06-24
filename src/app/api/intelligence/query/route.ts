@@ -36,6 +36,8 @@ export type IntelligenceMemo = {
     supporting_sources: number;
     opposing_sources: number;
     unavailable_sources: number;
+    relationship_type: "CONTRADICTION" | "TRADEOFF" | "COMPLEMENTARY" | "CONSENSUS";
+    is_comparative_query: boolean;
   };
   source_breakdown: {
     youtube: { count: number; key_signals: string[] };
@@ -697,6 +699,36 @@ function computeSourceState(
   if (posPct >= 0.6) return "SUPPORTS";
   if (negPct >= 0.6) return "OPPOSES";
   return "MIXED";
+}
+
+// Comparison query detection — when multiple approaches are compared, differences are tradeoffs by default
+const COMPARISON_MARKERS = [" vs ", " vs.", " versus ", "compare", "comparison", "compared to", "alternative to", "better than", "which is better", "which works better"];
+function isComparativeQuery(q: string): boolean {
+  const lower = q.toLowerCase();
+  return COMPARISON_MARKERS.some(m => lower.includes(m));
+}
+
+type RelationshipType = "CONTRADICTION" | "TRADEOFF" | "COMPLEMENTARY" | "CONSENSUS";
+
+function classifyRelationshipType(
+  hardContradictionCount: number,
+  tradeoffCount:          number,
+  opposingSourceCount:    number,
+  agreementScore:         number,
+  isComparative:          boolean,
+): RelationshipType {
+  if (isComparative) {
+    // Comparative queries need very strong evidence to call a real contradiction
+    if (hardContradictionCount > 0 && agreementScore < 40) return "CONTRADICTION";
+    if (opposingSourceCount > 0 || tradeoffCount > 0) return "TRADEOFF";
+    return "CONSENSUS";
+  }
+  if (hardContradictionCount > 0) return "CONTRADICTION";
+  if (tradeoffCount > 0) return "TRADEOFF";
+  // OPPOSES without explicit tradeoffs: only contradiction when agreement is genuinely low
+  if (opposingSourceCount > 0 && agreementScore < 60) return "CONTRADICTION";
+  if (opposingSourceCount > 0) return "TRADEOFF"; // OPPOSES at high agreement = tradeoff context
+  return "CONSENSUS";
 }
 
 function computeFinalConfidence(
@@ -1880,6 +1912,8 @@ function buildDecisionDrivers(
   tradeoffCount:          number,
   sourceStates:           Record<"youtube" | "reddit" | "web", SourceSignalState>,
   creatorVisible:         boolean,
+  relationship_type:      RelationshipType,
+  isComparative:          boolean,
 ): IntelligenceMemo["decision_drivers"] {
   type SrcLabel = "creator" | "community" | "web";
   const SRC_TO_LABEL: Record<"youtube" | "reddit" | "web", SrcLabel> = {
@@ -1940,16 +1974,28 @@ function buildDecisionDrivers(
     const msg = CREATOR_FACTOR[creatorIntelligence.outcome];
     if (msg) uncertaintyFactors.push(msg);
   } else if (creatorVisible && sourceStates.youtube === "OPPOSES") {
-    uncertaintyFactors.push("Creator perspective contradicts community/web findings — competing signals detected");
+    if (relationship_type === "CONTRADICTION") {
+      uncertaintyFactors.push("Creator perspective contradicts community/web findings — competing signals detected");
+    } else if (relationship_type === "TRADEOFF") {
+      uncertaintyFactors.push("Creator and community emphasize different strengths — these are tradeoffs, not disagreements");
+    }
   }
 
   // Community
   if (sourceStates.reddit === "NO_SIGNAL") {
     uncertaintyFactors.push("Community intelligence unavailable for this topic — no practitioner discussion found");
   } else if (sourceStates.reddit === "OPPOSES") {
-    uncertaintyFactors.push("Community perspective contradicts other findings — competing practitioner signals detected");
+    if (relationship_type === "CONTRADICTION") {
+      uncertaintyFactors.push("Community perspective contradicts other findings — competing practitioner signals detected");
+    } else if (relationship_type === "TRADEOFF") {
+      uncertaintyFactors.push(
+        isComparative
+          ? "Multiple viable approaches identified — sources reflect tradeoffs across the compared options"
+          : "Sources emphasize different strengths rather than disagreeing — no single approach dominates"
+      );
+    }
   }
-  if (hardContradictionCount > 0) {
+  if (hardContradictionCount > 0 && relationship_type === "CONTRADICTION") {
     uncertaintyFactors.push(
       `${hardContradictionCount} direct contradiction${hardContradictionCount !== 1 ? "s" : ""} detected — sources disagree on specific outcomes`
     );
@@ -2172,6 +2218,8 @@ function assembleMemo(
       ? { ...sourceStates, youtube: "SUPPORTS" }
       : sourceStates;
 
+  const isComparative = isComparativeQuery(query);
+
   // Split extractor output into hard contradictions and tradeoffs
   const hardContradictions = extractor.contradictions.filter(c => c.conflict_type !== "tradeoff");
   const softTradeoffs      = extractor.contradictions.filter(c => c.conflict_type === "tradeoff");
@@ -2194,6 +2242,15 @@ function assembleMemo(
     why_it_matters: c.explanation,
   }));
 
+  const opposingCount = (["youtube", "reddit", "web"] as const).filter(s => effectiveSourceStates[s] === "OPPOSES").length;
+  const relationship_type = classifyRelationshipType(
+    hardContradictions.length,
+    filteredTradeoffs.length,
+    opposingCount,
+    agreementScore,
+    isComparative,
+  );
+
   // Insight density: unique themes vs total signals
   const uniqueInsights = clusters.length;
   const totalSignals   = gatedClaims.length;
@@ -2215,6 +2272,8 @@ function assembleMemo(
     filteredTradeoffs.length,
     effectiveSourceStates,
     creatorVisible,
+    relationship_type,
+    isComparative,
   );
 
   // Build new insight clusters format: synthesized themes, not raw excerpts
@@ -2258,6 +2317,8 @@ function assembleMemo(
       supporting_sources:  (["youtube", "reddit", "web"] as const).filter(s => effectiveSourceStates[s] === "SUPPORTS").length,
       opposing_sources:    (["youtube", "reddit", "web"] as const).filter(s => effectiveSourceStates[s] === "OPPOSES").length,
       unavailable_sources: (["youtube", "reddit", "web"] as const).filter(s => effectiveSourceStates[s] === "NO_SIGNAL").length,
+      relationship_type,
+      is_comparative_query: isComparative,
     },
     source_breakdown: {
       youtube: { count: rawCounts.youtube, key_signals: bySource("youtube").slice(0, 4).map(c => c.claim) },
