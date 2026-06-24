@@ -397,6 +397,43 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
         </div>
       ) : null}
 
+      {/* Creator Signal Audit Strip — always visible */}
+      {ci.debug?.alignment && (
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 7, padding: "0.45rem 0.75rem" }}>
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+            {[
+              { label: "Corpus", value: ci.coverage.corpus_matches ?? "—" },
+              { label: "Retrieved", value: ci.coverage.retrieved },
+              { label: "Accepted", value: ci.coverage.accepted },
+              { label: "Aligned", value: ci.debug.alignment.high_alignment_claims },
+              { label: "Themes", value: ci.themes_generated },
+            ].map(s => (
+              <div key={s.label} style={{ display: "flex", gap: "0.3rem", alignItems: "baseline" }}>
+                <span style={{ fontSize: "0.55rem", color: "#94a3b8" }}>{s.label}</span>
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "#374151" }}>{s.value}</span>
+              </div>
+            ))}
+            {(() => {
+              const STAGE_LABEL: Record<string, string> = {
+                "Missing Creator Content": "Corpus",
+                "Retrieval Failure":       "Retrieval",
+                "Quality Gate Failure":    "Quality Gate",
+                "Weak Query Alignment":    "Alignment Filter",
+                "Synthesis Failure":       "Synthesis",
+              };
+              const stage = ci.creator_signal_outcome ? STAGE_LABEL[ci.creator_signal_outcome] : null;
+              if (!stage) return null;
+              return (
+                <span style={{ marginLeft: "auto", fontSize: "0.54rem", fontWeight: 700, padding: "2px 8px", borderRadius: 10,
+                  background: "#fef2f280", color: "#dc2626", border: "1px solid #fecaca30" }}>
+                  ✗ {stage}
+                </span>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* Evidence claims */}
       {claims.length > 0 ? claims.map((claim, ci_i) => {
         const consensusMeta = CONSENSUS_META[claim.consensus ?? "Anecdotal"] ?? CONSENSUS_META["Anecdotal"];
@@ -493,37 +530,42 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
             </div>
           </div>
         );
-      }) : coverageStatus === "Contaminated" || coverageStatus === "No Coverage" ? (
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "0.65rem 0.9rem" }}>
-          <p style={{ margin: "0 0 0.3rem", fontSize: "0.72rem", fontWeight: 700, color: "#475569" }}>
-            Creator Intelligence — Coverage Unavailable
-          </p>
-          {coverage.root_cause === "Missing Corpus Content" ? (
-            <p style={{ margin: 0, fontSize: "0.67rem", color: "#64748b", lineHeight: 1.6 }}>
-              The creator corpus currently contains insufficient content on this topic. No creator evidence contributed to the final decision.
-              {coverage.corpus_matches === 0 && (
-                <span style={{ display: "block", marginTop: "0.25rem", fontSize: "0.62rem", color: "#94a3b8" }}>
-                  Corpus scan returned 0 matching segments — this topic is not yet covered in the creator library.
-                </span>
-              )}
+      }) : (() => {
+        const outcome = ci.creator_signal_outcome;
+        const OUTCOME_COPY: Record<string, { title: string; body: string }> = {
+          "Missing Creator Content": {
+            title: "Missing Creator Content",
+            body:  "We could not find creator content directly addressing this topic. This query is not yet covered in the creator library.",
+          },
+          "Retrieval Failure": {
+            title: "Retrieval Failure",
+            body:  `Creator content exists in the corpus (${coverage.corpus_matches} match${coverage.corpus_matches !== 1 ? "es" : ""}), but retrieval did not surface relevant segments for this query.`,
+          },
+          "Quality Gate Failure": {
+            title: "Quality Gate Failure",
+            body:  "Retrieved creator content did not meet quality thresholds. Evidence may exist but was too weak to use.",
+          },
+          "Weak Query Alignment": {
+            title: "Weak Query Alignment",
+            body:  "Creator content exists, but most accepted claims discuss adjacent topics rather than directly answering the question. The available evidence was excluded from theme synthesis.",
+          },
+          "Synthesis Failure": {
+            title: "Synthesis Failure",
+            body:  "Relevant creator evidence was identified but could not be consolidated into strong themes. This may indicate conflicting or sparse evidence.",
+          },
+        };
+        const copy = outcome ? OUTCOME_COPY[outcome] : null;
+        return (
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "0.65rem 0.9rem" }}>
+            <p style={{ margin: "0 0 0.3rem", fontSize: "0.7rem", fontWeight: 700, color: "#475569" }}>
+              {copy?.title ?? "Creator Intelligence Unavailable"}
             </p>
-          ) : (
-            <p style={{ margin: 0, fontSize: "0.67rem", color: "#64748b", lineHeight: 1.6 }}>
-              Creator content exists for this topic ({coverage.corpus_matches} corpus match{coverage.corpus_matches !== 1 ? "es" : ""}), but retrieval surfaced mostly unrelated material.
-              {coverage.off_topic_count > 0 && (
-                <span style={{ display: "block", marginTop: "0.25rem", fontSize: "0.62rem", color: "#94a3b8" }}>
-                  {coverage.off_topic_count} retrieved segment{coverage.off_topic_count !== 1 ? "s" : ""} ({coverage.off_topic_ratio}%) rejected as off-topic. Consider reviewing retrieval thresholds or embeddings.
-                </span>
-              )}
+            <p style={{ margin: 0, fontSize: "0.66rem", color: "#64748b", lineHeight: 1.65 }}>
+              {copy?.body ?? "No creator evidence found for this query."}
             </p>
-          )}
-        </div>
-      ) : (
-        <div>
-          <p style={{ margin: "0 0 0.2rem", fontSize: "0.72rem", color: "#94a3b8" }}>No attributable creator claims found for this query.</p>
-          <p style={{ margin: 0, fontSize: "0.62rem", fontWeight: 700, color: "#cbd5e1" }}>Signal Strength: None</p>
-        </div>
-      )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

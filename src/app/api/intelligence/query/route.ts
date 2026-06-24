@@ -151,6 +151,15 @@ export type IntelligenceMemo = {
   } | null;
   perspective_raw: Record<"youtube" | "reddit" | "web", string[]> | null;
   creator_intelligence: {
+    themes_generated: number;
+    creator_signal_outcome:
+      | "Missing Creator Content"
+      | "Retrieval Failure"
+      | "Quality Gate Failure"
+      | "Weak Query Alignment"
+      | "Synthesis Failure"
+      | "Weak Creator Signal"
+      | "Strong Creator Signal";
     claims: Array<{
       theme: string;
       confidence: "High" | "Medium" | "Low";
@@ -1531,14 +1540,15 @@ function buildCreatorIntelligence(
     claimItems.push({ theme: cluster.theme, confidence, confidence_score, consensus, creator_count, evidence_count, avg_similarity, avg_alignment, potentially_off_question, evidence });
   }
 
-  // Alignment diagnostics
+  // Alignment diagnostics — scoped to ALL accepted YT claims (not just clustered ones)
+  // so "Synthesis Failure" can fire when aligned claims exist but no themes formed.
   const HIGH_ALIGNMENT_THRESHOLD = 0.60;
   const OFF_QUESTION_THRESHOLD   = 0.30;
-  const allAlignVals = allEvidenceItems.map(e => e.alignment);
-  const avgAlignmentVal = allAlignVals.length > 0
-    ? Math.round((allAlignVals.reduce((s, a) => s + a, 0) / allAlignVals.length) * 100) / 100
+  const acceptedYtAligns         = acceptedYtClaims.map(c => computeQuestionAlignment(c.claim, keywords));
+  const acceptedHighAlignCount   = acceptedYtAligns.filter(s => s >= HIGH_ALIGNMENT_THRESHOLD).length;
+  const acceptedAvgAlignment     = acceptedYtAligns.length > 0
+    ? Math.round((acceptedYtAligns.reduce((s, a) => s + a, 0) / acceptedYtAligns.length) * 100) / 100
     : 0;
-  const highAlignmentCount = allEvidenceItems.filter(e => e.alignment >= HIGH_ALIGNMENT_THRESHOLD).length;
 
   const top_answering_claims = [...allEvidenceItems]
     .sort((a, b) => b.alignment - a.alignment)
@@ -1550,10 +1560,21 @@ function buildCreatorIntelligence(
     .slice(0, 8);
 
   const alignment_debug = {
-    accepted_claims:      allEvidenceItems.length,
-    high_alignment_claims: highAlignmentCount,
-    average_alignment:    avgAlignmentVal,
+    accepted_claims:       accepted,
+    high_alignment_claims: acceptedHighAlignCount,
+    average_alignment:     acceptedAvgAlignment,
   };
+
+  // Deterministic outcome classification — identifies which pipeline stage failed
+  const themes_generated = claimItems.length;
+  const creator_signal_outcome: IntelligenceMemo["creator_intelligence"] extends null ? never : NonNullable<IntelligenceMemo["creator_intelligence"]>["creator_signal_outcome"] =
+    corpusMatchCount === 0                                        ? "Missing Creator Content"
+    : retrieved === 0                                             ? "Retrieval Failure"
+    : accepted === 0                                              ? "Quality Gate Failure"
+    : acceptedHighAlignCount === 0                                ? "Weak Query Alignment"
+    : themes_generated === 0                                      ? "Synthesis Failure"
+    : acceptedHighAlignCount >= 3 && themes_generated >= 1       ? "Strong Creator Signal"
+    :                                                               "Weak Creator Signal";
 
   const ytOffTopicCount   = ytOffTopicClaims.length;
   const totalQualityGated = accepted + ytOffTopicCount;
@@ -1651,6 +1672,8 @@ function buildCreatorIntelligence(
     .sort(([, a], [, b]) => b - a)[0]?.[0] ?? "NONE";
 
   return {
+    themes_generated,
+    creator_signal_outcome,
     claims: coverage_status === "Contaminated" ? [] : claimItems,
     coverage: {
       retrieved,
