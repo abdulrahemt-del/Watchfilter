@@ -337,6 +337,18 @@ const SRC_SYNTH_LABEL: Record<"youtube" | "reddit" | "web", string> = {
   web:     "What is generally recommended:",
 };
 
+// ── Creator outcome display labels ────────────────────────────────────────────
+
+const CREATOR_OUTCOME_LABEL: Record<string, string> = {
+  MISSING_CONTENT:   "Missing Creator Content",
+  RETRIEVAL_FAILURE: "Retrieval Failure",
+  QUALITY_FAILURE:   "Quality Gate Failure",
+  ALIGNMENT_FAILURE: "Alignment Failure",
+  SYNTHESIS_FAILURE: "Synthesis Failure",
+  WEAK_SIGNAL:       "Weak Creator Signal",
+  STRONG_SIGNAL:     "Strong Creator Signal",
+};
+
 // ── Creator Evidence Section — evidence-backed claims with source attribution ──
 
 const CONSENSUS_META: Record<string, { bg: string; color: string; border: string }> = {
@@ -430,15 +442,15 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
             ))}
             {(() => {
               const FAILURE_OUTCOMES = new Set([
-                "Missing Creator Content", "Retrieval Failure", "Quality Gate Failure",
-                "Weak Query Alignment", "Synthesis Failure",
+                "MISSING_CONTENT", "RETRIEVAL_FAILURE", "QUALITY_FAILURE",
+                "ALIGNMENT_FAILURE", "SYNTHESIS_FAILURE",
               ]);
-              const outcome = ci.creator_signal_outcome;
-              if (!outcome || !FAILURE_OUTCOMES.has(outcome)) return null;
+              const oc = ci.outcome;
+              if (!oc || !FAILURE_OUTCOMES.has(oc)) return null;
               return (
                 <span style={{ marginLeft: "auto", fontSize: "0.54rem", fontWeight: 700, padding: "2px 8px", borderRadius: 10,
                   background: "#fef2f280", color: "#dc2626", border: "1px solid #fecaca30" }}>
-                  ✗ {outcome}
+                  ✗ {CREATOR_OUTCOME_LABEL[oc] ?? oc}
                 </span>
               );
             })()}
@@ -543,30 +555,29 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
           </div>
         );
       }) : (() => {
-        const outcome = ci.creator_signal_outcome;
         const OUTCOME_COPY: Record<string, { title: string; body: string }> = {
-          "Missing Creator Content": {
+          MISSING_CONTENT: {
             title: "Missing Creator Content",
             body:  "We could not find creator content directly addressing this topic. This query is not yet covered in the creator library.",
           },
-          "Retrieval Failure": {
+          RETRIEVAL_FAILURE: {
             title: "Retrieval Failure",
             body:  `Creator content exists in the corpus (${coverage.corpus_matches} match${coverage.corpus_matches !== 1 ? "es" : ""}), but retrieval did not surface relevant segments for this query.`,
           },
-          "Quality Gate Failure": {
+          QUALITY_FAILURE: {
             title: "Quality Gate Failure",
             body:  "Retrieved creator content did not meet quality thresholds. Evidence may exist but was too weak to use.",
           },
-          "Weak Query Alignment": {
-            title: "Weak Query Alignment",
-            body:  "Creator content exists, but most accepted claims discuss adjacent topics rather than directly answering the question. The available evidence was excluded from theme synthesis.",
+          ALIGNMENT_FAILURE: {
+            title: "Alignment Failure",
+            body:  "Creator content exists, but accepted claims discuss adjacent topics rather than directly answering this question. The available evidence was excluded from theme synthesis.",
           },
-          "Synthesis Failure": {
+          SYNTHESIS_FAILURE: {
             title: "Synthesis Failure",
             body:  "Relevant creator evidence was identified but could not be consolidated into strong themes. This may indicate conflicting or sparse evidence.",
           },
         };
-        const copy = outcome ? OUTCOME_COPY[outcome] : null;
+        const copy = ci.outcome ? OUTCOME_COPY[ci.outcome] : null;
         return (
           <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "0.65rem 0.9rem" }}>
             <p style={{ margin: "0 0 0.3rem", fontSize: "0.7rem", fontWeight: 700, color: "#475569" }}>
@@ -919,13 +930,27 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
                       ))}
                     </ul>
                   </div>
-                  {p!.weak_signal && <p style={{ margin: "0.4rem 0 0", fontSize: "0.62rem", fontWeight: 700, color: "#d97706" }}>Signal Strength: Weak</p>}
+                  {p!.weak_signal && (
+                    <>
+                      <p style={{ margin: "0.4rem 0 0", fontSize: "0.62rem", fontWeight: 700, color: "#d97706" }}>Signal Strength: Weak</p>
+                      {memo.creator_intelligence?.outcome && (
+                        <p style={{ margin: "0.15rem 0 0", fontSize: "0.58rem", color: "#94a3b8" }}>
+                          Outcome: {CREATOR_OUTCOME_LABEL[memo.creator_intelligence.outcome] ?? memo.creator_intelligence.outcome}
+                        </p>
+                      )}
+                    </>
+                  )}
                 </>
               ) : (
                 <div>
                   <p style={{ margin: "0 0 0.2rem", fontSize: "0.72rem", color: "#94a3b8", lineHeight: 1.55 }}>{fb.body}</p>
                   <p style={{ margin: "0 0 0.35rem", fontSize: "0.65rem", color: "#cbd5e1" }}>{fb.footer}</p>
                   <p style={{ margin: 0, fontSize: "0.62rem", fontWeight: 700, color: "#cbd5e1" }}>Signal Strength: None</p>
+                  {memo.creator_intelligence?.outcome && (
+                    <p style={{ margin: "0.15rem 0 0", fontSize: "0.58rem", color: "#94a3b8" }}>
+                      Outcome: {CREATOR_OUTCOME_LABEL[memo.creator_intelligence.outcome] ?? memo.creator_intelligence.outcome}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

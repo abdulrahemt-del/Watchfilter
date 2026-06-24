@@ -166,6 +166,9 @@ export type IntelligenceMemo = {
       | "Synthesis Failure"
       | "Weak Creator Signal"
       | "Strong Creator Signal";
+    // Authoritative outcome enum — all UI and decision logic must gate on this
+    outcome: "MISSING_CONTENT" | "RETRIEVAL_FAILURE" | "QUALITY_FAILURE" | "ALIGNMENT_FAILURE" | "SYNTHESIS_FAILURE" | "WEAK_SIGNAL" | "STRONG_SIGNAL";
+    creator_available: boolean; // true iff themes_generated > 0
     claims: Array<{
       theme: string;
       confidence: "High" | "Medium" | "Low";
@@ -1627,6 +1630,20 @@ function buildCreatorIntelligence(
     : acceptedHighAlignCount >= 3 && themes_generated >= 1       ? "Strong Creator Signal"
     :                                                               "Weak Creator Signal";
 
+  // Single-source-of-truth outcome enum consumed by decision engine and UI
+  type CreatorOutcomeEnum = NonNullable<IntelligenceMemo["creator_intelligence"]>["outcome"];
+  const outcome: CreatorOutcomeEnum =
+    creator_signal_outcome === "Missing Creator Content" ? "MISSING_CONTENT"
+    : creator_signal_outcome === "Retrieval Failure"     ? "RETRIEVAL_FAILURE"
+    : creator_signal_outcome === "Quality Gate Failure"  ? "QUALITY_FAILURE"
+    : creator_signal_outcome === "Weak Query Alignment"  ? "ALIGNMENT_FAILURE"
+    : creator_signal_outcome === "Synthesis Failure"     ? "SYNTHESIS_FAILURE"
+    : creator_signal_outcome === "Strong Creator Signal" ? "STRONG_SIGNAL"
+    :                                                      "WEAK_SIGNAL";
+
+  // creator_available = true iff at least one theme was produced
+  const creator_available = themes_generated > 0;
+
   const ytOffTopicCount   = ytOffTopicClaims.length;
   const totalQualityGated = accepted + ytOffTopicCount;
   const offTopicRatio     = totalQualityGated > 0 ? ytOffTopicCount / totalQualityGated : 0;
@@ -1727,6 +1744,8 @@ function buildCreatorIntelligence(
     alignment_percentage,
     coverage_alignment_state,
     creator_signal_outcome,
+    outcome,
+    creator_available,
     claims: coverage_status === "Contaminated" ? [] : claimItems,
     coverage: {
       retrieved,
@@ -1837,6 +1856,7 @@ function buildDecisionDrivers(
   hardContradictionCount: number,
   tradeoffCount:          number,
   sourceStates:           Record<"youtube" | "reddit" | "web", SourceSignalState>,
+  creatorVisible:         boolean,
 ): IntelligenceMemo["decision_drivers"] {
   type SrcLabel = "creator" | "community" | "web";
   const SRC_TO_LABEL: Record<"youtube" | "reddit" | "web", SrcLabel> = {
@@ -1880,44 +1900,29 @@ function buildDecisionDrivers(
   const bd = confidenceResult.breakdown;
   const confPct = Math.round(confidenceResult.confidence * 100);
 
-  // Uncertainty factors — derived from coverage gaps, exclusions, contradictions
+  // Uncertainty factors — single source of truth: keyed to creator outcome enum
   const uncertaintyFactors: string[] = [];
-  const cov = creatorIntelligence?.coverage;
-  if (cov?.coverage_status === "Contaminated") {
-    uncertaintyFactors.push(
-      cov.root_cause === "Missing Corpus Content"
-        ? "Creator evidence absent from corpus for this topic — creator signal could not contribute to analysis"
-        : `Creator retrieval surfaced mostly off-topic content (${cov.off_topic_ratio}% off-topic) — creator signal excluded`
-    );
-  } else if (cov?.coverage_status === "No Coverage") {
-    uncertaintyFactors.push(
-      cov.root_cause === "Missing Corpus Content"
-        ? "No creator content found in corpus for this topic — creator signal absent"
-        : "Creator content may exist but retrieval did not surface relevant material — creator signal absent"
-    );
-  } else if (cov?.level === "Low") {
-    uncertaintyFactors.push(
-      `Creator corpus coverage is low (${cov.coverage_score}%) — limited creator evidence on this specific topic`
-    );
-  } else if (cov?.level === "Medium" && (cov.coverage_score ?? 100) < 40) {
-    uncertaintyFactors.push(
-      `Creator coverage is moderate (${cov.coverage_score}%) — some creator evidence found but not comprehensive`
-    );
-  }
-  // Source availability — NO_SIGNAL means absent, not contradictory
-  const creatorCoverageExplained = !!(
-    cov?.coverage_status === "Contaminated" || cov?.coverage_status === "No Coverage" ||
-    cov?.level === "Low" || (cov?.level === "Medium" && (cov.coverage_score ?? 100) < 40)
-  );
-  if (sourceStates.youtube === "NO_SIGNAL" && sourceStates.reddit === "NO_SIGNAL") {
-    uncertaintyFactors.push("Community and creator intelligence unavailable for this topic — decision based on web evidence only");
-  } else if (sourceStates.reddit === "NO_SIGNAL") {
-    uncertaintyFactors.push("Community intelligence unavailable for this topic — no practitioner discussion found");
-  } else if (sourceStates.youtube === "NO_SIGNAL" && !creatorCoverageExplained) {
-    uncertaintyFactors.push("Creator intelligence unavailable for this query — not enough relevant creator signal found");
-  }
-  if (sourceStates.youtube === "OPPOSES") {
+
+  // Creator — fires only when creator is NOT visible to the user.
+  // "creatorVisible" = themes rendered OR perspective bullets rendered in the UI.
+  // When visible, no unavailability warning should appear regardless of pipeline internals.
+  if (!creatorVisible && creatorIntelligence) {
+    const CREATOR_FACTOR: Partial<Record<NonNullable<IntelligenceMemo["creator_intelligence"]>["outcome"], string>> = {
+      RETRIEVAL_FAILURE: "Creator content may exist but retrieval did not surface relevant material",
+      ALIGNMENT_FAILURE: "Creator content exists but discusses adjacent topics — alignment to this query was low",
+      MISSING_CONTENT:   "Creator library does not yet contain meaningful coverage for this topic",
+      QUALITY_FAILURE:   "Creator content retrieved but did not meet evidence quality threshold",
+      SYNTHESIS_FAILURE: "Creator evidence found but insufficient signal to form coherent themes",
+    };
+    const msg = CREATOR_FACTOR[creatorIntelligence.outcome];
+    if (msg) uncertaintyFactors.push(msg);
+  } else if (creatorVisible && sourceStates.youtube === "OPPOSES") {
     uncertaintyFactors.push("Creator perspective contradicts community/web findings — competing signals detected");
+  }
+
+  // Community
+  if (sourceStates.reddit === "NO_SIGNAL") {
+    uncertaintyFactors.push("Community intelligence unavailable for this topic — no practitioner discussion found");
   } else if (sourceStates.reddit === "OPPOSES") {
     uncertaintyFactors.push("Community perspective contradicts other findings — competing practitioner signals detected");
   }
@@ -2127,6 +2132,23 @@ function assembleMemo(
   const agreementScore = confidenceResult.breakdown.agreement; // already 0-100
   const sourcesUsed = (["youtube", "reddit", "web"] as const).filter(s => !qualityScores[s].excluded);
 
+  // creatorVisible = true when ANY creator content is rendered in the UI:
+  // either structured evidence themes OR synthesized perspective bullets.
+  // This is the single boolean that gates all creator uncertainty factors and
+  // consensus source counts — prevents a rendered creator panel from coexisting
+  // with a "creator unavailable" uncertainty factor.
+  const creatorVisible =
+    (creatorIntelligence?.creator_available ?? false) ||
+    (perspResult.perspectives.youtube?.bullets?.length ?? 0) > 0;
+
+  // When creator is visible but raw source state says NO_SIGNAL (e.g. quality gate
+  // excluded YT but perspective fallback still rendered), upgrade to SUPPORTS so the
+  // consensus counts and justification text are accurate.
+  const effectiveSourceStates: typeof sourceStates =
+    creatorVisible && sourceStates.youtube === "NO_SIGNAL"
+      ? { ...sourceStates, youtube: "SUPPORTS" }
+      : sourceStates;
+
   // Split extractor output into hard contradictions and tradeoffs
   const hardContradictions = extractor.contradictions.filter(c => c.conflict_type !== "tradeoff");
   const softTradeoffs      = extractor.contradictions.filter(c => c.conflict_type === "tradeoff");
@@ -2168,7 +2190,8 @@ function assembleMemo(
     sourcesUsed,
     hardContradictions.length,
     filteredTradeoffs.length,
-    sourceStates,
+    effectiveSourceStates,
+    creatorVisible,
   );
 
   // Build new insight clusters format: synthesized themes, not raw excerpts
@@ -2208,10 +2231,10 @@ function assembleMemo(
       disagreements: hasRealContrad
         ? hardContradictions.slice(0, 3).map(c => c.explanation)
         : [],
-      source_states: sourceStates,
-      supporting_sources:  (["youtube", "reddit", "web"] as const).filter(s => sourceStates[s] === "SUPPORTS").length,
-      opposing_sources:    (["youtube", "reddit", "web"] as const).filter(s => sourceStates[s] === "OPPOSES").length,
-      unavailable_sources: (["youtube", "reddit", "web"] as const).filter(s => sourceStates[s] === "NO_SIGNAL").length,
+      source_states: effectiveSourceStates,
+      supporting_sources:  (["youtube", "reddit", "web"] as const).filter(s => effectiveSourceStates[s] === "SUPPORTS").length,
+      opposing_sources:    (["youtube", "reddit", "web"] as const).filter(s => effectiveSourceStates[s] === "OPPOSES").length,
+      unavailable_sources: (["youtube", "reddit", "web"] as const).filter(s => effectiveSourceStates[s] === "NO_SIGNAL").length,
     },
     source_breakdown: {
       youtube: { count: rawCounts.youtube, key_signals: bySource("youtube").slice(0, 4).map(c => c.claim) },
