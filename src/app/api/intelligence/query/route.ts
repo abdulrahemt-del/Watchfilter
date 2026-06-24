@@ -159,7 +159,8 @@ export type IntelligenceMemo = {
       creator_count: number;
       evidence_count: number;
       avg_similarity: number;
-      avg_alignment: number;           // avg question_alignment_score across evidence (0.0–1.0)
+      avg_alignment: number;              // avg question_alignment_score across evidence (0.0–1.0)
+      potentially_off_question: boolean; // true when avg_alignment < 0.40
       evidence: Array<{
         creator: string;
         video_title: string | null;
@@ -408,6 +409,11 @@ const INTENT_THRESHOLDS: Record<QueryIntent, { relevanceGate: number; qualityExc
 // Applied after the quality gate — off-topic YT claims are tracked but excluded
 // from clustering, confidence scoring, cross-source consensus, and decision drivers.
 const CREATOR_TOPIC_GATE = 50;
+
+// Minimum question_alignment_score (0.0–1.0) for a YT claim to influence theme clustering.
+// Claims below this threshold pass coverage tracking but are excluded from the extractor input,
+// preventing generic founder advice from steering theme generation.
+const MIN_THEME_ALIGNMENT = 0.50;
 
 // ── Query domain classification ───────────────────────────────────────────────
 
@@ -1009,8 +1015,19 @@ ACCEPT themes that:
 
 REJECT themes that:
 - Discuss the general topic area but not the specific question
-- Cover tangentially related mindsets, principles, or leadership approaches not asked about
+- Are broadly applicable founder/operator advice not specific to this question
 - Would make sense as an insight in ANY startup question
+
+EXPLICITLY BANNED THEME PATTERNS — discard immediately:
+• "Leadership [anything]" unless explicitly connected to the query's specific topic
+• "Relationships / networking / building relationships" — generic founder advice
+• "Mindset / self-leadership / self-improvement / personal development"
+• "Execution / discipline / consistency" without a query-specific mechanism
+• "Systemize operations / agency systems" — unrelated operations content
+• Any theme using "important", "matters", "is key", "is crucial" with no specific mechanism
+
+SPECIFICITY RULE: The theme title must contain at least one concept unique to this query.
+Generic virtues (leadership, discipline, relationships) only qualify when explicitly connected to the specific proposition in the question.
 
 SELF-CHECK RULE: Mentally replace the question with "How do I improve my morning routine?" — if the theme would still apply, DISCARD IT. The theme must be specific to: "${query}"`;
 
@@ -1509,7 +1526,9 @@ function buildCreatorIntelligence(
     const confidence: "High" | "Medium" | "Low" =
       confidence_score >= 60 ? "High" : confidence_score >= 35 ? "Medium" : "Low";
 
-    claimItems.push({ theme: cluster.theme, confidence, confidence_score, consensus, creator_count, evidence_count, avg_similarity, avg_alignment, evidence });
+    const potentially_off_question = avg_alignment < 0.40;
+
+    claimItems.push({ theme: cluster.theme, confidence, confidence_score, consensus, creator_count, evidence_count, avg_similarity, avg_alignment, potentially_off_question, evidence });
   }
 
   // Alignment diagnostics
@@ -1578,7 +1597,9 @@ function buildCreatorIntelligence(
     if (clusterYtIds.has(id)) {
       accepted_flag = true;
     } else if (topicPassedIds.has(id)) {
-      rejection_reason = "DOMAIN_MISMATCH";
+      // Passed topic gate — check if alignment gate excluded it from theme synthesis
+      const alignScore = computeQuestionAlignment(row.insight ?? row.quote ?? "", keywords);
+      rejection_reason = alignScore < MIN_THEME_ALIGNMENT ? "LOW_ALIGNMENT" : "DOMAIN_MISMATCH";
     } else if (offTopicIdSet.has(id)) {
       rejection_reason = "OFF_TOPIC";
     } else if (workingYtIdSet.has(id)) {
@@ -2674,11 +2695,27 @@ export async function POST(req: NextRequest) {
         emit({ type: "stage", agent: "Creator Gate", message: `${ytOffTopicClaims.length} off-topic creator claim${ytOffTopicClaims.length !== 1 ? "s" : ""} excluded (${pct}% of YT pool)`, count: pipelineClaims.filter(c => c.source === "youtube").length });
       }
 
+      // Theme-eligibility gate — YT claims below MIN_THEME_ALIGNMENT are excluded from the extractor
+      // so they cannot steer theme generation. They remain in pipelineClaims for coverage tracking.
+      const themeEligibleClaims = pipelineClaims.filter(c =>
+        c.source !== "youtube" || computeQuestionAlignment(c.claim, keywords) >= MIN_THEME_ALIGNMENT
+      );
+      const ytAlignmentExcluded = pipelineClaims.filter(c =>
+        c.source === "youtube" && computeQuestionAlignment(c.claim, keywords) < MIN_THEME_ALIGNMENT
+      );
+      if (ytAlignmentExcluded.length > 0) {
+        const ytPipelineTotal = pipelineClaims.filter(c => c.source === "youtube").length;
+        const pct = Math.round((ytAlignmentExcluded.length / ytPipelineTotal) * 100);
+        console.log(`[AlignmentGate] ${ytAlignmentExcluded.length}/${ytPipelineTotal} (${pct}%) YT claims below MIN_THEME_ALIGNMENT=${MIN_THEME_ALIGNMENT} — excluded from theme synthesis`);
+        emit({ type: "stage", agent: "Alignment Gate", message: `${ytAlignmentExcluded.length} low-alignment creator claim${ytAlignmentExcluded.length !== 1 ? "s" : ""} excluded from theme synthesis`, count: themeEligibleClaims.filter(c => c.source === "youtube").length });
+      }
+
+      // claimIndex covers all pipelineClaims — themeEligibleClaims ⊆ pipelineClaims, so all extractor IDs resolve
       const claimIndex = new Map(pipelineClaims.map(c => [c.id, c]));
 
       // Stage 5: Extract + cluster (domain-locked prompt) + domain safety filter
-      emit({ type: "stage", agent: "Extractor", message: `Extracting and clustering ${pipelineClaims.length} signals [domain: ${queryDomain}]…` });
-      const extractor = await runExtractor(query, queryDomain, pipelineClaims, evidenceMap);
+      emit({ type: "stage", agent: "Extractor", message: `Extracting and clustering ${themeEligibleClaims.length} signals [domain: ${queryDomain}]…` });
+      const extractor = await runExtractor(query, queryDomain, themeEligibleClaims, evidenceMap);
       const rawClusters = buildClusters(extractor, claimIndex);
       const clusters = filterClustersByDomain(rawClusters, extractor, queryDomain);
       const offDomainRemoved = rawClusters.length - clusters.length;
