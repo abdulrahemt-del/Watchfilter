@@ -201,6 +201,7 @@ export type IntelligenceMemo = {
       evidence_density_level: "High" | "Medium" | "Low";
       top_rejections: Array<{ claim: string; relevance_score: number; reason: string }>;
       coverage_status: "Good" | "Weak" | "Contaminated" | "No Coverage";
+      coverage_type: "MISSING_CONTENT" | "ADJACENT_CONTENT" | "DIRECT_CONTENT";
       off_topic_count: number;
       off_topic_ratio: number;
       corpus_matches: number;
@@ -1595,6 +1596,27 @@ function buildCreatorIntelligence(
     ? Math.round((acceptedYtAligns.reduce((s, a) => s + a, 0) / acceptedYtAligns.length) * 100) / 100
     : 0;
 
+  // Coverage type — corpus gap classification for ingestion roadmap
+  const coverage_type: "MISSING_CONTENT" | "ADJACENT_CONTENT" | "DIRECT_CONTENT" =
+    corpusMatchCount === 0                                                    ? "MISSING_CONTENT"
+    : acceptedHighAlignCount >= 3                                             ? "DIRECT_CONTENT"
+    : (acceptedHighAlignCount === 0 || acceptedAvgAlignment < 0.40) && retrieved > 0 ? "ADJACENT_CONTENT"
+    :                                                                           "DIRECT_CONTENT";
+
+  if (coverage_type === "ADJACENT_CONTENT") {
+    const topCreators = [...coverageCreatorNames].slice(0, 5);
+    const topVideos = [...new Set(
+      acceptedYtClaims.map(c => rowByClaimId.get(c.id)?.video_title).filter((v): v is string => !!v)
+    )].slice(0, 5);
+    console.log("[IngestionRoadmap] ADJACENT_CONTENT", JSON.stringify({
+      query,
+      coverage_type: "ADJACENT_CONTENT",
+      top_creators: topCreators,
+      top_videos:   topVideos,
+      average_alignment: acceptedAvgAlignment,
+    }));
+  }
+
   const top_answering_claims = [...allEvidenceItems]
     .sort((a, b) => b.alignment - a.alignment)
     .slice(0, 5);
@@ -1759,6 +1781,7 @@ function buildCreatorIntelligence(
       evidence_density_level: evidenceDensityLevel,
       top_rejections: topRejections,
       coverage_status,
+      coverage_type,
       off_topic_count: ytOffTopicCount,
       off_topic_ratio: Math.round(offTopicRatio * 100),
       corpus_matches: corpusMatchCount,

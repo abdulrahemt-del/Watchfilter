@@ -343,7 +343,7 @@ const CREATOR_OUTCOME_LABEL: Record<string, string> = {
   MISSING_CONTENT:   "Missing Creator Content",
   RETRIEVAL_FAILURE: "Retrieval Failure",
   QUALITY_FAILURE:   "Quality Gate Failure",
-  ALIGNMENT_FAILURE: "Alignment Failure",
+  ALIGNMENT_FAILURE: "Adjacent Creator Coverage",
   SYNTHESIS_FAILURE: "Synthesis Failure",
   WEAK_SIGNAL:       "Weak Creator Signal",
   STRONG_SIGNAL:     "Strong Creator Signal",
@@ -569,8 +569,8 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
             body:  "Retrieved creator content did not meet quality thresholds. Evidence may exist but was too weak to use.",
           },
           ALIGNMENT_FAILURE: {
-            title: "Alignment Failure",
-            body:  "Creator content exists, but accepted claims discuss adjacent topics rather than directly answering this question. The available evidence was excluded from theme synthesis.",
+            title: "Adjacent Creator Coverage",
+            body:  "Creator content exists nearby this topic, but retrieved segments primarily discuss related subjects rather than directly answering the query. Additional creator coverage on this topic would materially improve results.",
           },
           SYNTHESIS_FAILURE: {
             title: "Synthesis Failure",
