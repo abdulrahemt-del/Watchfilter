@@ -37,6 +37,7 @@ export type IntelligenceMemo = {
     opposing_sources: number;
     unavailable_sources: number;
     relationship_type: "CONTRADICTION" | "TRADEOFF" | "COMPLEMENTARY" | "CONSENSUS";
+    relationship_reason: string;
     is_comparative_query: boolean;
   };
   source_breakdown: {
@@ -717,18 +718,47 @@ function classifyRelationshipType(
   agreementScore:         number,
   isComparative:          boolean,
 ): RelationshipType {
-  if (isComparative) {
-    // Comparative queries need very strong evidence to call a real contradiction
-    if (hardContradictionCount > 0 && agreementScore < 40) return "CONTRADICTION";
-    if (opposingSourceCount > 0 || tradeoffCount > 0) return "TRADEOFF";
-    return "CONSENSUS";
-  }
+  // Hard contradictions from the extractor win unconditionally — the extractor already
+  // performed semantic "can both be true?" reasoning on the actual claim content.
+  // Comparative query framing does NOT override this.
   if (hardContradictionCount > 0) return "CONTRADICTION";
-  if (tradeoffCount > 0) return "TRADEOFF";
-  // OPPOSES without explicit tradeoffs: only contradiction when agreement is genuinely low
+
+  // Explicit tradeoff evidence OR comparative framing with no contradictions → TRADEOFF
+  if (tradeoffCount > 0 || isComparative) return "TRADEOFF";
+
+  // OPPOSES source without extractor evidence:
+  // Low agreement means sources genuinely diverge on a non-comparative topic → CONTRADICTION
+  // High agreement means the negativity is contextual, not absolute → TRADEOFF
   if (opposingSourceCount > 0 && agreementScore < 60) return "CONTRADICTION";
-  if (opposingSourceCount > 0) return "TRADEOFF"; // OPPOSES at high agreement = tradeoff context
+  if (opposingSourceCount > 0) return "TRADEOFF";
+
   return "CONSENSUS";
+}
+
+// Generate a human-readable explanation of why this relationship type was assigned.
+// Uses extractor evidence when available; falls back to templated copy.
+function buildRelationshipReason(
+  type:         RelationshipType,
+  extractor:    ExtractorOutput,
+  isComparative: boolean,
+): string {
+  switch (type) {
+    case "CONTRADICTION": {
+      const first = extractor.contradictions.find(c => c.conflict_type !== "tradeoff");
+      return first?.explanation ?? "Sources make mutually incompatible claims — both cannot be true simultaneously.";
+    }
+    case "TRADEOFF": {
+      const first = extractor.contradictions.find(c => c.conflict_type === "tradeoff");
+      if (first?.explanation) return first.explanation;
+      return isComparative
+        ? "Sources emphasize different strengths of the compared strategies — both approaches can succeed in different contexts."
+        : "Sources emphasize different strengths rather than disagreeing — multiple approaches can succeed simultaneously.";
+    }
+    case "COMPLEMENTARY":
+      return "Sources describe different aspects of the same process, reinforcing one another.";
+    case "CONSENSUS":
+      return "Sources independently support the same conclusion.";
+  }
 }
 
 function computeFinalConfidence(
@@ -1914,6 +1944,7 @@ function buildDecisionDrivers(
   creatorVisible:         boolean,
   relationship_type:      RelationshipType,
   isComparative:          boolean,
+  relationship_reason:    string,
 ): IntelligenceMemo["decision_drivers"] {
   type SrcLabel = "creator" | "community" | "web";
   const SRC_TO_LABEL: Record<"youtube" | "reddit" | "web", SrcLabel> = {
@@ -1974,25 +2005,16 @@ function buildDecisionDrivers(
     const msg = CREATOR_FACTOR[creatorIntelligence.outcome];
     if (msg) uncertaintyFactors.push(msg);
   } else if (creatorVisible && sourceStates.youtube === "OPPOSES") {
-    if (relationship_type === "CONTRADICTION") {
-      uncertaintyFactors.push("Creator perspective contradicts community/web findings — competing signals detected");
-    } else if (relationship_type === "TRADEOFF") {
-      uncertaintyFactors.push("Creator and community emphasize different strengths — these are tradeoffs, not disagreements");
-    }
+    uncertaintyFactors.push(`Relationship: ${relationship_type} — ${relationship_reason}`);
   }
 
   // Community
   if (sourceStates.reddit === "NO_SIGNAL") {
     uncertaintyFactors.push("Community intelligence unavailable for this topic — no practitioner discussion found");
   } else if (sourceStates.reddit === "OPPOSES") {
-    if (relationship_type === "CONTRADICTION") {
-      uncertaintyFactors.push("Community perspective contradicts other findings — competing practitioner signals detected");
-    } else if (relationship_type === "TRADEOFF") {
-      uncertaintyFactors.push(
-        isComparative
-          ? "Multiple viable approaches identified — sources reflect tradeoffs across the compared options"
-          : "Sources emphasize different strengths rather than disagreeing — no single approach dominates"
-      );
+    // Only push if creator didn't already push the relationship factor
+    if (!creatorVisible || sourceStates.youtube !== "OPPOSES") {
+      uncertaintyFactors.push(`Relationship: ${relationship_type} — ${relationship_reason}`);
     }
   }
   if (hardContradictionCount > 0 && relationship_type === "CONTRADICTION") {
@@ -2250,6 +2272,16 @@ function assembleMemo(
     agreementScore,
     isComparative,
   );
+  const relationship_reason = buildRelationshipReason(relationship_type, extractor, isComparative);
+
+  // Confidence adjustment by relationship type
+  const RELATIONSHIP_DELTA: Record<RelationshipType, number> = {
+    CONSENSUS:      0.10,
+    COMPLEMENTARY:  0.05,
+    TRADEOFF:       0.00,
+    CONTRADICTION: -0.20,
+  };
+  const adjustedConfidence = Math.max(0, Math.min(1, confidenceResult.confidence + RELATIONSHIP_DELTA[relationship_type]));
 
   // Insight density: unique themes vs total signals
   const uniqueInsights = clusters.length;
@@ -2274,6 +2306,7 @@ function assembleMemo(
     creatorVisible,
     relationship_type,
     isComparative,
+    relationship_reason,
   );
 
   // Build new insight clusters format: synthesized themes, not raw excerpts
@@ -2299,7 +2332,7 @@ function assembleMemo(
     directional: decision.directional,
     decision_summary: decision.decision_summary,
     reddit_gap: qualityScores.reddit.excluded,
-    confidence_score: Math.round(confidenceResult.confidence * 100),
+    confidence_score: Math.round(adjustedConfidence * 100),
     confidence_breakdown: {
       agreement:            agreementScore,
       sourceCoverage:       confidenceResult.breakdown.sourceCoverage,
@@ -2318,6 +2351,7 @@ function assembleMemo(
       opposing_sources:    (["youtube", "reddit", "web"] as const).filter(s => effectiveSourceStates[s] === "OPPOSES").length,
       unavailable_sources: (["youtube", "reddit", "web"] as const).filter(s => effectiveSourceStates[s] === "NO_SIGNAL").length,
       relationship_type,
+      relationship_reason,
       is_comparative_query: isComparative,
     },
     source_breakdown: {
