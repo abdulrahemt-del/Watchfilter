@@ -142,8 +142,23 @@ function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
             <div style={{ width: 60, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
               <div style={{ width: `${agreeScore}%`, height: "100%", background: agreeColor, borderRadius: 2 }} />
             </div>
-            <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>{agreeLabel(agreeScore)}</span>
+            <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>
+              {(memo.consensus.supporting_sources ?? 0) >= 2 && (memo.consensus.opposing_sources ?? 0) === 0
+                ? "Strong Consensus"
+                : agreeLabel(agreeScore)}
+            </span>
           </div>
+          {memo.consensus.supporting_sources != null && (
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "0.57rem", color: "#10b981" }}>↑ {memo.consensus.supporting_sources} supporting</span>
+              {(memo.consensus.opposing_sources ?? 0) > 0 && (
+                <span style={{ fontSize: "0.57rem", color: "#ef4444" }}>↓ {memo.consensus.opposing_sources} opposing</span>
+              )}
+              {(memo.consensus.unavailable_sources ?? 0) > 0 && (
+                <span style={{ fontSize: "0.57rem", color: "#94a3b8" }}>◌ {memo.consensus.unavailable_sources} unavailable</span>
+              )}
+            </div>
+          )}
           {density && (
             <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>
               {density.total_signals} signals · {density.unique_insights} unique insight{density.unique_insights !== 1 ? "s" : ""}

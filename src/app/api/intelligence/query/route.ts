@@ -32,6 +32,10 @@ export type IntelligenceMemo = {
     agreement_score: number; // 0-100
     shared_insights: string[];
     disagreements: string[];
+    source_states: Record<"youtube" | "reddit" | "web", "SUPPORTS" | "OPPOSES" | "MIXED" | "NO_SIGNAL">;
+    supporting_sources: number;
+    opposing_sources: number;
+    unavailable_sources: number;
   };
   source_breakdown: {
     youtube: { count: number; key_signals: string[] };
@@ -299,6 +303,9 @@ type ConfidenceResult = {
     crossSourceBonus: number;     // 0-15
   };
 };
+
+// Per-source signal state — distinguishes "no evidence" (NO_SIGNAL) from "contradicting evidence" (OPPOSES)
+type SourceSignalState = "SUPPORTS" | "OPPOSES" | "MIXED" | "NO_SIGNAL";
 
 type ExtractorOutput = {
   normalized_claims: Array<{
@@ -667,10 +674,31 @@ function contradictionPenalty(clusters: ClaimCluster[]): number {
   return Math.min(0.5, p);
 }
 
+// Classifies a source's signal direction from cluster evidence.
+// NO_SIGNAL = source excluded or has no claims — not the same as opposing.
+function computeSourceState(
+  source: "youtube" | "reddit" | "web",
+  clusters: ClaimCluster[],
+  qualityScores: Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+): SourceSignalState {
+  if (qualityScores[source].excluded) return "NO_SIGNAL";
+  const sourceClaims = clusters.flatMap(c => c.claims).filter(c => c.source === source);
+  if (sourceClaims.length === 0) return "NO_SIGNAL";
+  const pos = sourceClaims.filter(c => c.type === "success" || c.type === "recommendation").length;
+  const neg = sourceClaims.filter(c => c.type === "failure"  || c.type === "pain_point").length;
+  if (pos === 0 && neg === 0) return "SUPPORTS"; // neutral / opinion claims → soft support
+  const posPct = pos / sourceClaims.length;
+  const negPct = neg / sourceClaims.length;
+  if (posPct >= 0.6) return "SUPPORTS";
+  if (negPct >= 0.6) return "OPPOSES";
+  return "MIXED";
+}
+
 function computeFinalConfidence(
   clusters:            ClaimCluster[],
   qualityScores:       Record<string, SourceQualityResult>,
   extractorHasContrad: boolean,
+  sourceStates:        Record<"youtube" | "reddit" | "web", SourceSignalState>,
 ): ConfidenceResult {
   if (!clusters.length) return {
     confidence: 0,
@@ -704,9 +732,19 @@ function computeFinalConfidence(
   const maxSourceDiversity = Math.max(...clusters.map(c => new Set(c.claims.map(cl => cl.source)).size), 0);
   const crossSourceBonus = maxSourceDiversity >= 3 ? 0.15 : maxSourceDiversity >= 2 ? 0.07 : 0;
 
+  // Source state penalties — absence is not disagreement
+  const SOURCE_STATE_PENALTY: Record<SourceSignalState, number> = {
+    SUPPORTS:  0,
+    NO_SIGNAL: 0.05,
+    MIXED:     0.10,
+    OPPOSES:   0.25,
+  };
+  const statesPenalty = (["youtube", "reddit", "web"] as const)
+    .reduce((sum, s) => sum + SOURCE_STATE_PENALTY[sourceStates[s]], 0);
+
   return {
     confidence: clamp(
-      agreement * 0.40 + sourceCoverage * 0.25 + signalDensity * 0.15 + qualityBonus + crossSourceBonus - penalty * 0.10,
+      agreement * 0.40 + sourceCoverage * 0.25 + signalDensity * 0.15 + qualityBonus + crossSourceBonus - penalty * 0.10 - statesPenalty,
       0, 1,
     ),
     breakdown: {
@@ -1797,6 +1835,7 @@ function buildDecisionDrivers(
   sourcesUsed:            Array<"youtube" | "reddit" | "web">,
   hardContradictionCount: number,
   tradeoffCount:          number,
+  sourceStates:           Record<"youtube" | "reddit" | "web", SourceSignalState>,
 ): IntelligenceMemo["decision_drivers"] {
   type SrcLabel = "creator" | "community" | "web";
   const SRC_TO_LABEL: Record<"youtube" | "reddit" | "web", SrcLabel> = {
@@ -1864,12 +1903,22 @@ function buildDecisionDrivers(
       `Creator coverage is moderate (${cov.coverage_score}%) — some creator evidence found but not comprehensive`
     );
   }
-  if (qualityScores.reddit.excluded && qualityScores.youtube.excluded) {
-    uncertaintyFactors.push("Evidence limited to web sources only — community and creator perspectives unavailable");
-  } else if (qualityScores.reddit.excluded) {
-    uncertaintyFactors.push("Community intelligence excluded — practitioner signal quality below threshold");
-  } else if (qualityScores.youtube.excluded) {
-    uncertaintyFactors.push("Creator intelligence excluded — no strong creator signal found for this query");
+  // Source availability — NO_SIGNAL means absent, not contradictory
+  const creatorCoverageExplained = !!(
+    cov?.coverage_status === "Contaminated" || cov?.coverage_status === "No Coverage" ||
+    cov?.level === "Low" || (cov?.level === "Medium" && (cov.coverage_score ?? 100) < 40)
+  );
+  if (sourceStates.youtube === "NO_SIGNAL" && sourceStates.reddit === "NO_SIGNAL") {
+    uncertaintyFactors.push("Community and creator intelligence unavailable for this topic — decision based on web evidence only");
+  } else if (sourceStates.reddit === "NO_SIGNAL") {
+    uncertaintyFactors.push("Community intelligence unavailable for this topic — no practitioner discussion found");
+  } else if (sourceStates.youtube === "NO_SIGNAL" && !creatorCoverageExplained) {
+    uncertaintyFactors.push("Creator intelligence unavailable for this query — not enough relevant creator signal found");
+  }
+  if (sourceStates.youtube === "OPPOSES") {
+    uncertaintyFactors.push("Creator perspective contradicts community/web findings — competing signals detected");
+  } else if (sourceStates.reddit === "OPPOSES") {
+    uncertaintyFactors.push("Community perspective contradicts other findings — competing practitioner signals detected");
   }
   if (hardContradictionCount > 0) {
     uncertaintyFactors.push(
@@ -1883,8 +1932,15 @@ function buildDecisionDrivers(
     uncertaintyFactors.push("Source diversity is limited — most evidence comes from a single source type");
   }
 
-  const decision_strength: "Strong" | "Moderate" | "Weak" =
+  const supportingCount = (["youtube", "reddit", "web"] as const).filter(s => sourceStates[s] === "SUPPORTS").length;
+  const opposingCount   = (["youtube", "reddit", "web"] as const).filter(s => sourceStates[s] === "OPPOSES").length;
+
+  let decision_strength: "Strong" | "Moderate" | "Weak" =
     confPct >= 80 ? "Strong" : confPct >= 55 ? "Moderate" : "Weak";
+  // Strong Consensus rule: 2+ sources support and 0 oppose → upgrade Moderate → Strong
+  if (supportingCount >= 2 && opposingCount === 0 && decision_strength === "Moderate") {
+    decision_strength = "Strong";
+  }
 
   const crossSourceCount = clusters.filter(c =>
     new Set(c.claims.filter(cl => !qualityScores[cl.source].excluded).map(cl => cl.source)).size >= 2
@@ -2055,6 +2111,7 @@ function assembleMemo(
   evidenceProcessing: IntelligenceMemo["evidence_processing"],
   perspRaw:           Record<"youtube" | "reddit" | "web", string[]>,
   creatorIntelligence: IntelligenceMemo["creator_intelligence"],
+  sourceStates:       Record<"youtube" | "reddit" | "web", SourceSignalState>,
 ): IntelligenceMemo {
   const bySource = (src: NormalizedClaim["source"]) =>
     gatedClaims.filter(c => c.source === src)
@@ -2110,6 +2167,7 @@ function assembleMemo(
     sourcesUsed,
     hardContradictions.length,
     filteredTradeoffs.length,
+    sourceStates,
   );
 
   // Build new insight clusters format: synthesized themes, not raw excerpts
@@ -2149,6 +2207,10 @@ function assembleMemo(
       disagreements: hasRealContrad
         ? hardContradictions.slice(0, 3).map(c => c.explanation)
         : [],
+      source_states: sourceStates,
+      supporting_sources:  (["youtube", "reddit", "web"] as const).filter(s => sourceStates[s] === "SUPPORTS").length,
+      opposing_sources:    (["youtube", "reddit", "web"] as const).filter(s => sourceStates[s] === "OPPOSES").length,
+      unavailable_sources: (["youtube", "reddit", "web"] as const).filter(s => sourceStates[s] === "NO_SIGNAL").length,
     },
     source_breakdown: {
       youtube: { count: rawCounts.youtube, key_signals: bySource("youtube").slice(0, 4).map(c => c.claim) },
@@ -2762,7 +2824,12 @@ export async function POST(req: NextRequest) {
       // Stage 6: Score (deterministic; cap confidence in recovery mode)
       // Only hard contradictions (not tradeoffs) should penalise confidence
       const extractorHasContrad = extractor.contradictions.some(c => c.conflict_type !== "tradeoff");
-      let confidenceResult = computeFinalConfidence(clusters, qualityScores, extractorHasContrad);
+      const sourceStates: Record<"youtube" | "reddit" | "web", SourceSignalState> = {
+        youtube: computeSourceState("youtube", clusters, qualityScores),
+        reddit:  computeSourceState("reddit",  clusters, qualityScores),
+        web:     computeSourceState("web",     clusters, qualityScores),
+      };
+      let confidenceResult = computeFinalConfidence(clusters, qualityScores, extractorHasContrad, sourceStates);
       if (isRecovery) {
         confidenceResult = { ...confidenceResult, confidence: Math.min(0.60, confidenceResult.confidence) };
       }
@@ -2858,7 +2925,7 @@ export async function POST(req: NextRequest) {
         }).catch(e => console.warn("[OutcomeLog] failed:", e));
       }
 
-      const memo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence);
+      const memo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence, sourceStates);
 
       emit({ type: "complete", memo });
 
