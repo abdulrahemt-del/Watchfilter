@@ -2707,8 +2707,15 @@ export async function POST(req: NextRequest) {
       }
 
       // Relevance gate: only reject hard garbage (< intentThresholds.relevanceGate)
-      // For exploration: 20 — a claim matching 1 of 5 keywords passes
-      const relevantClaims = rawClaims.filter(c => c.queryRelevance >= intentThresholds.relevanceGate);
+      // Creator claims use a lower dynamic gate — intent-based gate (up to 45 for research)
+      // is too strict for YouTube content where 1-of-3 keyword match = 33.
+      const oneKwPct = Math.floor(100 / Math.max(1, keywords.length));
+      const creatorMainGate = Math.max(20, Math.min(intentThresholds.relevanceGate, oneKwPct));
+      const relevantClaims = rawClaims.filter(c =>
+        c.source === "youtube"
+          ? c.queryRelevance >= creatorMainGate
+          : c.queryRelevance >= intentThresholds.relevanceGate
+      );
       const filteredOut = rawClaims.length - relevantClaims.length;
       const relBySource = {
         youtube: relevantClaims.filter(c => c.source === "youtube").length,
@@ -2813,7 +2820,9 @@ export async function POST(req: NextRequest) {
       // while 2-keyword queries keep the 50% threshold. Floored at 25, capped at 50.
       const oneKeywordPct = Math.floor(100 / Math.max(1, keywords.length));
       const dynamicCreatorGate = Math.max(25, Math.min(CREATOR_TOPIC_GATE, oneKeywordPct));
-      const creatorTopicGate = Math.max(dynamicCreatorGate, intentThresholds.relevanceGate);
+      // Do NOT take max with intentThresholds.relevanceGate — intent filtering already ran above.
+      // This gate is purely for topic contamination, not intent quality.
+      const creatorTopicGate = dynamicCreatorGate;
       const ytOffTopicClaims = gatedClaims.filter(c => c.source === "youtube" && c.queryRelevance < creatorTopicGate);
       const pipelineClaims   = gatedClaims.filter(c => c.source !== "youtube" || c.queryRelevance >= creatorTopicGate);
       if (ytOffTopicClaims.length > 0) {
