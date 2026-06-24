@@ -21,6 +21,49 @@ function SourceTag({ src }: { src: "youtube" | "reddit" | "web" }) {
 
 // ── Decision card (primary) ───────────────────────────────────────────────────
 
+const CONF_STYLE: Record<string, { bg: string; color: string }> = {
+  High:   { bg: "#dcfce7", color: "#14532d" },
+  Medium: { bg: "#fef3c7", color: "#92400e" },
+  Low:    { bg: "#fee2e2", color: "#991b1b" },
+};
+
+function ComparativeVerdictCard({ memo }: { memo: IntelligenceMemo }) {
+  const cv = memo.comparative_verdict;
+  if (!cv || !cv.dimensions.length) return null;
+  return (
+    <div style={{ background: "#0f172a", borderRadius: 12, padding: "1.5rem 1.75rem", borderLeft: "4px solid #6366f1" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+        <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#475569" }}>Comparative Verdict</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1rem" }}>
+        {cv.dimensions.map((dim, i) => {
+          const cs = CONF_STYLE[dim.confidence] ?? CONF_STYLE.Medium;
+          return (
+            <div key={i} style={{ background: "#1e293b", borderRadius: 8, padding: "0.75rem 1rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.4rem", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#64748b" }}>{dim.label}</span>
+                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#f8fafc" }}>{dim.winner}</span>
+                <span style={{ fontSize: "0.55rem", fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: cs.bg, color: cs.color }}>{dim.confidence}</span>
+              </div>
+              <ul style={{ margin: 0, padding: "0 0 0 0.9rem", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                {dim.reasons.map((r, j) => (
+                  <li key={j} style={{ fontSize: "0.72rem", color: "#94a3b8", lineHeight: 1.5 }}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+      {cv.overall_recommendation && (
+        <div style={{ padding: "0.6rem 0.85rem", background: "#1e293b", borderRadius: 8, borderLeft: "3px solid #6366f1" }}>
+          <p style={{ margin: "0 0 0.15rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Overall Recommendation</p>
+          <p style={{ margin: 0, fontSize: "0.78rem", color: "#e2e8f0", lineHeight: 1.6 }}>{cv.overall_recommendation}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const DIRECTIONAL_STYLE: Record<string, { bg: string; color: string; bar: string }> = {
   "Strong YES (conditional)": { bg: "#14532d", color: "#86efac", bar: "#22c55e" },
   "Lean YES":                 { bg: "#166534", color: "#bbf7d0", bar: "#4ade80" },
@@ -1882,8 +1925,11 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
-      {/* 1. Decision + inline "Why this decision" justification */}
-      <DecisionCard memo={memo} />
+      {/* 1. Decision card — comparative verdict for A vs B queries, binary YES/NO otherwise */}
+      {memo.query_type === "COMPARATIVE" && memo.comparative_verdict
+        ? <ComparativeVerdictCard memo={memo} />
+        : <DecisionCard memo={memo} />
+      }
 
       {/* 2. Decision Drivers — Positive / Negative / Uncertainty */}
       <DecisionDriversSection memo={memo} />

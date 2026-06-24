@@ -17,8 +17,18 @@ const openai = new OpenAI();
 export type IntelligenceMemo = {
   query: string;
   generated_at: string;
+  query_type: "BINARY" | "COMPARATIVE" | "EXPLORATORY";
   directional: string;
   decision_summary: string;
+  comparative_verdict: {
+    dimensions: Array<{
+      label: string;
+      winner: string;
+      confidence: "High" | "Medium" | "Low";
+      reasons: string[];
+    }>;
+    overall_recommendation: string;
+  } | null;
   reddit_gap: boolean;
   confidence_score: number;
   confidence_breakdown: {
@@ -702,12 +712,17 @@ function computeSourceState(
   return "MIXED";
 }
 
-// Comparison query detection — when multiple approaches are compared, differences are tradeoffs by default
-const COMPARISON_MARKERS = [" vs ", " vs.", " versus ", "compare", "comparison", "compared to", "alternative to", "better than", "which is better", "which works better"];
-function isComparativeQuery(q: string): boolean {
-  const lower = q.toLowerCase();
-  return COMPARISON_MARKERS.some(m => lower.includes(m));
+// Query type detection
+const COMPARISON_MARKERS = [" vs ", " vs.", " versus ", " vs\n", "compare", "comparison", "compared to", "alternative to", "better than", "which is better", "which works better"];
+const EXPLORATORY_MARKERS = ["how do", "how to", "how can", "how should", "what are the best", "what are some", "what factors", "when should", "which approach", "best ways to", "tips for", "guide to"];
+
+function detectQueryType(q: string): "BINARY" | "COMPARATIVE" | "EXPLORATORY" {
+  const lower = q.toLowerCase().trim();
+  if (COMPARISON_MARKERS.some(m => lower.includes(m))) return "COMPARATIVE";
+  if (EXPLORATORY_MARKERS.some(m => lower.startsWith(m) || lower.includes(m))) return "EXPLORATORY";
+  return "BINARY";
 }
+const isComparativeQuery = (q: string) => detectQueryType(q) === "COMPARATIVE";
 
 type RelationshipType = "CONTRADICTION" | "TRADEOFF" | "COMPLEMENTARY" | "CONSENSUS";
 
@@ -998,11 +1013,16 @@ Weight claims by specificity and grounding — anecdotal claims need explicit ev
 
 Most apparent conflicts in startup evidence are TRADEOFFS, not contradictions.
 
-TRADEOFF (conflict_type: "tradeoff") — Both claims can simultaneously be true:
-- Different consequences of the same action: "X creates benefit Y" AND "X creates risk Z"
-- Benefit vs cost: "Cold outreach generates leads" AND "Cold outreach is time-consuming"
-- Different dimensions: "Building in public builds community" AND "Building in public attracts copycats"
-- These describe separate outcomes, not opposing recommendations
+TRADEOFF (conflict_type: "tradeoff") — Two DESIRABLE outcomes that compete, or two strategies optimizing different goals:
+- Two strategies with different strengths: "Cold outreach produces faster results" AND "Content marketing compounds long-term"
+- Two valid approaches to the same goal: "Manual outreach builds relationships" AND "Automated outreach scales faster"
+- Two dimensions that cannot both be maximized: "High transparency" AND "Competitive secrecy"
+- These describe COMPETING BENEFITS, not a benefit vs a requirement
+
+NOT a tradeoff (do NOT classify these as tradeoff):
+- Benefit vs requirement: "Cold outreach works" AND "Cold outreach must be personalized" — the second is a condition, not a competing outcome
+- Feature vs effort: "X generates leads" AND "X takes time" — effort is not a desirable outcome competing with benefit
+- Claim vs caveat: "X works" AND "X works better in certain contexts" — the second is a nuance, not a tradeoff
 
 CONTRADICTION (conflict_type: "direct" or "partial") — Claims CANNOT both be true:
 - Opposite recommendations: "Founders should build in public" vs "Founders should NOT build in public"
@@ -1280,7 +1300,8 @@ RULES:
    GOOD: "Conduct 3 customer interviews per week to identify the single most painful problem"
    BAD: "Build relationships" | "Develop marketing campaigns" | "Create a community" | "Build value propositions"
 6. directional MUST be EXACTLY one of:
-   "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)"
+   "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)" | "Comparative Verdict"
+   Use "Comparative Verdict" when the query compares two or more options (contains "vs", "versus", "or", "compare").
 
 Return ONLY valid JSON:
 {
@@ -1296,7 +1317,7 @@ Return ONLY valid JSON:
   });
 
   const VALID_DIRECTIONALS = new Set([
-    "Strong YES (conditional)", "Lean YES", "Neutral / Tradeoff", "Lean NO", "Strong NO (conditional)",
+    "Strong YES (conditional)", "Lean YES", "Neutral / Tradeoff", "Lean NO", "Strong NO (conditional)", "Comparative Verdict",
   ]);
 
   const VALID_STRENGTHS = new Set(["High", "Medium", "Low"]);
@@ -1327,6 +1348,81 @@ Return ONLY valid JSON:
       decision_summary: "Insufficient evidence to synthesize a decision.",
       priority_actions: [],
     };
+  }
+}
+
+// ── Comparative Verdict — winner-per-dimension analysis for A vs B queries ────
+
+async function generateComparativeVerdict(
+  query:    string,
+  clusters: ClaimCluster[],
+  tradeoffs: ExtractorOutput["contradictions"],
+): Promise<IntelligenceMemo["comparative_verdict"]> {
+  const clusterSummaries = clusters.slice(0, 8).map(c => ({
+    theme: c.theme,
+    signals: c.claims.slice(0, 6).map(cl => ({ claim: cl.claim, type: cl.type })),
+  }));
+  const tradeoffSummaries = tradeoffs.filter(t => t.conflict_type === "tradeoff").slice(0, 5).map(t => ({
+    a: t.claim_a, b: t.claim_b, why: t.explanation,
+  }));
+
+  const res = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.3,
+    max_tokens: 1000,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `You are a Comparative Intelligence Synthesizer for startup decisions.
+The user asked a comparison query (A vs B). Produce a structured verdict.
+
+RULES:
+1. Identify 2–3 dimensions where the options genuinely differ (e.g., "Immediate Results", "Long-Term Scalability", "Cost Efficiency").
+2. For each dimension: pick a winner from the query options. Give 2–3 specific reasons pulled from evidence.
+3. DO NOT output YES/NO. Compare only the options mentioned in the query.
+4. overall_recommendation: 1–2 sentences. What to do first and why. Specific, actionable.
+5. confidence: "High" = 4+ supporting signals, "Medium" = 2–3, "Low" = 1.
+6. Work ONLY from provided evidence. No hallucination.
+7. If evidence is insufficient to declare a winner on a dimension, omit that dimension.
+
+Return JSON:
+{
+  "dimensions": [
+    { "label": "dimension name", "winner": "exact option from query", "confidence": "High|Medium|Low", "reasons": ["reason 1", "reason 2"] }
+  ],
+  "overall_recommendation": "Start with X because Y. Add Z when W."
+}`,
+      },
+      {
+        role: "user",
+        content: JSON.stringify({ query, evidence_clusters: clusterSummaries, tradeoffs: tradeoffSummaries }),
+      },
+    ],
+  });
+
+  try {
+    type RawDim = { label?: string; winner?: string; confidence?: string; reasons?: unknown };
+    const p = JSON.parse(res.choices[0]?.message?.content ?? "{}") as {
+      dimensions?: RawDim[];
+      overall_recommendation?: string;
+    };
+    const VALID_CONF = new Set(["High", "Medium", "Low"]);
+    const dims = Array.isArray(p.dimensions)
+      ? p.dimensions
+          .filter(d => d.label && d.winner)
+          .slice(0, 3)
+          .map(d => ({
+            label:      String(d.label),
+            winner:     String(d.winner),
+            confidence: VALID_CONF.has(d.confidence ?? "") ? d.confidence as "High" | "Medium" | "Low" : "Medium",
+            reasons:    Array.isArray(d.reasons) ? (d.reasons as unknown[]).map(String).slice(0, 3) : [],
+          }))
+      : [];
+    if (!dims.length) return null;
+    return { dimensions: dims, overall_recommendation: p.overall_recommendation ?? "" };
+  } catch {
+    return null;
   }
 }
 
@@ -2209,6 +2305,8 @@ function assembleMemo(
   perspRaw:           Record<"youtube" | "reddit" | "web", string[]>,
   creatorIntelligence: IntelligenceMemo["creator_intelligence"],
   sourceStates:       Record<"youtube" | "reddit" | "web", SourceSignalState>,
+  queryType:          IntelligenceMemo["query_type"],
+  comparativeVerdict: IntelligenceMemo["comparative_verdict"],
 ): IntelligenceMemo {
   const bySource = (src: NormalizedClaim["source"]) =>
     gatedClaims.filter(c => c.source === src)
@@ -2329,8 +2427,10 @@ function assembleMemo(
   return {
     query,
     generated_at: new Date().toISOString(),
+    query_type: queryType,
     directional: decision.directional,
     decision_summary: decision.decision_summary,
+    comparative_verdict: comparativeVerdict,
     reddit_gap: qualityScores.reddit.excluded,
     confidence_score: Math.round(adjustedConfidence * 100),
     confidence_breakdown: {
@@ -3024,10 +3124,15 @@ export async function POST(req: NextRequest) {
 
       console.log(`[Perspective] raw_counts: creator=${creatorRaw.length} community=${communityRaw.length} web=${webRaw.length}`);
 
-      // Run decision + perspective extraction in parallel (separated so each call has one focused job)
-      const [decision, perspResult] = await Promise.all([
+      const queryType = detectQueryType(query);
+
+      // Run decision + perspective extraction + (optional) comparative verdict in parallel
+      const [decision, perspResult, comparativeVerdict] = await Promise.all([
         generateDecision(query, clusters, extractor.stage_interpretation),
         generatePerspectives(query, creatorRaw, communityRaw, webRaw),
+        queryType === "COMPARATIVE"
+          ? generateComparativeVerdict(query, clusters, extractor.contradictions)
+          : Promise.resolve(null),
       ]);
 
       // Instrument: log what was generated vs. what had evidence
@@ -3081,7 +3186,7 @@ export async function POST(req: NextRequest) {
         }).catch(e => console.warn("[OutcomeLog] failed:", e));
       }
 
-      const memo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence, sourceStates);
+      const memo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence, sourceStates, queryType, comparativeVerdict);
 
       emit({ type: "complete", memo });
 
