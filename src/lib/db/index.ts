@@ -732,6 +732,58 @@ export async function logCreatorCoverageGap(
   });
 }
 
+let _outcomeLogTableCreated = false;
+
+export async function logCreatorOutcome(params: {
+  query: string;
+  outcome: string;
+  corpus_matches: number;
+  retrieved: number;
+  accepted: number;
+  high_alignment_claims: number;
+  themes_generated: number;
+  alignment_percentage: number;
+  primary_failure_stage?: string;
+}): Promise<void> {
+  const c = await db();
+  if (!_outcomeLogTableCreated) {
+    await c.execute({
+      sql: `CREATE TABLE IF NOT EXISTS creator_outcome_log (
+        id                    TEXT PRIMARY KEY,
+        query                 TEXT NOT NULL,
+        timestamp             TEXT NOT NULL DEFAULT (datetime('now')),
+        outcome               TEXT NOT NULL,
+        corpus_matches        INTEGER NOT NULL DEFAULT 0,
+        retrieved             INTEGER NOT NULL DEFAULT 0,
+        accepted              INTEGER NOT NULL DEFAULT 0,
+        high_alignment_claims INTEGER NOT NULL DEFAULT 0,
+        themes_generated      INTEGER NOT NULL DEFAULT 0,
+        alignment_percentage  INTEGER NOT NULL DEFAULT 0,
+        primary_failure_stage TEXT
+      )`,
+      args: [],
+    });
+    _outcomeLogTableCreated = true;
+  }
+  await c.execute({
+    sql: `INSERT INTO creator_outcome_log
+          (id, query, outcome, corpus_matches, retrieved, accepted, high_alignment_claims, themes_generated, alignment_percentage, primary_failure_stage)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      randomUUID(),
+      params.query,
+      params.outcome,
+      params.corpus_matches,
+      params.retrieved,
+      params.accepted,
+      params.high_alignment_claims,
+      params.themes_generated,
+      params.alignment_percentage,
+      params.primary_failure_stage ?? null,
+    ],
+  });
+}
+
 export async function getDeepResearchEvidence(
   keywords: string[],
   limit = 60,

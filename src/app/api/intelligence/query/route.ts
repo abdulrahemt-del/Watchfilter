@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import OpenAI from "openai";
-import { getDeepResearchEvidence, countCreatorCorpusMatches, logCreatorCoverageGap, type DeepResearchRow } from "@/lib/db";
+import { getDeepResearchEvidence, countCreatorCorpusMatches, logCreatorCoverageGap, logCreatorOutcome, type DeepResearchRow } from "@/lib/db";
 import { searchHN, extractHNClaims, type HNClaim } from "@/lib/hnSkill";
 import { searchReddit, extractRedditClaims } from "@/lib/redditSkill";
 import { intelligenceWebSearch, type IntelligenceArticle } from "@/lib/webSearch";
@@ -152,6 +152,8 @@ export type IntelligenceMemo = {
   perspective_raw: Record<"youtube" | "reddit" | "web", string[]> | null;
   creator_intelligence: {
     themes_generated: number;
+    alignment_percentage: number;
+    coverage_alignment_state: "Strong Creator Signal" | "Adjacent Topic Problem" | "Niche But Relevant" | "Corpus Gap";
     creator_signal_outcome:
       | "Missing Creator Content"
       | "Retrieval Failure"
@@ -1546,6 +1548,7 @@ function buildCreatorIntelligence(
   const OFF_QUESTION_THRESHOLD   = 0.30;
   const acceptedYtAligns         = acceptedYtClaims.map(c => computeQuestionAlignment(c.claim, keywords));
   const acceptedHighAlignCount   = acceptedYtAligns.filter(s => s >= HIGH_ALIGNMENT_THRESHOLD).length;
+  const alignment_percentage     = accepted > 0 ? Math.round(acceptedHighAlignCount / accepted * 100) : 0;
   const acceptedAvgAlignment     = acceptedYtAligns.length > 0
     ? Math.round((acceptedYtAligns.reduce((s, a) => s + a, 0) / acceptedYtAligns.length) * 100) / 100
     : 0;
@@ -1564,6 +1567,15 @@ function buildCreatorIntelligence(
     high_alignment_claims: acceptedHighAlignCount,
     average_alignment:     acceptedAvgAlignment,
   };
+
+  // Coverage × Alignment 2×2 state matrix
+  const _covHigh = coverageLevel !== "Low";
+  const _alignHigh = alignment_percentage >= 50;
+  const coverage_alignment_state: NonNullable<IntelligenceMemo["creator_intelligence"]>["coverage_alignment_state"] =
+    _covHigh  && _alignHigh  ? "Strong Creator Signal"
+    : _covHigh  && !_alignHigh ? "Adjacent Topic Problem"
+    : !_covHigh && _alignHigh  ? "Niche But Relevant"
+    :                            "Corpus Gap";
 
   // Deterministic outcome classification — identifies which pipeline stage failed
   const themes_generated = claimItems.length;
@@ -1673,6 +1685,8 @@ function buildCreatorIntelligence(
 
   return {
     themes_generated,
+    alignment_percentage,
+    coverage_alignment_state,
     creator_signal_outcome,
     claims: coverage_status === "Contaminated" ? [] : claimItems,
     coverage: {
@@ -2827,6 +2841,21 @@ export async function POST(req: NextRequest) {
           creatorIntelligence!.coverage.coverage_status,
           creatorIntelligence!.coverage.corpus_matches,
         ).catch(e => console.warn("[CoverageGap] log failed:", e));
+      }
+
+      // Fire-and-forget outcome logging — feeds Creator Health Dashboard analytics
+      if (creatorIntelligence) {
+        void logCreatorOutcome({
+          query,
+          outcome:               creatorIntelligence.creator_signal_outcome,
+          corpus_matches:        creatorIntelligence.coverage.corpus_matches,
+          retrieved:             creatorIntelligence.coverage.retrieved,
+          accepted:              creatorIntelligence.coverage.accepted,
+          high_alignment_claims: creatorIntelligence.debug.alignment.high_alignment_claims,
+          themes_generated:      creatorIntelligence.themes_generated,
+          alignment_percentage:  creatorIntelligence.alignment_percentage,
+          primary_failure_stage: creatorIntelligence.coverage.primary_failure_stage,
+        }).catch(e => console.warn("[OutcomeLog] failed:", e));
       }
 
       const memo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence);

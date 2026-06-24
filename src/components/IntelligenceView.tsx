@@ -405,7 +405,7 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
               { label: "Corpus", value: ci.coverage.corpus_matches ?? "—" },
               { label: "Retrieved", value: ci.coverage.retrieved },
               { label: "Accepted", value: ci.coverage.accepted },
-              { label: "Aligned", value: ci.debug.alignment.high_alignment_claims },
+              { label: "Aligned", value: ci.alignment_percentage != null ? `${ci.debug.alignment.high_alignment_claims} (${ci.alignment_percentage}%)` : ci.debug.alignment.high_alignment_claims },
               { label: "Themes", value: ci.themes_generated },
             ].map(s => (
               <div key={s.label} style={{ display: "flex", gap: "0.3rem", alignItems: "baseline" }}>
@@ -414,19 +414,16 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
               </div>
             ))}
             {(() => {
-              const STAGE_LABEL: Record<string, string> = {
-                "Missing Creator Content": "Corpus",
-                "Retrieval Failure":       "Retrieval",
-                "Quality Gate Failure":    "Quality Gate",
-                "Weak Query Alignment":    "Alignment Filter",
-                "Synthesis Failure":       "Synthesis",
-              };
-              const stage = ci.creator_signal_outcome ? STAGE_LABEL[ci.creator_signal_outcome] : null;
-              if (!stage) return null;
+              const FAILURE_OUTCOMES = new Set([
+                "Missing Creator Content", "Retrieval Failure", "Quality Gate Failure",
+                "Weak Query Alignment", "Synthesis Failure",
+              ]);
+              const outcome = ci.creator_signal_outcome;
+              if (!outcome || !FAILURE_OUTCOMES.has(outcome)) return null;
               return (
                 <span style={{ marginLeft: "auto", fontSize: "0.54rem", fontWeight: 700, padding: "2px 8px", borderRadius: 10,
                   background: "#fef2f280", color: "#dc2626", border: "1px solid #fecaca30" }}>
-                  ✗ {stage}
+                  ✗ {outcome}
                 </span>
               );
             })()}
