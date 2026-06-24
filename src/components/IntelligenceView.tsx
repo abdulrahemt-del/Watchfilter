@@ -931,14 +931,7 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
                     </ul>
                   </div>
                   {p!.weak_signal && (
-                    <>
-                      <p style={{ margin: "0.4rem 0 0", fontSize: "0.62rem", fontWeight: 700, color: "#d97706" }}>Signal Strength: Weak</p>
-                      {memo.creator_intelligence?.outcome && (
-                        <p style={{ margin: "0.15rem 0 0", fontSize: "0.58rem", color: "#94a3b8" }}>
-                          Outcome: {CREATOR_OUTCOME_LABEL[memo.creator_intelligence.outcome] ?? memo.creator_intelligence.outcome}
-                        </p>
-                      )}
-                    </>
+                    <p style={{ margin: "0.4rem 0 0", fontSize: "0.62rem", fontWeight: 700, color: "#d97706" }}>Signal Strength: Weak</p>
                   )}
                 </>
               ) : (
