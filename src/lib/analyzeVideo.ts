@@ -94,8 +94,9 @@ export async function analyzeYouTubeVideo(
   };
 }
 
-// ~90k tokens of transcript headroom — leaves ~38k tokens for system prompt, schema, and response.
-const MAX_TRANSCRIPT_CHARS = 360_000;
+// ~60k tokens of transcript headroom — leaves ~56k tokens for system prompt, schema, and response.
+// Timestamped transcripts tokenize at ~3 chars/token (worse than plain prose), so 180k chars ≈ 60k tokens.
+const MAX_TRANSCRIPT_CHARS = 180_000;
 
 function fitTranscript(transcript: string, maxChars = MAX_TRANSCRIPT_CHARS): string {
   if (transcript.length <= maxChars) return transcript;
