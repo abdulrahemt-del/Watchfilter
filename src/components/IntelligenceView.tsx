@@ -27,6 +27,239 @@ const CONF_STYLE: Record<string, { bg: string; color: string }> = {
   Low:    { bg: "#fee2e2", color: "#991b1b" },
 };
 
+// ── Strategy Profile Grid — per-option evidence profiles (Phase 4) ────────────
+
+const COVERAGE_DOT: Record<string, { color: string; label: string }> = {
+  Strong:  { color: "#10b981", label: "Strong" },
+  Medium:  { color: "#f59e0b", label: "Medium" },
+  Weak:    { color: "#f97316", label: "Weak" },
+  Missing: { color: "#334155", label: "Missing" },
+};
+
+function StrategyProfileGrid({ cv }: { cv: NonNullable<IntelligenceMemo["comparative_verdict"]> }) {
+  const profiles = cv.strategy_profiles;
+  if (!profiles || profiles.length < 2) return null;
+
+  return (
+    <section style={{ background: "#0a0f1a", borderRadius: 14, overflow: "hidden", border: "1px solid #1e293b" }}>
+      {/* Header */}
+      <div style={{ padding: "0.8rem 1.25rem", borderBottom: "1px solid #1e293b", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#475569" }}>Strategy Evidence Profiles</span>
+        <span style={{ fontSize: "0.52rem", color: "#334155", marginLeft: "auto" }}>independent evidence — evaluated before comparison</span>
+      </div>
+
+      {/* Side-by-side profiles */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+        {profiles.map((profile, pi) => {
+          const sc = profile.source_coverage;
+          const strengthColor = profile.evidence_strength >= 70 ? "#10b981" : profile.evidence_strength >= 45 ? "#f59e0b" : "#ef4444";
+          const isLast = pi === profiles.length - 1;
+          return (
+            <div key={pi} style={{
+              padding: "1.1rem 1.25rem",
+              borderRight: isLast ? "none" : "1px solid #1e293b",
+              display: "flex", flexDirection: "column", gap: "0.9rem",
+            }}>
+              {/* Option name + evidence strength */}
+              <div>
+                <p style={{ margin: "0 0 0.45rem", fontSize: "0.95rem", fontWeight: 800, color: "#f8fafc", lineHeight: 1.2 }}>{profile.option}</p>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.35rem" }}>
+                  <div style={{ flex: 1, height: 5, background: "#1e293b", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ width: `${profile.evidence_strength}%`, height: "100%", background: strengthColor, borderRadius: 3 }} />
+                  </div>
+                  <span style={{ fontSize: "0.72rem", fontWeight: 800, color: strengthColor, minWidth: 28 }}>{profile.evidence_strength}</span>
+                </div>
+                <p style={{ margin: "0 0 0.45rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#334155" }}>Evidence Strength</p>
+                {/* Source coverage dots */}
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  {(["creator", "community", "web"] as const).map(src => {
+                    const cov = src === "creator" ? sc.creator : src === "community" ? sc.community : sc.web;
+                    const dot = COVERAGE_DOT[cov] ?? COVERAGE_DOT.Missing;
+                    return (
+                      <div key={src} style={{ display: "flex", alignItems: "center", gap: "0.2rem" }}>
+                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: dot.color }} />
+                        <span style={{ fontSize: "0.56rem", color: "#64748b" }}>{src.charAt(0).toUpperCase() + src.slice(1)}: <span style={{ color: dot.color, fontWeight: 700 }}>{dot.label}</span></span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Advantages */}
+              {profile.advantages.length > 0 && (
+                <div>
+                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.52rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "#10b981" }}>✓ Advantages</p>
+                  {profile.advantages.map((a, i) => (
+                    <div key={i} style={{ display: "flex", gap: "0.4rem", marginBottom: "0.2rem" }}>
+                      <span style={{ color: "#10b981", fontSize: "0.62rem", flexShrink: 0 }}>•</span>
+                      <p style={{ margin: 0, fontSize: "0.67rem", color: "#94a3b8", lineHeight: 1.5 }}>{a}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Costs */}
+              {profile.costs.length > 0 && (
+                <div>
+                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.52rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "#f59e0b" }}>⚡ Costs</p>
+                  {profile.costs.map((c, i) => (
+                    <div key={i} style={{ display: "flex", gap: "0.4rem", marginBottom: "0.2rem" }}>
+                      <span style={{ color: "#f59e0b", fontSize: "0.62rem", flexShrink: 0 }}>•</span>
+                      <p style={{ margin: 0, fontSize: "0.67rem", color: "#94a3b8", lineHeight: 1.5 }}>{c}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Failure modes */}
+              {profile.failure_modes.length > 0 && (
+                <div>
+                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.52rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "#ef4444" }}>✗ Fails When</p>
+                  {profile.failure_modes.map((f, i) => (
+                    <div key={i} style={{ display: "flex", gap: "0.4rem", marginBottom: "0.2rem" }}>
+                      <span style={{ color: "#ef4444", fontSize: "0.62rem", flexShrink: 0 }}>•</span>
+                      <p style={{ margin: 0, fontSize: "0.67rem", color: "#94a3b8", lineHeight: 1.5 }}>{f}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Best for */}
+              {profile.best_for.length > 0 && (
+                <div>
+                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.52rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "#a78bfa" }}>◎ Best For</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+                    {profile.best_for.map((b, i) => (
+                      <span key={i} style={{ fontSize: "0.6rem", padding: "2px 7px", borderRadius: 4, background: "#1e293b", color: "#94a3b8", border: "1px solid #334155" }}>{b}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Evidence distribution bar */}
+      {cv.coverage_balance && cv.coverage_balance.length >= 2 && (
+        <div style={{ padding: "0.7rem 1.25rem", borderTop: "1px solid #1e293b", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0" }}>
+          {cv.coverage_balance.map((opt, i) => (
+            <div key={i} style={{ padding: "0 0.75rem", borderRight: i === 0 ? "1px solid #1e293b" : "none", paddingLeft: i > 0 ? "1.25rem" : 0 }}>
+              <p style={{ margin: "0 0 0.2rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#334155" }}>Evidence Signals</p>
+              <p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 800, color: opt.signal_count >= 5 ? "#10b981" : opt.signal_count >= 2 ? "#f59e0b" : "#ef4444" }}>
+                {opt.signal_count} <span style={{ fontSize: "0.62rem", fontWeight: 400, color: "#475569" }}>matched signals</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Comparison completeness + missing dimensions + decision risk */}
+      {(cv.comparison_completeness || cv.missing_dimensions?.length || cv.decision_risk) && (
+        <div style={{ padding: "0.75rem 1.25rem", borderTop: "1px solid #1e293b", display: "flex", gap: "1.5rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+          {cv.comparison_completeness && (
+            <div>
+              <p style={{ margin: "0 0 0.15rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Comparison Completeness</p>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <span style={{
+                  fontSize: "0.62rem", fontWeight: 800, padding: "2px 8px", borderRadius: 20,
+                  background: cv.comparison_completeness === "High" ? "#dcfce7" : cv.comparison_completeness === "Low" ? "#fee2e2" : "#fef3c7",
+                  color: cv.comparison_completeness === "High" ? "#14532d" : cv.comparison_completeness === "Low" ? "#991b1b" : "#92400e",
+                }}>
+                  {cv.comparison_completeness}
+                </span>
+                {cv.completeness_reason && (
+                  <span style={{ fontSize: "0.63rem", color: "#64748b" }}>{cv.completeness_reason}</span>
+                )}
+              </div>
+            </div>
+          )}
+          {cv.decision_risk && (
+            <div>
+              <p style={{ margin: "0 0 0.15rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Decision Risk</p>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <span style={{
+                  fontSize: "0.62rem", fontWeight: 800, padding: "2px 8px", borderRadius: 20,
+                  background: cv.decision_risk === "Low" ? "#dcfce7" : cv.decision_risk === "High" ? "#fee2e2" : "#fef3c7",
+                  color: cv.decision_risk === "Low" ? "#14532d" : cv.decision_risk === "High" ? "#991b1b" : "#92400e",
+                }}>
+                  {cv.decision_risk}
+                </span>
+                {cv.decision_risk_reason && (
+                  <span style={{ fontSize: "0.63rem", color: "#64748b" }}>{cv.decision_risk_reason}</span>
+                )}
+              </div>
+            </div>
+          )}
+          {cv.missing_dimensions && cv.missing_dimensions.length > 0 && (
+            <div>
+              <p style={{ margin: "0 0 0.2rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>
+                Missing Dimensions ({cv.missing_dimensions.length})
+              </p>
+              <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                {cv.missing_dimensions.slice(0, 5).map((d, i) => (
+                  <span key={i} style={{ fontSize: "0.57rem", padding: "1px 6px", borderRadius: 3, background: "#1e293b", color: "#64748b", border: "1px solid #334155" }}>{d}</span>
+                ))}
+                {cv.missing_dimensions.length > 5 && (
+                  <span style={{ fontSize: "0.57rem", color: "#475569" }}>+{cv.missing_dimensions.length - 5} more</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── Strategy Roadmap — phased approach integrating both strategies ─────────────
+
+function StrategyRoadmapSection({ cv }: { cv: NonNullable<IntelligenceMemo["comparative_verdict"]> }) {
+  const roadmap = cv.strategy_roadmap;
+  if (!roadmap || roadmap.length === 0) return null;
+
+  const PHASE_COLORS = ["#6366f1", "#10b981", "#f59e0b"];
+
+  return (
+    <section style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.9rem 1.1rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.9rem" }}>
+        <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#64748b" }}>Strategy Roadmap</span>
+        <span style={{ fontSize: "0.52rem", color: "#94a3b8", marginLeft: "auto" }}>how to use both strategies over time</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
+        {roadmap.map((phase, pi) => {
+          const phaseColor = PHASE_COLORS[pi % PHASE_COLORS.length];
+          return (
+            <div key={pi} style={{ display: "flex", gap: "0.85rem", alignItems: "flex-start" }}>
+              {/* Phase connector */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                <div style={{ width: 22, height: 22, borderRadius: "50%", background: phaseColor, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: "0.6rem", fontWeight: 900, color: "white" }}>{pi + 1}</span>
+                </div>
+                {pi < roadmap.length - 1 && (
+                  <div style={{ width: 2, flex: 1, minHeight: 20, background: "#e2e8f0", margin: "4px 0" }} />
+                )}
+              </div>
+              {/* Phase content */}
+              <div style={{ flex: 1, paddingBottom: pi < roadmap.length - 1 ? "0.9rem" : 0 }}>
+                <p style={{ margin: "0 0 0.35rem", fontSize: "0.72rem", fontWeight: 700, color: "#0f172a", lineHeight: 1.3 }}>{phase.phase}</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                  {phase.steps.map((step, si) => (
+                    <div key={si} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
+                      <span style={{ fontSize: "0.6rem", color: phaseColor, flexShrink: 0, paddingTop: 1, fontWeight: 700 }}>→</span>
+                      <p style={{ margin: 0, fontSize: "0.68rem", color: "#374151", lineHeight: 1.5 }}>{step}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function ComparativeVerdictCard({ memo }: { memo: IntelligenceMemo }) {
   const cv = memo.comparative_verdict;
   if (!cv || !cv.dimensions.length) return null;
@@ -286,12 +519,23 @@ function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
   const color = score >= 72 ? "#10b981" : score >= 48 ? "#f59e0b" : "#ef4444";
   const agreeColor = agreeScore >= 65 ? "#10b981" : agreeScore >= 40 ? "#f59e0b" : "#ef4444";
 
-  // Weighted contributions (sum ≈ confidence_score)
+  // Compute evidence quality score from source quality scores (mirrors backend formula)
+  const sqScores = memo.source_quality_scores;
+  const qualityWeighted = sqScores
+    ? Math.round(
+        (sqScores.youtube.excluded ? 0 : sqScores.youtube.score) * 0.40 +
+        (sqScores.reddit.excluded  ? 0 : sqScores.reddit.score)  * 0.35 +
+        (sqScores.web.excluded     ? 0 : sqScores.web.score)     * 0.25
+      )
+    : null;
+
+  // Contributions reflect the blended formula: 40% formula-derived + 60% quality-weighted
+  // Bars show the formula-derived component for transparency
   const contributions = [
-    { label: "Agreement Strength",       value: Math.round(bd.agreement * 0.40),     max: 40, color: "#10b981" },
-    { label: "Source Coverage",          value: Math.round(bd.sourceCoverage * 0.25), max: 25, color: "#3b82f6" },
-    { label: "Signal Density",           value: Math.round(bd.signalDensity * 0.15),  max: 15, color: "#f59e0b" },
-    { label: "Cross-Source Convergence", value: bd.crossSourceBonus ?? 0,              max: 15, color: "#8b5cf6" },
+    { label: "Agreement Strength",       value: Math.round(bd.agreement * 0.40 * 0.40),      max: 16, color: "#10b981" },
+    { label: "Source Coverage",          value: Math.round(bd.sourceCoverage * 0.25 * 0.40),  max: 10, color: "#3b82f6" },
+    { label: "Cross-Source Convergence", value: Math.round((bd.crossSourceBonus ?? 0) * 0.40), max: 6, color: "#8b5cf6" },
+    ...(qualityWeighted !== null ? [{ label: "Evidence Quality (60%)", value: Math.round(qualityWeighted * 0.60), max: 60, color: "#f59e0b" }] : []),
   ];
   const penalty = Math.round(bd.contradictionPenalty * 0.10);
 
@@ -2286,10 +2530,20 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
       <SourceAgreementBanner memo={memo} />
 
       {/* 1. Decision card — comparative verdict for A vs B queries, binary YES/NO otherwise */}
-      {memo.query_type === "COMPARATIVE" && memo.comparative_verdict
-        ? <ComparativeVerdictCard memo={memo} />
-        : <DecisionCard memo={memo} />
-      }
+      {memo.query_type === "COMPARATIVE" && memo.comparative_verdict ? (
+        <>
+          {/* 1a. Strategy profiles — per-option independent evidence (Phase 4) */}
+          <StrategyProfileGrid cv={memo.comparative_verdict} />
+
+          {/* 1b. Decision Matrix — winner-per-dimension */}
+          <ComparativeVerdictCard memo={memo} />
+
+          {/* 1c. Strategy Roadmap — replaces priority actions for comparative queries */}
+          <StrategyRoadmapSection cv={memo.comparative_verdict} />
+        </>
+      ) : (
+        <DecisionCard memo={memo} />
+      )}
 
       {/* 1.5. Counter-Evidence — specific signals arguing against the recommendation */}
       <CounterEvidenceSection memo={memo} />
@@ -2309,8 +2563,10 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
       {/* 6. Reasoning (Evidence Themes) */}
       <InsightClusters clusters={memo.insight_clusters} />
 
-      {/* 7. Priority Actions */}
-      <PriorityActions actions={memo.decision_recommendation.priority_actions} />
+      {/* 7. Priority Actions — shown for non-comparative; comparative uses StrategyRoadmap above */}
+      {memo.query_type !== "COMPARATIVE" && (
+        <PriorityActions actions={memo.decision_recommendation.priority_actions} />
+      )}
 
       {/* 8. Confidence Breakdown */}
       <ConfidenceSection memo={memo} />

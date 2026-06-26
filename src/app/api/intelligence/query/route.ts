@@ -31,6 +31,29 @@ export type IntelligenceMemo = {
     overall_recommendation: string;
     coverage_balance: Array<{ option: string; signal_count: number }> | null;
     comparison_quality: "Strong" | "Moderate" | "Weak" | null;
+    // Phase 4: Comparative Intelligence Engine
+    strategy_profiles: Array<{
+      option: string;
+      evidence_strength: number;          // 0-100
+      source_coverage: {
+        creator:   "Strong" | "Medium" | "Weak" | "Missing";
+        community: "Strong" | "Medium" | "Weak" | "Missing";
+        web:       "Strong" | "Medium" | "Weak" | "Missing";
+      };
+      advantages:    string[];
+      costs:         string[];
+      failure_modes: string[];
+      best_for:      string[];
+    }> | null;
+    comparison_completeness: "High" | "Medium" | "Low" | null;
+    completeness_reason:     string | null;
+    missing_dimensions:      string[];
+    decision_risk:           "High" | "Medium" | "Low" | null;
+    decision_risk_reason:    string | null;
+    strategy_roadmap: Array<{
+      phase: string;
+      steps: string[];
+    }> | null;
   } | null;
   reddit_gap: boolean;
   confidence_score: number;
@@ -919,15 +942,21 @@ function computeComparativeCoverage(
   gatedClaims: NormalizedClaim[],
 ): { coverage_balance: Array<{ option: string; signal_count: number }>; comparison_quality: "Strong" | "Moderate" | "Weak" } | null {
   const options = extractComparisonOptions(query);
-  if (options.length < 2) return null;
+  if (options.length < 2) {
+    console.log("[comparativeCoverage] no options found for query:", query.slice(0, 60));
+    return null;
+  }
 
   const counts = options.map(opt => {
-    const keywords = opt.split(/\s+/).filter(w => w.length > 2);
+    // Use 2-char minimum to catch short terms like "SEO", "AI", "B2B"
+    const keywords = opt.split(/\s+/).filter(w => w.length > 1);
     const count = gatedClaims.filter(c =>
       keywords.some(kw => c.claim.toLowerCase().includes(kw))
     ).length;
     return { option: opt, signal_count: count };
   });
+
+  console.log("[comparativeCoverage] options:", JSON.stringify(counts));
 
   const maxCount = Math.max(...counts.map(c => c.signal_count), 1);
   const minCount = Math.min(...counts.map(c => c.signal_count));
@@ -1383,7 +1412,7 @@ async function generateDecision(
   const res = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.3,
-    max_tokens: 1600,
+    max_tokens: 2000,
     response_format: { type: "json_object" },
     messages: [
       {
@@ -1416,13 +1445,17 @@ RULES:
    REQUIRED for Conditional, Stage-Based, Industry-Specific, Team-Dependent — explain when the recommendation shifts.
    Set to null ONLY for Universal recommendations.
    Example: "This shifts once product-market fit is established and repeatable messaging exists."
-9. counter_evidence: 1–3 specific observations from the provided signals that argue AGAINST or complicate the main recommendation.
+9. counter_evidence: 1–3 specific observations that reveal DOWNSIDES, FAILURE CASES, or LIMITATIONS of the RECOMMENDED option itself.
+   CRITICAL: If cold outreach is recommended, surface evidence that cold outreach fails, is hard, or has high cost/effort — NOT observations about content marketing being complicated.
+   If content marketing is recommended, surface evidence that content marketing is slow, hard, or commonly fails — NOT observations about cold outreach's shortcomings.
+   Counter-evidence argues AGAINST the winner, not FOR the loser. It is the strongest honest case someone would make against your recommendation.
    Pull ONLY from evidence provided. No invented counterarguments.
-   Including counter-evidence makes the analysis trustworthy. Omit only if truly no contrary signal exists.
-   Each must be a specific observation: "Practitioners who tried X found Y" — NOT "This approach has risks."
-10. why_not_alternative: For comparison or conditional queries, one sentence explaining why the alternative was not recommended first, traced to specific evidence.
-    Example: "Content marketing was not prioritized because the evidence shows it requires 6–12 months before measurable results — conflicting with early-stage need for rapid customer feedback loops."
-    Set to null for universal exploratory queries with no clear alternative.
+   Each must describe a specific failure, limitation, or cost: "Practitioners who tried X found Y" — NOT "The alternative requires Z."
+   Omit if truly no contrary signal exists in evidence.
+10. why_not_alternative: REQUIRED for comparative queries (Comparative Verdict directional).
+    One sentence explaining why the non-recommended option was not chosen first, traced to specific evidence.
+    Example: "Content marketing was not prioritized first because evidence consistently shows 6–12 month lag before measurable results — contradicting the early-stage need for rapid customer feedback."
+    Set to null ONLY for non-comparative exploratory queries.
 
 Return ONLY valid JSON:
 {
@@ -1563,10 +1596,257 @@ Return JSON:
           }))
       : [];
     if (!dims.length) return null;
-    // coverage_balance and comparison_quality are populated by computeComparativeCoverage in assembleMemo
-    return { dimensions: dims, overall_recommendation: p.overall_recommendation ?? "", coverage_balance: null, comparison_quality: null };
+    // Phase 4 fields (coverage_balance, strategy_profiles, etc.) are merged in assembleMemo
+    return {
+      dimensions: dims,
+      overall_recommendation: p.overall_recommendation ?? "",
+      coverage_balance: null, comparison_quality: null,
+      strategy_profiles: null, comparison_completeness: null, completeness_reason: null,
+      missing_dimensions: [], decision_risk: null, decision_risk_reason: null, strategy_roadmap: null,
+    };
   } catch {
     return null;
+  }
+}
+
+// ── Strategy Profiles — per-option independent evidence analysis (Phase 4) ────
+
+// Partition gated claims into per-option buckets using keyword matching
+function partitionClaimsByOptions(
+  options: string[],
+  gatedClaims: NormalizedClaim[],
+): Array<{ option: string; claims: NormalizedClaim[] }> {
+  return options.map(opt => {
+    const keywords = opt.split(/\s+/).filter(w => w.length > 1);
+    const claims = gatedClaims.filter(c =>
+      keywords.some(kw => c.claim.toLowerCase().includes(kw))
+    );
+    return { option: opt, claims };
+  });
+}
+
+// Deterministically classify source coverage for one option
+function classifyOptionSourceCoverage(
+  claims: NormalizedClaim[],
+  source: "youtube" | "reddit" | "web",
+  excluded: boolean,
+): "Strong" | "Medium" | "Weak" | "Missing" {
+  if (excluded) return "Missing";
+  const count = claims.filter(c => c.source === source).length;
+  if (count >= 4) return "Strong";
+  if (count >= 2) return "Medium";
+  if (count >= 1) return "Weak";
+  return "Missing";
+}
+
+// Compute evidence strength (0-100) per option deterministically
+function computeOptionEvidenceStrength(
+  claims: NormalizedClaim[],
+  qualityScores: Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+): number {
+  const WEIGHTS = { youtube: 0.40, reddit: 0.35, web: 0.25 } as const;
+  let score = 0;
+  for (const src of ["youtube", "reddit", "web"] as const) {
+    const optClaims = claims.filter(c => c.source === src);
+    if (optClaims.length === 0 || qualityScores[src].excluded) continue;
+    const coveragePct = optClaims.length >= 4 ? 1.0 : optClaims.length >= 2 ? 0.65 : 0.35;
+    score += WEIGHTS[src] * (qualityScores[src].score / 100) * coveragePct * 100;
+  }
+  // Cross-source bonus: if 2+ sources have at least one claim
+  const srcCount = (["youtube", "reddit", "web"] as const).filter(s => claims.some(c => c.source === s)).length;
+  if (srcCount >= 3) score = Math.min(100, score * 1.15);
+  else if (srcCount >= 2) score = Math.min(100, score * 1.08);
+  return Math.round(score);
+}
+
+type StrategyProfilesLLMResult = {
+  profiles: Array<{
+    option: string;
+    evidence_strength?: number;
+    advantages:    string[];
+    costs:         string[];
+    failure_modes: string[];
+    best_for:      string[];
+  }>;
+  comparison_completeness: "High" | "Medium" | "Low";
+  completeness_reason:     string | null;
+  missing_dimensions:      string[];
+  decision_risk:           "High" | "Medium" | "Low";
+  decision_risk_reason:    string | null;
+  strategy_roadmap: Array<{ phase: string; steps: string[] }>;
+};
+
+type StrategyProfilesOutput = {
+  strategy_profiles: NonNullable<IntelligenceMemo["comparative_verdict"]>["strategy_profiles"];
+  comparison_completeness: NonNullable<IntelligenceMemo["comparative_verdict"]>["comparison_completeness"];
+  completeness_reason: string | null;
+  missing_dimensions: string[];
+  decision_risk: NonNullable<IntelligenceMemo["comparative_verdict"]>["decision_risk"];
+  decision_risk_reason: string | null;
+  strategy_roadmap: NonNullable<IntelligenceMemo["comparative_verdict"]>["strategy_roadmap"];
+};
+
+async function generateStrategyProfiles(
+  query: string,
+  options: string[],
+  gatedClaims: NormalizedClaim[],
+  clusters: ClaimCluster[],
+  qualityScores: Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+): Promise<StrategyProfilesOutput> {
+  const EMPTY: StrategyProfilesOutput = {
+    strategy_profiles: [],
+    comparison_completeness: null,
+    completeness_reason: null,
+    missing_dimensions: [],
+    decision_risk: null,
+    decision_risk_reason: null,
+    strategy_roadmap: null,
+  };
+
+  if (options.length < 2) return EMPTY;
+
+  const partitioned = partitionClaimsByOptions(options, gatedClaims);
+
+  const evidenceContext = partitioned.map(({ option, claims }) => ({
+    option,
+    signal_count: { total: claims.length, creator: claims.filter(c => c.source === "youtube").length, community: claims.filter(c => c.source === "reddit").length, web: claims.filter(c => c.source === "web").length },
+    sample_signals: [
+      ...claims.filter(c => c.source === "youtube").slice(0, 3).map(c => ({ src: "creator", text: c.claim.slice(0, 180) })),
+      ...claims.filter(c => c.source === "reddit").slice(0, 3).map(c => ({ src: "community", text: c.claim.slice(0, 180) })),
+      ...claims.filter(c => c.source === "web").slice(0, 4).map(c => ({ src: "web", text: c.claim.slice(0, 180) })),
+    ],
+  }));
+
+  const clusterContext = clusters.slice(0, 6).map(c => ({
+    theme: c.theme,
+    signals: c.claims.slice(0, 4).map(cl => cl.claim.slice(0, 150)),
+  }));
+
+  const res = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.25,
+    max_tokens: 2600,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `You are a Comparative Strategy Analyst for startup decision-making. Build independent evidence profiles for each option.
+
+CRITICAL RULES:
+1. Each profile is evaluated INDEPENDENTLY. A gap in evidence for one option does NOT make the other stronger.
+2. advantages: 2–4 SPECIFIC benefits pulled from provided signals. Not generic startup advice.
+3. costs: 2–3 real resource/effort requirements (time, money, consistency, skill). Be specific.
+4. failure_modes: 3–4 ways this strategy commonly FAILS. These are the most valuable insight for founders.
+   Examples: "Fails when offer is too generic and cannot be personalized", "Fails when CAC exceeds LTV before content compounds"
+5. best_for: 3–4 conditions where this strategy works best (stage, model, founder type, situation).
+6. comparison_completeness: How comparable is the evidence for both options?
+   "High" = both have substantial multi-source evidence
+   "Medium" = one has moderately more evidence
+   "Low" = significant imbalance — one option dominates the signal pool
+7. missing_dimensions: Which decision criteria the evidence did NOT cover. Pick from: Customer Quality, Compounding Value, Scalability, Capital Requirements, Founder Time, Buying Intent, Sales Cycle, Brand Building, Trust Building, Conversion Rates, ROI Timeline.
+8. decision_risk: "High" = recommendation relies on thin or single-source evidence. "Medium" = partial coverage. "Low" = multiple strong sources converge.
+9. strategy_roadmap: 3 phases that show HOW to use BOTH strategies intelligently over time.
+   Phase 1: Which strategy to start with and why (based on evidence).
+   Phase 2: When and how to transition or add the second strategy.
+   Phase 3: Long-term integrated state.
+   Each phase: descriptive title + 3–4 sequential action steps.
+
+Return JSON exactly:
+{
+  "profiles": [
+    {
+      "option": "exact option name",
+      "advantages": ["specific evidence-backed benefit"],
+      "costs": ["specific resource/time/effort cost"],
+      "failure_modes": ["fails when X because Y"],
+      "best_for": ["condition where this works best"]
+    }
+  ],
+  "comparison_completeness": "High|Medium|Low",
+  "completeness_reason": "One sentence.",
+  "missing_dimensions": ["Customer Quality", "Scalability"],
+  "decision_risk": "High|Medium|Low",
+  "decision_risk_reason": "One sentence on why.",
+  "strategy_roadmap": [
+    { "phase": "Phase 1: Title", "steps": ["step 1", "step 2", "step 3"] },
+    { "phase": "Phase 2: Title", "steps": ["step 1", "step 2", "step 3"] },
+    { "phase": "Phase 3: Title", "steps": ["step 1", "step 2", "step 3"] }
+  ]
+}`,
+      },
+      {
+        role: "user",
+        content: JSON.stringify({ query, option_evidence: evidenceContext, insight_clusters: clusterContext }),
+      },
+    ],
+  });
+
+  try {
+    const VALID_COMP = new Set(["High", "Medium", "Low"]);
+    const p = JSON.parse(res.choices[0]?.message?.content ?? "{}") as Partial<StrategyProfilesLLMResult>;
+
+    const rawProfiles = Array.isArray(p.profiles) ? p.profiles : [];
+
+    const strategy_profiles = rawProfiles.map(profile => {
+      const matchedPartition = partitioned.find(pt =>
+        pt.option.toLowerCase().includes(profile.option?.toLowerCase() ?? "xxx") ||
+        (profile.option?.toLowerCase() ?? "xxx").includes(pt.option.toLowerCase())
+      ) ?? partitioned[0];
+
+      return {
+        option:          String(profile.option ?? matchedPartition.option),
+        evidence_strength: computeOptionEvidenceStrength(matchedPartition.claims, qualityScores),
+        source_coverage: {
+          creator:   classifyOptionSourceCoverage(matchedPartition.claims, "youtube",  qualityScores.youtube.excluded),
+          community: classifyOptionSourceCoverage(matchedPartition.claims, "reddit",   qualityScores.reddit.excluded),
+          web:       classifyOptionSourceCoverage(matchedPartition.claims, "web",      qualityScores.web.excluded),
+        },
+        advantages:    Array.isArray(profile.advantages)    ? (profile.advantages as unknown[]).map(String).slice(0, 4)    : [],
+        costs:         Array.isArray(profile.costs)         ? (profile.costs as unknown[]).map(String).slice(0, 3)         : [],
+        failure_modes: Array.isArray(profile.failure_modes) ? (profile.failure_modes as unknown[]).map(String).slice(0, 4) : [],
+        best_for:      Array.isArray(profile.best_for)      ? (profile.best_for as unknown[]).map(String).slice(0, 4)      : [],
+      };
+    });
+
+    // If LLM returned fewer profiles than options, fill in missing ones deterministically
+    if (strategy_profiles.length < options.length) {
+      for (const { option, claims } of partitioned) {
+        if (!strategy_profiles.some(sp => sp.option.toLowerCase().includes(option.toLowerCase()))) {
+          strategy_profiles.push({
+            option,
+            evidence_strength: computeOptionEvidenceStrength(claims, qualityScores),
+            source_coverage: {
+              creator:   classifyOptionSourceCoverage(claims, "youtube",  qualityScores.youtube.excluded),
+              community: classifyOptionSourceCoverage(claims, "reddit",   qualityScores.reddit.excluded),
+              web:       classifyOptionSourceCoverage(claims, "web",      qualityScores.web.excluded),
+            },
+            advantages: [], costs: [], failure_modes: [], best_for: [],
+          });
+        }
+      }
+    }
+
+    const roadmap = Array.isArray(p.strategy_roadmap)
+      ? (p.strategy_roadmap as Array<{ phase?: string; steps?: unknown[] }>)
+          .filter(r => r.phase && Array.isArray(r.steps) && r.steps.length > 0)
+          .slice(0, 3)
+          .map(r => ({ phase: String(r.phase), steps: (r.steps as unknown[]).map(String).slice(0, 4) }))
+      : null;
+
+    console.log(`[generateStrategyProfiles] profiles=${strategy_profiles.length} roadmap_phases=${roadmap?.length ?? 0} completeness=${p.comparison_completeness} risk=${p.decision_risk}`);
+
+    return {
+      strategy_profiles,
+      comparison_completeness: VALID_COMP.has(p.comparison_completeness ?? "") ? p.comparison_completeness as "High" | "Medium" | "Low" : null,
+      completeness_reason:     (typeof p.completeness_reason === "string" && p.completeness_reason.length > 5) ? p.completeness_reason : null,
+      missing_dimensions:      Array.isArray(p.missing_dimensions) ? (p.missing_dimensions as unknown[]).map(String).slice(0, 6) : [],
+      decision_risk:           VALID_COMP.has(p.decision_risk ?? "") ? p.decision_risk as "High" | "Medium" | "Low" : null,
+      decision_risk_reason:    (typeof p.decision_risk_reason === "string" && p.decision_risk_reason.length > 5) ? p.decision_risk_reason : null,
+      strategy_roadmap:        roadmap && roadmap.length >= 2 ? roadmap : null,
+    };
+  } catch (err) {
+    console.error("[generateStrategyProfiles] failed:", err instanceof Error ? err.message : err);
+    return EMPTY;
   }
 }
 
@@ -2452,6 +2732,7 @@ function assembleMemo(
   sourceStates:       Record<"youtube" | "reddit" | "web", SourceSignalState>,
   queryType:          IntelligenceMemo["query_type"],
   comparativeVerdict: IntelligenceMemo["comparative_verdict"],
+  strategyProfiles:   StrategyProfilesOutput | null,
 ): IntelligenceMemo {
   const bySource = (src: NormalizedClaim["source"]) =>
     gatedClaims.filter(c => c.source === src)
@@ -2583,7 +2864,17 @@ function assembleMemo(
     counter_evidence: decision.counter_evidence,
     why_not_alternative: decision.why_not_alternative,
     comparative_verdict: comparativeVerdict
-      ? { ...comparativeVerdict, ...(queryType === "COMPARATIVE" ? (computeComparativeCoverage(query, gatedClaims) ?? { coverage_balance: null, comparison_quality: null }) : { coverage_balance: null, comparison_quality: null }) }
+      ? {
+          ...comparativeVerdict,
+          ...(queryType === "COMPARATIVE" ? (computeComparativeCoverage(query, gatedClaims) ?? { coverage_balance: null, comparison_quality: null }) : { coverage_balance: null, comparison_quality: null }),
+          strategy_profiles:       strategyProfiles?.strategy_profiles       ?? null,
+          comparison_completeness: strategyProfiles?.comparison_completeness ?? null,
+          completeness_reason:     strategyProfiles?.completeness_reason     ?? null,
+          missing_dimensions:      strategyProfiles?.missing_dimensions      ?? [],
+          decision_risk:           strategyProfiles?.decision_risk           ?? null,
+          decision_risk_reason:    strategyProfiles?.decision_risk_reason    ?? null,
+          strategy_roadmap:        strategyProfiles?.strategy_roadmap        ?? null,
+        }
       : null,
     reddit_gap: qualityScores.reddit.excluded,
     confidence_score: Math.round(adjustedConfidence * 100),
@@ -3280,12 +3571,17 @@ export async function POST(req: NextRequest) {
 
       const queryType = detectQueryType(query);
 
+      const comparisonOptions = queryType === "COMPARATIVE" ? extractComparisonOptions(query) : [];
+
       // Run decision + perspective extraction + (optional) comparative verdict in parallel
-      const [decision, perspResult, comparativeVerdict] = await Promise.all([
+      const [decision, perspResult, comparativeVerdict, strategyProfilesResult] = await Promise.all([
         generateDecision(query, clusters, extractor.stage_interpretation),
         generatePerspectives(query, creatorRaw, communityRaw, webRaw),
         queryType === "COMPARATIVE"
           ? generateComparativeVerdict(query, clusters, extractor.contradictions)
+          : Promise.resolve(null),
+        queryType === "COMPARATIVE" && comparisonOptions.length >= 2
+          ? generateStrategyProfiles(query, comparisonOptions, pipelineClaims, clusters, qualityScores)
           : Promise.resolve(null),
       ]);
 
@@ -3340,7 +3636,7 @@ export async function POST(req: NextRequest) {
         }).catch(e => console.warn("[OutcomeLog] failed:", e));
       }
 
-      const memo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence, sourceStates, queryType, comparativeVerdict);
+      const memo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence, sourceStates, queryType, comparativeVerdict, strategyProfilesResult);
 
       emit({ type: "complete", memo });
 
