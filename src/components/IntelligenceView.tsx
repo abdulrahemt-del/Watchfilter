@@ -67,7 +67,12 @@ function ComparativeVerdictCard({ memo }: { memo: IntelligenceMemo }) {
               <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#64748b", alignSelf: "center" }}>{dim.label}</span>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", alignSelf: "center" }}>
                 <span style={{ fontSize: "0.82rem", fontWeight: 800, color: wColor, lineHeight: 1.2 }}>{dim.winner}</span>
-                <span style={{ fontSize: "0.5rem", fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: cs.bg, color: cs.color, display: "inline-block", width: "fit-content" }}>{dim.confidence}</span>
+                <div style={{ display: "flex", gap: "0.3rem", alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "0.5rem", fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: cs.bg, color: cs.color, display: "inline-block" }}>{dim.confidence}</span>
+                  {(dim.evidence_count ?? 0) > 0 && (
+                    <span style={{ fontSize: "0.5rem", color: "#64748b" }}>{dim.evidence_count} signal{dim.evidence_count !== 1 ? "s" : ""}</span>
+                  )}
+                </div>
               </div>
               <span style={{ fontSize: "0.69rem", color: "#64748b", lineHeight: 1.55, alignSelf: "center" }}>{dim.reasons[0] ?? ""}</span>
             </div>
@@ -81,6 +86,57 @@ function ComparativeVerdictCard({ memo }: { memo: IntelligenceMemo }) {
           <p style={{ margin: 0, fontSize: "0.78rem", color: "#e2e8f0", lineHeight: 1.6 }}>{cv.overall_recommendation}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Source Agreement Banner (Item 7) ─────────────────────────────────────────
+
+const REL_STYLE: Record<string, { bg: string; border: string; textColor: string }> = {
+  CONSENSUS:     { bg: "#f0fdf4", border: "#86efac",  textColor: "#166534" },
+  COMPLEMENTARY: { bg: "#eff6ff", border: "#bfdbfe",  textColor: "#1d4ed8" },
+  TRADEOFF:      { bg: "#fefce8", border: "#fde047",  textColor: "#854d0e" },
+  CONTRADICTION: { bg: "#fff1f2", border: "#fecdd3",  textColor: "#9f1239" },
+};
+
+const AGR_SOURCE_META = {
+  youtube: { label: "Creator",   icon: "▶", color: "#ef4444", bg: "#fee2e2", border: "#fca5a5" },
+  reddit:  { label: "Community", icon: "▲", color: "#10b981", bg: "#f0fdf4", border: "#86efac" },
+  web:     { label: "Web",       icon: "⬡", color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
+} as const;
+
+function SourceAgreementBanner({ memo }: { memo: IntelligenceMemo }) {
+  const states   = memo.consensus?.source_states;
+  const reason   = memo.consensus?.relationship_reason;
+  const relType  = memo.consensus?.relationship_type ?? "CONSENSUS";
+  if (!states || !reason) return null;
+
+  const relStyle = REL_STYLE[relType] ?? REL_STYLE.CONSENSUS;
+
+  return (
+    <div style={{ background: relStyle.bg, border: `1px solid ${relStyle.border}`, borderRadius: 10, padding: "0.7rem 1rem", display: "flex", alignItems: "center", gap: "0.85rem", flexWrap: "wrap" }}>
+      {/* Per-source agreement indicators */}
+      <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", flexShrink: 0 }}>
+        {(["youtube", "reddit", "web"] as const).map(src => {
+          const m     = AGR_SOURCE_META[src];
+          const state = states[src];
+          const isActive   = state === "SUPPORTS";
+          const isOpposed  = state === "OPPOSES";
+          const isMixed    = state === "MIXED";
+          const checkColor = isActive ? "#10b981" : isOpposed ? "#ef4444" : isMixed ? "#f59e0b" : "#94a3b8";
+          const checkChar  = isActive ? "✓" : isOpposed ? "✗" : isMixed ? "~" : "—";
+          return (
+            <div key={src} style={{ display: "flex", alignItems: "center", gap: "0.2rem", padding: "2px 8px", borderRadius: 20, background: isActive ? m.bg : "#f8fafc", border: `1px solid ${isActive ? m.border : "#e2e8f0"}` }}>
+              <span style={{ fontSize: "0.59rem", fontWeight: 800, color: isActive ? m.color : "#94a3b8" }}>{m.icon} {m.label}</span>
+              <span style={{ fontSize: "0.68rem", fontWeight: 900, color: checkColor, lineHeight: 1 }}>{checkChar}</span>
+            </div>
+          );
+        })}
+      </div>
+      <span style={{ color: "#cbd5e1", flexShrink: 0, lineHeight: 1 }}>·</span>
+      <p style={{ margin: 0, flex: 1, fontSize: "0.72rem", color: relStyle.textColor, lineHeight: 1.45, minWidth: 160 }}>
+        {reason}
+      </p>
     </div>
   );
 }
@@ -120,6 +176,11 @@ function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
             {dd.decision_strength} signal
           </span>
         )}
+        {memo.recommendation_type && memo.recommendation_type !== "Universal" && (
+          <span style={{ fontSize: "0.55rem", fontWeight: 700, padding: "1px 8px", borderRadius: 20, background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d" }}>
+            {memo.recommendation_type}
+          </span>
+        )}
       </div>
       {memo.confidence_score < 55 && (
         <div style={{ marginBottom: "0.6rem", padding: "0.4rem 0.7rem", background: "#1e293b", borderRadius: 6, borderLeft: "3px solid #f59e0b" }}>
@@ -137,9 +198,15 @@ function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
         }
       </p>
       {dd?.decision_justification && (
-        <div style={{ marginBottom: "0.85rem", padding: "0.55rem 0.75rem", background: "#1e293b", borderRadius: 8, borderLeft: "3px solid #334155" }}>
+        <div style={{ marginBottom: "0.75rem", padding: "0.55rem 0.75rem", background: "#1e293b", borderRadius: 8, borderLeft: "3px solid #334155" }}>
           <p style={{ margin: "0 0 0.2rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Why this decision</p>
           <p style={{ margin: 0, fontSize: "0.75rem", color: "#94a3b8", lineHeight: 1.6 }}>{dd.decision_justification}</p>
+        </div>
+      )}
+      {memo.condition_qualifier && (
+        <div style={{ marginBottom: "0.85rem", padding: "0.5rem 0.75rem", background: "#f0f9ff", borderRadius: 8, borderLeft: "3px solid #0ea5e9" }}>
+          <p style={{ margin: "0 0 0.15rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#0369a1" }}>When This Changes</p>
+          <p style={{ margin: 0, fontSize: "0.72rem", color: "#0c4a6e", lineHeight: 1.55 }}>{memo.condition_qualifier}</p>
         </div>
       )}
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
@@ -1881,6 +1948,61 @@ function EvidenceGaps({ coverage }: { coverage: IntelligenceMemo["coverage"] }) 
   );
 }
 
+// ── Decision Tree — stage-based branching playbook ────────────────────────────
+
+const TREE_NODES = [
+  { key: "pre_product"  as const, label: "Pre-Product-Market Fit", sub: "0–10 customers",  color: "#7c3aed", bg: "#f5f3ff", border: "#c4b5fd" },
+  { key: "early_stage"  as const, label: "Early Stage",            sub: "10–100 customers", color: "#b45309", bg: "#fffbeb", border: "#fcd34d" },
+  { key: "growth_stage" as const, label: "Growth Stage",           sub: "100+ customers",   color: "#065f46", bg: "#f0fdf4", border: "#6ee7b7" },
+] as const;
+
+function DecisionTree({ rec }: { rec: IntelligenceMemo["decision_recommendation"] }) {
+  const nodes = TREE_NODES.filter(n => rec.stage_based_actions[n.key].length > 0);
+  if (!nodes.length) return null;
+  return (
+    <section style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.9rem 1.1rem" }}>
+      <h2 style={{ margin: "0 0 0.85rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Stage-Based Decision Tree
+      </h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+        {nodes.map((node, i) => (
+          <div key={node.key} style={{ display: "flex", gap: "0.85rem" }}>
+            {/* Connector column */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 22, flexShrink: 0 }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: node.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 4 }}>
+                <span style={{ fontSize: "0.52rem", color: "white", fontWeight: 900 }}>{i + 1}</span>
+              </div>
+              {i < nodes.length - 1 && (
+                <div style={{ width: 2, flex: 1, minHeight: 20, background: "#e2e8f0", margin: "3px 0" }} />
+              )}
+            </div>
+            {/* Content */}
+            <div style={{ flex: 1, paddingBottom: i < nodes.length - 1 ? "1rem" : 0, paddingTop: "0.1rem" }}>
+              <div style={{ marginBottom: "0.35rem" }}>
+                <span style={{ fontSize: "0.68rem", fontWeight: 800, color: node.color }}>{node.label}</span>
+                <span style={{ fontSize: "0.56rem", color: node.color, opacity: 0.65, marginLeft: "0.4rem" }}>{node.sub}</span>
+              </div>
+              {i < nodes.length - 1 && (
+                <div style={{ marginBottom: "0.3rem", padding: "2px 8px", background: node.bg, border: `1px solid ${node.border}`, borderRadius: 6, display: "inline-block" }}>
+                  <span style={{ fontSize: "0.56rem", fontWeight: 700, color: node.color }}>→ {nodes[i + 1]?.label}</span>
+                </div>
+              )}
+              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.28rem" }}>
+                {rec.stage_based_actions[node.key].map((a, j) => (
+                  <li key={j} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
+                    <span style={{ color: node.color, fontSize: "0.65rem", paddingTop: 2, flexShrink: 0 }}>→</span>
+                    <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{a}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // ── Stage-based actions ───────────────────────────────────────────────────────
 
 function StageActions({ rec }: { rec: IntelligenceMemo["decision_recommendation"] }) {
@@ -2083,6 +2205,9 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
+      {/* 0. Source Agreement Banner — shows per-source ✓/✗ + why they agree/disagree */}
+      <SourceAgreementBanner memo={memo} />
+
       {/* 1. Decision card — comparative verdict for A vs B queries, binary YES/NO otherwise */}
       {memo.query_type === "COMPARATIVE" && memo.comparative_verdict
         ? <ComparativeVerdictCard memo={memo} />
@@ -2125,8 +2250,8 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
       {/* 13. Contradictions (hard only) */}
       <Contradictions items={memo.contradictions} />
 
-      {/* 14. Stage Playbook */}
-      <StageActions rec={memo.decision_recommendation} />
+      {/* 14. Stage-Based Decision Tree */}
+      <DecisionTree rec={memo.decision_recommendation} />
 
       {/* 15. Prediction Intelligence (conditional on relevance) */}
       <PredictionIntelligenceCard query={query} />

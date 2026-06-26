@@ -25,6 +25,7 @@ export type IntelligenceMemo = {
       label: string;
       winner: string;
       confidence: "High" | "Medium" | "Low";
+      evidence_count: number;
       reasons: string[];
     }>;
     overall_recommendation: string;
@@ -289,6 +290,8 @@ export type IntelligenceMemo = {
     decision_strength: "Strong" | "Moderate" | "Weak";
     missing_evidence: string[];
   };
+  recommendation_type: "Universal" | "Conditional" | "Stage-Based" | "Industry-Specific" | "Team-Dependent";
+  condition_qualifier: string | null;
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -1248,6 +1251,8 @@ type PriorityAction = {
 type DecisionResult = {
   directional: string;
   decision_summary: string;
+  recommendation_type: "Universal" | "Conditional" | "Stage-Based" | "Industry-Specific" | "Team-Dependent";
+  condition_qualifier: string | null;
   priority_actions: PriorityAction[];
 };
 
@@ -1302,11 +1307,24 @@ RULES:
 6. directional MUST be EXACTLY one of:
    "Strong YES (conditional)" | "Lean YES" | "Neutral / Tradeoff" | "Lean NO" | "Strong NO (conditional)" | "Comparative Verdict"
    Use "Comparative Verdict" when the query compares two or more options (contains "vs", "versus", "or", "compare").
+7. recommendation_type MUST be EXACTLY one of:
+   "Universal" — correct regardless of stage, industry, or team context
+   "Conditional" — correct answer depends on specific circumstances evident in the evidence
+   "Stage-Based" — correct answer changes based on business stage (pre-PMF vs post-PMF vs growth)
+   "Industry-Specific" — applies only to specific verticals or business models evident in the question
+   "Team-Dependent" — depends on team capabilities, bandwidth, or resources
+   NEVER force "Universal" when evidence shows the answer changes based on conditions.
+8. condition_qualifier: A 1-sentence "when does this recommendation change?" statement.
+   REQUIRED for Conditional, Stage-Based, Industry-Specific, Team-Dependent — explain when the recommendation shifts.
+   Set to null ONLY for Universal recommendations.
+   Example: "This shifts once product-market fit is established and repeatable messaging exists."
 
 Return ONLY valid JSON:
 {
   "directional": "...",
   "decision_summary": "2–3 sentences: what the evidence shows, what is genuinely disputed, what matters most.",
+  "recommendation_type": "Universal|Conditional|Stage-Based|Industry-Specific|Team-Dependent",
+  "condition_qualifier": "One sentence on when this recommendation changes, or null.",
   "priority_actions": [
     { "action": "specific immediately executable action", "evidence_strength": "High|Medium|Low", "supporting_signals": 5 }
   ]
@@ -1323,14 +1341,20 @@ Return ONLY valid JSON:
   const VALID_STRENGTHS = new Set(["High", "Medium", "Low"]);
 
   try {
+    const VALID_REC_TYPES = new Set(["Universal", "Conditional", "Stage-Based", "Industry-Specific", "Team-Dependent"]);
+
     const p = JSON.parse(res.choices[0]?.message?.content ?? "{}") as {
       directional?: string;
       decision_summary?: string;
+      recommendation_type?: string;
+      condition_qualifier?: string | null;
       priority_actions?: Array<{ action?: string; evidence_strength?: string; supporting_signals?: number }>;
     };
     return {
-      directional:      VALID_DIRECTIONALS.has(p.directional ?? "") ? p.directional! : "Neutral / Tradeoff",
-      decision_summary: p.decision_summary ?? "Insufficient evidence to synthesize a decision.",
+      directional:         VALID_DIRECTIONALS.has(p.directional ?? "") ? p.directional! : "Neutral / Tradeoff",
+      decision_summary:    p.decision_summary ?? "Insufficient evidence to synthesize a decision.",
+      recommendation_type: VALID_REC_TYPES.has(p.recommendation_type ?? "") ? p.recommendation_type as DecisionResult["recommendation_type"] : "Universal",
+      condition_qualifier:  (typeof p.condition_qualifier === "string" && p.condition_qualifier.length > 5) ? p.condition_qualifier : null,
       priority_actions: Array.isArray(p.priority_actions)
         ? p.priority_actions.slice(0, 5)
             .filter(a => typeof a.action === "string" && a.action.length > 0)
@@ -1344,9 +1368,11 @@ Return ONLY valid JSON:
   } catch (err) {
     console.error("[generateDecision] JSON parse failed:", err instanceof Error ? err.message : err);
     return {
-      directional:      "Neutral / Tradeoff",
-      decision_summary: "Insufficient evidence to synthesize a decision.",
-      priority_actions: [],
+      directional:         "Neutral / Tradeoff",
+      decision_summary:    "Insufficient evidence to synthesize a decision.",
+      recommendation_type: "Universal" as const,
+      condition_qualifier:  null,
+      priority_actions:    [],
     };
   }
 }
@@ -1369,27 +1395,28 @@ async function generateComparativeVerdict(
   const res = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.3,
-    max_tokens: 1000,
+    max_tokens: 1800,
     response_format: { type: "json_object" },
     messages: [
       {
         role: "system",
         content: `You are a Comparative Intelligence Synthesizer for startup decisions.
-The user asked a comparison query (A vs B). Produce a structured verdict.
+The user asked a comparison query (A vs B). Produce a structured, multi-dimensional verdict.
 
 RULES:
-1. Identify 2–3 dimensions where the options genuinely differ (e.g., "Immediate Results", "Long-Term Scalability", "Cost Efficiency").
-2. For each dimension: pick a winner from the query options. Give 2–3 specific reasons pulled from evidence.
-3. DO NOT output YES/NO. Compare only the options mentioned in the query.
-4. overall_recommendation: 1–2 sentences. What to do first and why. Specific, actionable.
+1. Identify 4–7 dimensions where the options genuinely differ. Cover breadth across: Speed to Results, Trust Building, Scalability, Cost Efficiency, Execution Difficulty, Predictability, Compounding Effect, Customer Quality, Capital Required, Founder Time.
+2. For each dimension: pick a winner from the query options. Give 1–2 specific reasons pulled from evidence.
+3. DO NOT output YES/NO. Compare ONLY the options mentioned in the query.
+4. overall_recommendation: 1–2 sentences. What to prioritize first and why — conditional if evidence shows stage-dependency.
 5. confidence: "High" = 4+ supporting signals, "Medium" = 2–3, "Low" = 1.
-6. Work ONLY from provided evidence. No hallucination.
-7. If evidence is insufficient to declare a winner on a dimension, omit that dimension.
+6. evidence_count: integer count of evidence signals supporting this dimension's verdict (same scale as confidence: High ≥ 4, Medium 2–3, Low 1).
+7. Work ONLY from provided evidence. No hallucination.
+8. If evidence is insufficient to declare a winner on a dimension, omit that dimension.
 
 Return JSON:
 {
   "dimensions": [
-    { "label": "dimension name", "winner": "exact option from query", "confidence": "High|Medium|Low", "reasons": ["reason 1", "reason 2"] }
+    { "label": "dimension name", "winner": "exact option from query", "confidence": "High|Medium|Low", "evidence_count": 3, "reasons": ["reason 1", "reason 2"] }
   ],
   "overall_recommendation": "Start with X because Y. Add Z when W."
 }`,
@@ -1402,7 +1429,7 @@ Return JSON:
   });
 
   try {
-    type RawDim = { label?: string; winner?: string; confidence?: string; reasons?: unknown };
+    type RawDim = { label?: string; winner?: string; confidence?: string; evidence_count?: number; reasons?: unknown };
     const p = JSON.parse(res.choices[0]?.message?.content ?? "{}") as {
       dimensions?: RawDim[];
       overall_recommendation?: string;
@@ -1411,12 +1438,13 @@ Return JSON:
     const dims = Array.isArray(p.dimensions)
       ? p.dimensions
           .filter(d => d.label && d.winner)
-          .slice(0, 3)
+          .slice(0, 7)
           .map(d => ({
-            label:      String(d.label),
-            winner:     String(d.winner),
-            confidence: VALID_CONF.has(d.confidence ?? "") ? d.confidence as "High" | "Medium" | "Low" : "Medium",
-            reasons:    Array.isArray(d.reasons) ? (d.reasons as unknown[]).map(String).slice(0, 3) : [],
+            label:          String(d.label),
+            winner:         String(d.winner),
+            confidence:     VALID_CONF.has(d.confidence ?? "") ? d.confidence as "High" | "Medium" | "Low" : "Medium",
+            evidence_count: Math.max(1, Math.round(d.evidence_count ?? (d.confidence === "High" ? 4 : d.confidence === "Medium" ? 2 : 1))),
+            reasons:        Array.isArray(d.reasons) ? (d.reasons as unknown[]).map(String).slice(0, 3) : [],
           }))
       : [];
     if (!dims.length) return null;
@@ -1448,9 +1476,9 @@ async function generatePerspectives(
         content: `You are a startup intelligence analyst. SINGLE TASK: extract source-specific perspectives from evidence.
 
 For each source with 1+ evidence items, synthesize what that source reveals about the question:
-- creator_evidence → "youtube": What do experienced operators and founders believe? Recurring mental models, tactical beliefs, strategic themes.
-- community_evidence → "reddit": What actually happened in practice? Real outcomes, observed patterns, what worked or failed.
-- web_evidence → "web": What is generally recommended? Published playbooks, frameworks, consensus advice.
+- creator_evidence → "youtube": What do experienced operators and founders believe? Recurring mental models, tactical beliefs, operator convictions backed by their own results.
+- community_evidence → "reddit": What measurable outcomes did founders and practitioners actually report? Focus strictly on: what they tried, what specific results they observed, what failed and why. Every bullet must answer "What actually happened?" NOT "What should you do?"
+- web_evidence → "web": What do published frameworks and industry sources recommend? Specific playbooks, data-backed findings, documented approaches.
 
 RULES (CRITICAL):
 1. Synthesize ONLY from that source's own evidence. Never cross-contaminate with another source.
@@ -1461,9 +1489,10 @@ RULES (CRITICAL):
    "founder-led sales" stays "founder-led sales" — NOT "build trust"
    "cold outreach" stays "cold outreach" — NOT "engage your audience"
    "customer interviews" stays "customer interviews" — NOT "understand your customers"
-6. Bullets must answer: what specifically did they do or believe? (Not: what value did they express?)
-7. 3–5 bullets per active source. common_view: one sentence capturing the central pattern.
-8. cross_source_synthesis: for each active source (1+ items), one sentence capturing its unique contribution to answering the question.
+6. Creator bullets: what specific belief or conviction do they hold? (operator viewpoint, not general advice)
+7. Community bullets MUST describe OUTCOMES not ADVICE: "Founders who tried X reported Y results" — NEVER "Consider doing X" or "It's important to Y"
+8. 3–5 bullets per active source. common_view: one sentence capturing the central pattern.
+9. cross_source_synthesis: for each active source (1+ items), one sentence capturing its unique contribution to answering the question.
 
 Return ONLY valid JSON:
 {
@@ -2430,6 +2459,8 @@ function assembleMemo(
     query_type: queryType,
     directional: decision.directional,
     decision_summary: decision.decision_summary,
+    recommendation_type: decision.recommendation_type,
+    condition_qualifier:  decision.condition_qualifier,
     comparative_verdict: comparativeVerdict,
     reddit_gap: qualityScores.reddit.excluded,
     confidence_score: Math.round(adjustedConfidence * 100),
