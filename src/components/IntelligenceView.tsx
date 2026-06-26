@@ -2059,7 +2059,7 @@ export function IntelligenceView() {
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); void run(query); };
 
   return (
-    <div style={{ padding: "1.5rem", maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+    <div style={{ padding: "1.5rem", maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
       {/* Header */}
       <div>
