@@ -29,6 +29,8 @@ export type IntelligenceMemo = {
       reasons: string[];
     }>;
     overall_recommendation: string;
+    coverage_balance: Array<{ option: string; signal_count: number }> | null;
+    comparison_quality: "Strong" | "Moderate" | "Weak" | null;
   } | null;
   reddit_gap: boolean;
   confidence_score: number;
@@ -292,6 +294,10 @@ export type IntelligenceMemo = {
   };
   recommendation_type: "Universal" | "Conditional" | "Stage-Based" | "Industry-Specific" | "Team-Dependent";
   condition_qualifier: string | null;
+  consensus_quality: "Strong" | "Medium" | "Weak" | "Insufficient";
+  recommendation_stability: "High" | "Medium" | "Low";
+  counter_evidence: string[];
+  why_not_alternative: string | null;
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -827,11 +833,21 @@ function computeFinalConfidence(
   const statesPenalty = (["youtube", "reddit", "web"] as const)
     .reduce((sum, s) => sum + SOURCE_STATE_PENALTY[sourceStates[s]], 0);
 
+  // Evidence integrity gate — prevents strong agreement overriding weak source quality.
+  // Formula: sum(weight_i * quality_i) where creator=40%, community=35%, web=25%.
+  // Excluded sources contribute 0 — their absence caps the maximum achievable confidence.
+  const SOURCE_QUALITY_WEIGHTS = { youtube: 0.40, reddit: 0.35, web: 0.25 } as const;
+  const qualityWeightedScore = (["youtube", "reddit", "web"] as const).reduce((sum, src) => {
+    return sum + SOURCE_QUALITY_WEIGHTS[src] * (qualityScores[src]?.excluded ? 0 : (qualityScores[src]?.score ?? 0) / 100);
+  }, 0);
+
+  // Blend: 40% formula-derived (rewards agreement/convergence) + 60% quality-weighted (integrity gate).
+  // This lets cross-source bonuses contribute while preventing 91%-from-weak-sources inflation.
+  const rawFormula = agreement * 0.40 + sourceCoverage * 0.25 + signalDensity * 0.15 + qualityBonus + crossSourceBonus - penalty * 0.10 - statesPenalty;
+  const blendedConfidence = rawFormula * 0.40 + qualityWeightedScore * 0.60;
+
   return {
-    confidence: clamp(
-      agreement * 0.40 + sourceCoverage * 0.25 + signalDensity * 0.15 + qualityBonus + crossSourceBonus - penalty * 0.10 - statesPenalty,
-      0, 1,
-    ),
+    confidence: clamp(blendedConfidence, 0, 1),
     breakdown: {
       agreement:            agreementPct,
       sourceCoverage:       Math.round(sourceCoverage * 100),
@@ -840,6 +856,86 @@ function computeFinalConfidence(
       crossSourceBonus:     Math.round(crossSourceBonus * 100),
     },
   };
+}
+
+// ── Reasoning integrity helpers ───────────────────────────────────────────────
+
+// Classify evidence consensus quality — depth and breadth, not just directional agreement.
+// Strong requires multiple independent sources each with quality evidence.
+function computeConsensusQuality(
+  qualityScores: Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+  clusters: ClaimCluster[],
+  uniqueCreators: number,
+): "Strong" | "Medium" | "Weak" | "Insufficient" {
+  const nonExcluded = (["youtube", "reddit", "web"] as const).filter(s => !qualityScores[s].excluded);
+  const highQuality = nonExcluded.filter(s => qualityScores[s].score >= 65);
+  const crossSourceClusters = clusters.filter(c =>
+    new Set(c.claims.filter(cl => !qualityScores[cl.source as "youtube" | "reddit" | "web"].excluded).map(cl => cl.source)).size >= 2
+  ).length;
+
+  // Strong: 2+ creators, 2+ high-quality sources, 2+ cross-source corroborated clusters
+  if (uniqueCreators >= 2 && highQuality.length >= 2 && crossSourceClusters >= 2) return "Strong";
+  // Medium: two high-quality sources agree, or one high-quality with cross-source support
+  if (highQuality.length >= 2 && crossSourceClusters >= 1) return "Medium";
+  if (highQuality.length >= 1 && nonExcluded.length >= 2 && crossSourceClusters >= 1) return "Medium";
+  // Insufficient: only one source or very few clusters
+  if (nonExcluded.length <= 1 || clusters.length <= 2) return "Insufficient";
+  return "Weak";
+}
+
+// How robust is the recommendation to adding more evidence?
+// Separate from confidence — a low-confidence answer can still be stable (no credible alternative).
+function computeRecommendationStability(
+  qualityScores: Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+  clusters: ClaimCluster[],
+): "High" | "Medium" | "Low" {
+  const totalSignals    = clusters.reduce((s, c) => s + c.claims.length, 0);
+  const nonExcluded     = (["youtube", "reddit", "web"] as const).filter(s => !qualityScores[s].excluded).length;
+  const highQuality     = (["youtube", "reddit", "web"] as const).filter(s => !qualityScores[s].excluded && qualityScores[s].score >= 65).length;
+  const crossSourceClusters = clusters.filter(c => new Set(c.claims.map(cl => cl.source)).size >= 2).length;
+
+  if (crossSourceClusters >= 3 && totalSignals >= 15 && highQuality >= 2) return "High";
+  if (totalSignals < 8 || nonExcluded <= 1 || crossSourceClusters === 0) return "Low";
+  return "Medium";
+}
+
+// For comparative queries: detect coverage imbalance between options (Items 4 & 5)
+function extractComparisonOptions(query: string): string[] {
+  const lower = query.toLowerCase().replace(/[?!.,]/g, "");
+  for (const sep of [" vs ", " versus ", " or "]) {
+    const idx = lower.indexOf(sep);
+    if (idx !== -1) {
+      // Take up to 3 words before and after the separator for each option label
+      const a = lower.slice(0, idx).trim().split(/\s+/).slice(-3).join(" ");
+      const b = lower.slice(idx + sep.length).trim().split(/\s+/).slice(0, 3).join(" ");
+      if (a.length >= 3 && b.length >= 3) return [a, b];
+    }
+  }
+  return [];
+}
+
+function computeComparativeCoverage(
+  query: string,
+  gatedClaims: NormalizedClaim[],
+): { coverage_balance: Array<{ option: string; signal_count: number }>; comparison_quality: "Strong" | "Moderate" | "Weak" } | null {
+  const options = extractComparisonOptions(query);
+  if (options.length < 2) return null;
+
+  const counts = options.map(opt => {
+    const keywords = opt.split(/\s+/).filter(w => w.length > 2);
+    const count = gatedClaims.filter(c =>
+      keywords.some(kw => c.claim.toLowerCase().includes(kw))
+    ).length;
+    return { option: opt, signal_count: count };
+  });
+
+  const maxCount = Math.max(...counts.map(c => c.signal_count), 1);
+  const minCount = Math.min(...counts.map(c => c.signal_count));
+  const ratio    = minCount / maxCount;
+  const comparison_quality: "Strong" | "Moderate" | "Weak" =
+    ratio >= 0.6 ? "Strong" : ratio >= 0.3 ? "Moderate" : "Weak";
+
+  return { coverage_balance: counts, comparison_quality };
 }
 
 // ── Extractor LLM ─────────────────────────────────────────────────────────────
@@ -1254,6 +1350,8 @@ type DecisionResult = {
   recommendation_type: "Universal" | "Conditional" | "Stage-Based" | "Industry-Specific" | "Team-Dependent";
   condition_qualifier: string | null;
   priority_actions: PriorityAction[];
+  counter_evidence: string[];
+  why_not_alternative: string | null;
 };
 
 type PerspectiveResult = {
@@ -1318,6 +1416,13 @@ RULES:
    REQUIRED for Conditional, Stage-Based, Industry-Specific, Team-Dependent — explain when the recommendation shifts.
    Set to null ONLY for Universal recommendations.
    Example: "This shifts once product-market fit is established and repeatable messaging exists."
+9. counter_evidence: 1–3 specific observations from the provided signals that argue AGAINST or complicate the main recommendation.
+   Pull ONLY from evidence provided. No invented counterarguments.
+   Including counter-evidence makes the analysis trustworthy. Omit only if truly no contrary signal exists.
+   Each must be a specific observation: "Practitioners who tried X found Y" — NOT "This approach has risks."
+10. why_not_alternative: For comparison or conditional queries, one sentence explaining why the alternative was not recommended first, traced to specific evidence.
+    Example: "Content marketing was not prioritized because the evidence shows it requires 6–12 months before measurable results — conflicting with early-stage need for rapid customer feedback loops."
+    Set to null for universal exploratory queries with no clear alternative.
 
 Return ONLY valid JSON:
 {
@@ -1325,6 +1430,8 @@ Return ONLY valid JSON:
   "decision_summary": "2–3 sentences: what the evidence shows, what is genuinely disputed, what matters most.",
   "recommendation_type": "Universal|Conditional|Stage-Based|Industry-Specific|Team-Dependent",
   "condition_qualifier": "One sentence on when this recommendation changes, or null.",
+  "counter_evidence": ["specific observation arguing against recommendation", "..."],
+  "why_not_alternative": "One sentence on why the alternative was not chosen, traced to evidence. Or null.",
   "priority_actions": [
     { "action": "specific immediately executable action", "evidence_strength": "High|Medium|Low", "supporting_signals": 5 }
   ]
@@ -1348,6 +1455,8 @@ Return ONLY valid JSON:
       decision_summary?: string;
       recommendation_type?: string;
       condition_qualifier?: string | null;
+      counter_evidence?: unknown;
+      why_not_alternative?: string | null;
       priority_actions?: Array<{ action?: string; evidence_strength?: string; supporting_signals?: number }>;
     };
     return {
@@ -1355,6 +1464,10 @@ Return ONLY valid JSON:
       decision_summary:    p.decision_summary ?? "Insufficient evidence to synthesize a decision.",
       recommendation_type: VALID_REC_TYPES.has(p.recommendation_type ?? "") ? p.recommendation_type as DecisionResult["recommendation_type"] : "Universal",
       condition_qualifier:  (typeof p.condition_qualifier === "string" && p.condition_qualifier.length > 5) ? p.condition_qualifier : null,
+      counter_evidence: Array.isArray(p.counter_evidence)
+        ? (p.counter_evidence as unknown[]).filter((s): s is string => typeof s === "string" && s.length > 10).slice(0, 3)
+        : [],
+      why_not_alternative: (typeof p.why_not_alternative === "string" && p.why_not_alternative.length > 10) ? p.why_not_alternative : null,
       priority_actions: Array.isArray(p.priority_actions)
         ? p.priority_actions.slice(0, 5)
             .filter(a => typeof a.action === "string" && a.action.length > 0)
@@ -1372,6 +1485,8 @@ Return ONLY valid JSON:
       decision_summary:    "Insufficient evidence to synthesize a decision.",
       recommendation_type: "Universal" as const,
       condition_qualifier:  null,
+      counter_evidence:    [],
+      why_not_alternative: null,
       priority_actions:    [],
     };
   }
@@ -1448,7 +1563,8 @@ Return JSON:
           }))
       : [];
     if (!dims.length) return null;
-    return { dimensions: dims, overall_recommendation: p.overall_recommendation ?? "" };
+    // coverage_balance and comparison_quality are populated by computeComparativeCoverage in assembleMemo
+    return { dimensions: dims, overall_recommendation: p.overall_recommendation ?? "", coverage_balance: null, comparison_quality: null };
   } catch {
     return null;
   }
@@ -2401,10 +2517,11 @@ function assembleMemo(
   );
   const relationship_reason = buildRelationshipReason(relationship_type, extractor, isComparative);
 
-  // Confidence adjustment by relationship type
+  // Confidence adjustment by relationship type.
+  // CONSENSUS bonus reduced (0.10 → 0.05): quality-weighted scoring already accounts for agreement depth.
   const RELATIONSHIP_DELTA: Record<RelationshipType, number> = {
-    CONSENSUS:      0.10,
-    COMPLEMENTARY:  0.05,
+    CONSENSUS:      0.05,
+    COMPLEMENTARY:  0.03,
     TRADEOFF:       0.00,
     CONTRADICTION: -0.20,
   };
@@ -2461,7 +2578,13 @@ function assembleMemo(
     decision_summary: decision.decision_summary,
     recommendation_type: decision.recommendation_type,
     condition_qualifier:  decision.condition_qualifier,
-    comparative_verdict: comparativeVerdict,
+    consensus_quality: computeConsensusQuality(qualityScores, clusters, creatorIntelligence?.coverage.unique_creators ?? 0),
+    recommendation_stability: computeRecommendationStability(qualityScores, clusters),
+    counter_evidence: decision.counter_evidence,
+    why_not_alternative: decision.why_not_alternative,
+    comparative_verdict: comparativeVerdict
+      ? { ...comparativeVerdict, ...(queryType === "COMPARATIVE" ? (computeComparativeCoverage(query, gatedClaims) ?? { coverage_balance: null, comparison_quality: null }) : { coverage_balance: null, comparison_quality: null }) }
+      : null,
     reddit_gap: qualityScores.reddit.excluded,
     confidence_score: Math.round(adjustedConfidence * 100),
     confidence_breakdown: {

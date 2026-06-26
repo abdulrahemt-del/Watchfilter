@@ -86,6 +86,27 @@ function ComparativeVerdictCard({ memo }: { memo: IntelligenceMemo }) {
           <p style={{ margin: 0, fontSize: "0.78rem", color: "#e2e8f0", lineHeight: 1.6 }}>{cv.overall_recommendation}</p>
         </div>
       )}
+
+      {/* Coverage balance — warn when evidence is heavily skewed toward one option */}
+      {cv.coverage_balance && cv.comparison_quality && cv.comparison_quality !== "Strong" && (
+        <div style={{ marginTop: "0.85rem", padding: "0.5rem 0.75rem", background: "#1e1a0a", borderRadius: 8, borderLeft: "3px solid #f59e0b", display: "flex", gap: "0.85rem", alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <p style={{ margin: "0 0 0.15rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#92400e" }}>
+              Coverage Quality: {cv.comparison_quality}
+            </p>
+            <p style={{ margin: "0 0 0.4rem", fontSize: "0.68rem", color: "#b45309", lineHeight: 1.45 }}>
+              Evidence is not equally distributed across both options — interpret this comparison with caution.
+            </p>
+            <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+              {cv.coverage_balance.map((opt, i) => (
+                <span key={i} style={{ fontSize: "0.6rem", color: "#94a3b8" }}>
+                  <span style={{ fontWeight: 700, color: "#e2e8f0" }}>{opt.option}</span>: {opt.signal_count} signal{opt.signal_count !== 1 ? "s" : ""}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -105,13 +126,21 @@ const AGR_SOURCE_META = {
   web:     { label: "Web",       icon: "⬡", color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
 } as const;
 
+const CONSENSUS_QUALITY_STYLE: Record<string, { bg: string; color: string; border: string; label: string }> = {
+  Strong:       { bg: "#dcfce7", color: "#14532d", border: "#86efac", label: "Strong Consensus" },
+  Medium:       { bg: "#fef3c7", color: "#78350f", border: "#fcd34d", label: "Partial Consensus" },
+  Weak:         { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5", label: "Weak Consensus" },
+  Insufficient: { bg: "#f1f5f9", color: "#475569", border: "#cbd5e1", label: "Insufficient Evidence" },
+};
+
 function SourceAgreementBanner({ memo }: { memo: IntelligenceMemo }) {
   const states   = memo.consensus?.source_states;
   const reason   = memo.consensus?.relationship_reason;
   const relType  = memo.consensus?.relationship_type ?? "CONSENSUS";
   if (!states || !reason) return null;
 
-  const relStyle = REL_STYLE[relType] ?? REL_STYLE.CONSENSUS;
+  const relStyle   = REL_STYLE[relType] ?? REL_STYLE.CONSENSUS;
+  const cqStyle    = memo.consensus_quality ? (CONSENSUS_QUALITY_STYLE[memo.consensus_quality] ?? CONSENSUS_QUALITY_STYLE.Medium) : null;
 
   return (
     <div style={{ background: relStyle.bg, border: `1px solid ${relStyle.border}`, borderRadius: 10, padding: "0.7rem 1rem", display: "flex", alignItems: "center", gap: "0.85rem", flexWrap: "wrap" }}>
@@ -137,6 +166,12 @@ function SourceAgreementBanner({ memo }: { memo: IntelligenceMemo }) {
       <p style={{ margin: 0, flex: 1, fontSize: "0.72rem", color: relStyle.textColor, lineHeight: 1.45, minWidth: 160 }}>
         {reason}
       </p>
+      {/* Consensus quality badge — derived from evidence depth, not just directional agreement */}
+      {cqStyle && (
+        <span style={{ fontSize: "0.55rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: cqStyle.bg, color: cqStyle.color, border: `1px solid ${cqStyle.border}`, flexShrink: 0, whiteSpace: "nowrap" }}>
+          {cqStyle.label}
+        </span>
+      )}
     </div>
   );
 }
@@ -204,14 +239,30 @@ function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
         </div>
       )}
       {memo.condition_qualifier && (
-        <div style={{ marginBottom: "0.85rem", padding: "0.5rem 0.75rem", background: "#f0f9ff", borderRadius: 8, borderLeft: "3px solid #0ea5e9" }}>
+        <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", background: "#f0f9ff", borderRadius: 8, borderLeft: "3px solid #0ea5e9" }}>
           <p style={{ margin: "0 0 0.15rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#0369a1" }}>When This Changes</p>
           <p style={{ margin: 0, fontSize: "0.72rem", color: "#0c4a6e", lineHeight: 1.55 }}>{memo.condition_qualifier}</p>
+        </div>
+      )}
+      {memo.why_not_alternative && (
+        <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", background: "#1e293b", borderRadius: 8, borderLeft: "3px solid #475569" }}>
+          <p style={{ margin: "0 0 0.15rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#475569" }}>Why Not the Alternative?</p>
+          <p style={{ margin: 0, fontSize: "0.72rem", color: "#94a3b8", lineHeight: 1.55 }}>{memo.why_not_alternative}</p>
         </div>
       )}
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#475569" }}>Sources</span>
         {(memo.sources_used ?? []).map(s => <SourceTag key={s} src={s} />)}
+        {memo.recommendation_stability && (
+          <span style={{
+            fontSize: "0.52rem", fontWeight: 700, padding: "1px 7px", borderRadius: 20, marginLeft: "auto",
+            background: memo.recommendation_stability === "High" ? "#dcfce7" : memo.recommendation_stability === "Low" ? "#fee2e2" : "#f1f5f9",
+            color: memo.recommendation_stability === "High" ? "#14532d" : memo.recommendation_stability === "Low" ? "#991b1b" : "#475569",
+            border: `1px solid ${memo.recommendation_stability === "High" ? "#86efac" : memo.recommendation_stability === "Low" ? "#fca5a5" : "#cbd5e1"}`,
+          }}>
+            {memo.recommendation_stability} stability
+          </span>
+        )}
       </div>
     </div>
   );
@@ -286,8 +337,8 @@ function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
               <div style={{ width: `${agreeScore}%`, height: "100%", background: agreeColor, borderRadius: 2 }} />
             </div>
             <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>
-              {(memo.consensus.supporting_sources ?? 0) >= 2 && (memo.consensus.opposing_sources ?? 0) === 0
-                ? "Strong Consensus"
+              {memo.consensus_quality
+                ? CONSENSUS_QUALITY_STYLE[memo.consensus_quality]?.label ?? agreeLabel(agreeScore)
                 : agreeLabel(agreeScore)}
             </span>
           </div>
@@ -2199,6 +2250,32 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
   );
 }
 
+// ── Counter-Evidence Section ─────────────────────────────────────────────────
+
+function CounterEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
+  const items = memo.counter_evidence;
+  if (!items || items.length === 0) return null;
+
+  return (
+    <section style={{ background: "white", border: "1px solid #fecdd3", borderRadius: 10, padding: "0.9rem 1.1rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.7rem" }}>
+        <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#9f1239" }}>
+          Counter-Evidence
+        </span>
+        <span style={{ fontSize: "0.55rem", color: "#94a3b8", marginLeft: "auto" }}>arguments against the recommendation</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        {items.map((item, i) => (
+          <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+            <span style={{ fontSize: "0.7rem", color: "#ef4444", flexShrink: 0, paddingTop: 2, fontWeight: 700 }}>↕</span>
+            <p style={{ margin: 0, fontSize: "0.72rem", color: "#374151", lineHeight: 1.55 }}>{item}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // ── Full report ───────────────────────────────────────────────────────────────
 
 function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; query: string; debug: boolean }) {
@@ -2213,6 +2290,9 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
         ? <ComparativeVerdictCard memo={memo} />
         : <DecisionCard memo={memo} />
       }
+
+      {/* 1.5. Counter-Evidence — specific signals arguing against the recommendation */}
+      <CounterEvidenceSection memo={memo} />
 
       {/* 2. Decision Drivers — Positive / Negative / Uncertainty */}
       <DecisionDriversSection memo={memo} />
