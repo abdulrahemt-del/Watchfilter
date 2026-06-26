@@ -30,30 +30,51 @@ const CONF_STYLE: Record<string, { bg: string; color: string }> = {
 function ComparativeVerdictCard({ memo }: { memo: IntelligenceMemo }) {
   const cv = memo.comparative_verdict;
   if (!cv || !cv.dimensions.length) return null;
+
+  // Assign a consistent color to each unique winner
+  const WINNER_PALETTE = ["#a78bfa", "#34d399", "#fb923c", "#60a5fa", "#f472b6"];
+  const uniqueWinners = [...new Set(cv.dimensions.map(d => d.winner))];
+  const winnerColor: Record<string, string> = {};
+  uniqueWinners.forEach((w, i) => { winnerColor[w] = WINNER_PALETTE[i % WINNER_PALETTE.length]; });
+
   return (
     <div style={{ background: "#0f172a", borderRadius: 12, padding: "1.5rem 1.75rem", borderLeft: "4px solid #6366f1" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
-        <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#475569" }}>Comparative Verdict</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.1rem" }}>
+        <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#475569" }}>Decision Matrix</span>
+        <span style={{ fontSize: "0.55rem", color: "#334155", marginLeft: "auto" }}>{cv.dimensions.length} dimensions evaluated</span>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1rem" }}>
+
+      {/* Column headers */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr 2fr", gap: "0.75rem", paddingBottom: "0.45rem", borderBottom: "1px solid #1e293b", marginBottom: "0.25rem" }}>
+        {["Dimension", "Winner", "Reason"].map(h => (
+          <span key={h} style={{ fontSize: "0.5rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "#334155" }}>{h}</span>
+        ))}
+      </div>
+
+      {/* Dimension rows */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 0, marginBottom: "1.1rem" }}>
         {cv.dimensions.map((dim, i) => {
           const cs = CONF_STYLE[dim.confidence] ?? CONF_STYLE.Medium;
+          const wColor = winnerColor[dim.winner] ?? "#a78bfa";
           return (
-            <div key={i} style={{ background: "#1e293b", borderRadius: 8, padding: "0.75rem 1rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.4rem", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#64748b" }}>{dim.label}</span>
-                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#f8fafc" }}>{dim.winner}</span>
-                <span style={{ fontSize: "0.55rem", fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: cs.bg, color: cs.color }}>{dim.confidence}</span>
+            <div key={i} style={{
+              display: "grid", gridTemplateColumns: "1.1fr 1fr 2fr", gap: "0.75rem",
+              padding: "0.6rem 0.4rem",
+              borderBottom: i < cv.dimensions.length - 1 ? "1px solid #1e293b" : "none",
+              background: i % 2 === 0 ? "transparent" : "#080d1440",
+              borderRadius: 4,
+            }}>
+              <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "#64748b", alignSelf: "center" }}>{dim.label}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", alignSelf: "center" }}>
+                <span style={{ fontSize: "0.82rem", fontWeight: 800, color: wColor, lineHeight: 1.2 }}>{dim.winner}</span>
+                <span style={{ fontSize: "0.5rem", fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: cs.bg, color: cs.color, display: "inline-block", width: "fit-content" }}>{dim.confidence}</span>
               </div>
-              <ul style={{ margin: 0, padding: "0 0 0 0.9rem", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-                {dim.reasons.map((r, j) => (
-                  <li key={j} style={{ fontSize: "0.72rem", color: "#94a3b8", lineHeight: 1.5 }}>{r}</li>
-                ))}
-              </ul>
+              <span style={{ fontSize: "0.69rem", color: "#64748b", lineHeight: 1.55, alignSelf: "center" }}>{dim.reasons[0] ?? ""}</span>
             </div>
           );
         })}
       </div>
+
       {cv.overall_recommendation && (
         <div style={{ padding: "0.6rem 0.85rem", background: "#1e293b", borderRadius: 8, borderLeft: "3px solid #6366f1" }}>
           <p style={{ margin: "0 0 0.15rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#475569" }}>Overall Recommendation</p>
@@ -100,8 +121,20 @@ function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
           </span>
         )}
       </div>
+      {memo.confidence_score < 55 && (
+        <div style={{ marginBottom: "0.6rem", padding: "0.4rem 0.7rem", background: "#1e293b", borderRadius: 6, borderLeft: "3px solid #f59e0b" }}>
+          <p style={{ margin: 0, fontSize: "0.68rem", color: "#d97706", lineHeight: 1.55 }}>
+            Current evidence is limited. This is the most likely conclusion, but additional creator or practitioner evidence could materially change the recommendation.
+          </p>
+        </div>
+      )}
       <p style={{ margin: "0 0 0.75rem", fontSize: "1rem", color: "#f8fafc", lineHeight: 1.75, fontWeight: 400 }}>
-        {memo.decision_summary}
+        {memo.confidence_score >= 80
+          ? <><span style={{ color: "#a78bfa", fontWeight: 700 }}>We recommend: </span>{memo.decision_summary}</>
+          : memo.confidence_score >= 55
+          ? <><span style={{ color: "#94a3b8", fontWeight: 600 }}>Evidence suggests </span>{memo.decision_summary}</>
+          : memo.decision_summary
+        }
       </p>
       {dd?.decision_justification && (
         <div style={{ marginBottom: "0.85rem", padding: "0.55rem 0.75rem", background: "#1e293b", borderRadius: 8, borderLeft: "3px solid #334155" }}>
@@ -210,6 +243,52 @@ function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
         </div>
 
       </div>
+
+      {/* +/- confidence factors derived from memo data */}
+      {(() => {
+        const positives: string[] = [];
+        const negatives: string[] = [];
+
+        if ((bd.crossSourceBonus ?? 0) >= 10) positives.push("Strong agreement across creators and web");
+        else if ((bd.crossSourceBonus ?? 0) >= 5) positives.push("Partial cross-source agreement detected");
+
+        if (bd.agreement >= 70) positives.push("High signal density across evidence");
+        else if (bd.agreement >= 50) positives.push("Moderate signal density");
+
+        if ((memo.consensus.supporting_sources ?? 0) >= 2 && (memo.consensus.opposing_sources ?? 0) === 0)
+          positives.push("All available sources support the same conclusion");
+
+        if (bd.sourceCoverage >= 70) positives.push("Broad source coverage");
+
+        if ((memo.contradictions?.length ?? 0) > 0)
+          negatives.push(`${memo.contradictions.length} contradiction${memo.contradictions.length > 1 ? "s" : ""} reduce certainty`);
+
+        if (memo.reddit_gap) negatives.push("Limited community practitioner coverage");
+
+        if (bd.sourceCoverage < 40) negatives.push("Weak source coverage — fewer than all three sources contributed");
+
+        const ciLevel = memo.creator_intelligence?.coverage?.coverage_status ?? memo.creator_intelligence?.coverage?.level;
+        if (ciLevel === "Low" || ciLevel === "Weak") negatives.push("Limited creator diversity on this topic");
+
+        if (positives.length === 0 && negatives.length === 0) return null;
+        return (
+          <div style={{ marginTop: "0.75rem", paddingTop: "0.65rem", borderTop: "1px solid #f1f5f9", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            {positives.map((f, i) => (
+              <div key={`p${i}`} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
+                <span style={{ fontSize: "0.62rem", color: "#10b981", flexShrink: 0, paddingTop: 1 }}>+</span>
+                <span style={{ fontSize: "0.67rem", color: "#374151", lineHeight: 1.45 }}>{f}</span>
+              </div>
+            ))}
+            {negatives.map((f, i) => (
+              <div key={`n${i}`} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
+                <span style={{ fontSize: "0.62rem", color: "#ef4444", flexShrink: 0, paddingTop: 1 }}>−</span>
+                <span style={{ fontSize: "0.67rem", color: "#374151", lineHeight: 1.45 }}>{f}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
     </section>
   );
 }
@@ -1168,13 +1247,17 @@ function AttributedEvidence({ evidence }: { evidence: IntelligenceMemo["attribut
               <div>
                 <p style={{ margin: "0 0 0.3rem", fontSize: "0.78rem", color: "#0f172a", lineHeight: 1.6, fontWeight: 500 }}>{e.claim}</p>
                 {e.sources.length > 0 && (
-                  <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ fontSize: "0.55rem", fontWeight: 600, color: "#94a3b8" }}>Sources:</span>
+                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center", marginTop: "0.2rem" }}>
                     {e.sources.map(s => {
                       const disp = SRC_DISPLAY[s.source];
+                      const countLabel = s.source === "reddit"
+                        ? `${s.signal_count} discussion${s.signal_count !== 1 ? "s" : ""}`
+                        : s.source === "youtube"
+                        ? `${s.signal_count} creator signal${s.signal_count !== 1 ? "s" : ""}`
+                        : `${s.signal_count} web source${s.signal_count !== 1 ? "s" : ""}`;
                       return (
-                        <span key={s.source} style={{ display: "inline-flex", alignItems: "center", gap: "0.2rem", fontSize: "0.57rem", fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: disp.dimBg, color: disp.accent, border: `1px solid ${disp.dimBorder}` }}>
-                          {disp.icon} {disp.label.split(" ")[0]} ({s.signal_count})
+                        <span key={s.source} style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", fontSize: "0.58rem", fontWeight: 700, padding: "2px 9px", borderRadius: 20, background: disp.dimBg, color: disp.accent, border: `1px solid ${disp.dimBorder}` }}>
+                          {disp.icon} {disp.label} · {countLabel}
                         </span>
                       );
                     })}
@@ -1253,6 +1336,81 @@ function PerspectiveCompressionAudit({ memo }: { memo: IntelligenceMemo }) {
         );
       })}
     </div>
+  );
+}
+
+// ── Evidence Timeline ─────────────────────────────────────────────────────────
+
+function EvidenceTimeline({ memo }: { memo: IntelligenceMemo }) {
+  const ci = memo.creator_intelligence;
+  const redditBullets = memo.source_perspective?.reddit?.bullets ?? [];
+  const webBullets    = memo.source_perspective?.web?.bullets ?? [];
+
+  const stages = [
+    {
+      icon: "▶", label: "Creator Intelligence", color: "#ef4444", bg: "#fee2e2", border: "#fca5a5",
+      active: (ci?.claims?.length ?? 0) > 0,
+      description: ci && (ci.claims?.length ?? 0) > 0
+        ? `${ci.coverage.unique_creators ?? ci.claims.length} creator${(ci.coverage.unique_creators ?? ci.claims.length) !== 1 ? "s" : ""} contributed ${ci.coverage.accepted} evidence segment${ci.coverage.accepted !== 1 ? "s" : ""}, forming ${ci.claims.length} belief cluster${ci.claims.length !== 1 ? "s" : ""}.`
+        : "No direct creator content found for this topic.",
+    },
+    {
+      icon: "▲", label: "Community Intelligence", color: "#10b981", bg: "#f0fdf4", border: "#bbf7d0",
+      active: redditBullets.length > 0,
+      description: redditBullets.length > 0
+        ? `${redditBullets.length} practitioner observation${redditBullets.length !== 1 ? "s" : ""} surfaced from community discussions.`
+        : "No community practitioner data found.",
+    },
+    {
+      icon: "⬡", label: "Web Intelligence", color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe",
+      active: webBullets.length > 0,
+      description: webBullets.length > 0
+        ? `${webBullets.length} consensus recommendation${webBullets.length !== 1 ? "s" : ""} synthesized from web sources.`
+        : "No web consensus found.",
+    },
+    {
+      icon: "◈", label: "Final Recommendation", color: "#6366f1", bg: "#f5f3ff", border: "#c4b5fd",
+      active: true,
+      description: (() => {
+        const s = memo.confidence_score;
+        const rel = memo.consensus.relationship_type;
+        const strength = s >= 80 ? "Strong" : s >= 55 ? "Moderate" : "Limited";
+        return `${strength} confidence (${s}/100). Relationship: ${rel}. ${memo.consensus.relationship_reason}`;
+      })(),
+    },
+  ];
+
+  return (
+    <section>
+      <h2 style={{ margin: "0 0 0.65rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
+        Evidence Timeline
+      </h2>
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          {stages.map((s, i) => (
+            <div key={i} style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+              {/* Dot + connector line */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", background: s.active ? s.bg : "#f8fafc", border: `2px solid ${s.active ? s.border : "#e2e8f0"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: "0.62rem", color: s.active ? s.color : "#94a3b8" }}>{s.icon}</span>
+                </div>
+                {i < stages.length - 1 && (
+                  <div style={{ width: 2, flex: 1, minHeight: 20, background: s.active ? `${s.color}30` : "#f1f5f9", margin: "3px 0" }} />
+                )}
+              </div>
+              {/* Content */}
+              <div style={{ flex: 1, paddingBottom: i < stages.length - 1 ? "0.9rem" : 0, paddingTop: "0.2rem" }}>
+                <p style={{ margin: "0 0 0.15rem", fontSize: "0.65rem", fontWeight: 700, color: s.active ? s.color : "#94a3b8" }}>
+                  {s.label}
+                  {!s.active && <span style={{ marginLeft: "0.4rem", fontWeight: 400, color: "#cbd5e1" }}>— No signal</span>}
+                </p>
+                <p style={{ margin: 0, fontSize: "0.68rem", color: "#475569", lineHeight: 1.55 }}>{s.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1952,22 +2110,25 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
       {/* 8. Confidence Breakdown */}
       <ConfidenceSection memo={memo} />
 
-      {/* 9. What Would Increase Confidence? */}
+      {/* 9. Evidence Timeline — reasoning chain audit */}
+      <EvidenceTimeline memo={memo} />
+
+      {/* 10. What Would Increase Confidence? */}
       <MissingEvidenceSection items={memo.decision_drivers?.missing_evidence ?? []} />
 
-      {/* 10. Consensus */}
+      {/* 11. Consensus */}
       <ConsensusSection consensus={memo.consensus} tradeoffs={memo.tradeoffs ?? []} contradictions={memo.contradictions} />
 
-      {/* 11. Tradeoffs */}
+      {/* 12. Tradeoffs */}
       <TradeoffsSection items={memo.tradeoffs ?? []} />
 
-      {/* 12. Contradictions (hard only) */}
+      {/* 13. Contradictions (hard only) */}
       <Contradictions items={memo.contradictions} />
 
-      {/* 13. Stage Playbook */}
+      {/* 14. Stage Playbook */}
       <StageActions rec={memo.decision_recommendation} />
 
-      {/* 14. Prediction Intelligence (conditional on relevance) */}
+      {/* 15. Prediction Intelligence (conditional on relevance) */}
       <PredictionIntelligenceCard query={query} />
 
       {/* Debug panel — pipeline diagnostics, hidden by default */}
