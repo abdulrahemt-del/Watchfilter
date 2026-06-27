@@ -4,6 +4,88 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import type { IntelligenceMemo } from "@/app/api/intelligence/query/route";
 import type { PredictionRow } from "@/lib/db";
 
+// ── Intelligence Brief (Executive Summary) ────────────────────────────────────
+
+function IntelligenceBriefCard({ memo }: { memo: IntelligenceMemo }) {
+  const score = memo.confidence_score;
+  const scoreColor = score >= 75 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
+
+  const recPrefix = score >= 80 ? "We recommend:" : score >= 55 ? "Evidence suggests:" : "Current evidence indicates:";
+
+  const biggestTradeoff = memo.tradeoffs?.[0]?.why_it_matters ?? null;
+  const keyLimitation   = memo.decision_drivers?.negative_signals?.[0]?.insight
+                       ?? memo.decision_drivers?.uncertainty_factors?.[0]
+                       ?? null;
+  const missingEvidence = memo.decision_drivers?.missing_evidence?.[0] ?? null;
+
+  const stabilityColor = memo.recommendation_stability === "High" ? "#10b981"
+    : memo.recommendation_stability === "Low" ? "#ef4444" : "#f59e0b";
+
+  return (
+    <section style={{ background: "#060b14", border: "1px solid #1e293b", borderRadius: 14, padding: "1.25rem 1.5rem" }}>
+      {/* Header */}
+      <p style={{ margin: "0 0 0.75rem", fontSize: "0.52rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.14em", color: "#334155" }}>
+        Intelligence Brief
+      </p>
+
+      {/* Pill row */}
+      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.9rem", alignItems: "center" }}>
+        {memo.directional && (
+          <span style={{ fontSize: "0.62rem", fontWeight: 800, padding: "3px 10px", borderRadius: 20, background: "#1e293b", color: "#94a3b8", border: "1px solid #334155" }}>
+            {memo.directional}
+          </span>
+        )}
+        {memo.recommendation_type && (
+          <span style={{ fontSize: "0.58rem", fontWeight: 700, padding: "2px 9px", borderRadius: 20, background: "#0f172a", color: "#64748b", border: "1px solid #1e293b" }}>
+            {memo.recommendation_type}
+          </span>
+        )}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.6rem" }}>
+          {memo.recommendation_stability && (
+            <span style={{ fontSize: "0.57rem", fontWeight: 700, color: stabilityColor }}>
+              {memo.recommendation_stability} stability
+            </span>
+          )}
+          <div style={{ display: "flex", alignItems: "baseline", gap: "0.15rem" }}>
+            <span style={{ fontSize: "1.6rem", fontWeight: 900, color: scoreColor, lineHeight: 1 }}>{score}</span>
+            <span style={{ fontSize: "0.55rem", color: "#475569", fontWeight: 700 }}>/100</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Decision summary */}
+      <p style={{ margin: "0 0 1rem", fontSize: "0.95rem", color: "#e2e8f0", lineHeight: 1.65, fontWeight: 400 }}>
+        <span style={{ color: "#6366f1", fontWeight: 700 }}>{recPrefix} </span>
+        {memo.decision_summary}
+      </p>
+
+      {/* Three-column insight strip */}
+      {(biggestTradeoff || keyLimitation || missingEvidence) && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.6rem" }}>
+          {biggestTradeoff && (
+            <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderTop: "2px solid #f59e0b", borderRadius: 8, padding: "0.6rem 0.75rem" }}>
+              <p style={{ margin: "0 0 0.3rem", fontSize: "0.48rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#d97706" }}>Biggest Tradeoff</p>
+              <p style={{ margin: 0, fontSize: "0.65rem", color: "#94a3b8", lineHeight: 1.5 }}>{biggestTradeoff}</p>
+            </div>
+          )}
+          {keyLimitation && (
+            <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderTop: "2px solid #ef4444", borderRadius: 8, padding: "0.6rem 0.75rem" }}>
+              <p style={{ margin: "0 0 0.3rem", fontSize: "0.48rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#dc2626" }}>Key Limitation</p>
+              <p style={{ margin: 0, fontSize: "0.65rem", color: "#94a3b8", lineHeight: 1.5 }}>{keyLimitation}</p>
+            </div>
+          )}
+          {missingEvidence && (
+            <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderTop: "2px solid #6366f1", borderRadius: 8, padding: "0.6rem 0.75rem" }}>
+              <p style={{ margin: "0 0 0.3rem", fontSize: "0.48rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#6366f1" }}>Missing Evidence</p>
+              <p style={{ margin: 0, fontSize: "0.65rem", color: "#94a3b8", lineHeight: 1.5 }}>{missingEvidence}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ── Source tag ────────────────────────────────────────────────────────────────
 
 function SourceTag({ src }: { src: "youtube" | "reddit" | "web" }) {
@@ -142,6 +224,27 @@ function StrategyProfileGrid({ cv }: { cv: NonNullable<IntelligenceMemo["compara
                       <span key={i} style={{ fontSize: "0.6rem", padding: "2px 7px", borderRadius: 4, background: "#1e293b", color: "#94a3b8", border: "1px solid #334155" }}>{b}</span>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Expected Outcome */}
+              {profile.expected_outcome && (
+                <div style={{ background: "#0d1f0d", border: "1px solid #166534", borderRadius: 7, padding: "0.5rem 0.7rem" }}>
+                  <p style={{ margin: "0 0 0.2rem", fontSize: "0.5rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#4ade80" }}>Expected Outcome · 90 days</p>
+                  <p style={{ margin: 0, fontSize: "0.65rem", color: "#86efac", lineHeight: 1.5 }}>{profile.expected_outcome}</p>
+                </div>
+              )}
+
+              {/* Evidence Gaps */}
+              {profile.evidence_gaps && profile.evidence_gaps.length > 0 && (
+                <div style={{ background: "#1c1917", border: "1px solid #292524", borderRadius: 7, padding: "0.5rem 0.7rem" }}>
+                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.5rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#78716c" }}>Evidence Gaps</p>
+                  {profile.evidence_gaps.map((g, i) => (
+                    <div key={i} style={{ display: "flex", gap: "0.35rem", marginBottom: "0.15rem" }}>
+                      <span style={{ fontSize: "0.58rem", color: "#57534e", flexShrink: 0 }}>?</span>
+                      <p style={{ margin: 0, fontSize: "0.63rem", color: "#78716c", lineHeight: 1.45 }}>{g}</p>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -898,6 +1001,13 @@ const CONSENSUS_META: Record<string, { bg: string; color: string; border: string
   "Anecdotal":          { bg: "#f1f5f9", color: "#475569", border: "#cbd5e1" },
 };
 
+function creatorConsensusLabel(count: number): string {
+  if (count === 1) return "One creator suggested";
+  if (count === 2) return "Limited creator support";
+  if (count <= 5) return `Emerging creator consensus`;
+  return `Strong creator consensus`;
+}
+
 function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
   const ci = memo.creator_intelligence;
   const acc = SRC_DISPLAY.youtube.accent;
@@ -925,7 +1035,7 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
         <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
           {coverage.unique_creators != null && coverage.unique_creators > 0 && coverageStatus !== "Contaminated" && (
             <span style={{ fontSize: "0.57rem", color: "#94a3b8" }}>
-              {coverage.unique_creators} creator{coverage.unique_creators !== 1 ? "s" : ""} · {coverage.accepted} segments
+              {creatorConsensusLabel(coverage.unique_creators)} ({coverage.unique_creators}) · {coverage.accepted} segments
             </span>
           )}
           <span style={{ fontSize: "0.58rem", fontWeight: 800, padding: "2px 8px", borderRadius: 20, background: `${coverageColor}18`, color: coverageColor, border: `1px solid ${coverageColor}44`, whiteSpace: "nowrap" }}>
@@ -2629,7 +2739,10 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
-      {/* 0. Source Agreement Banner — shows per-source ✓/✗ + why they agree/disagree */}
+      {/* 0a. Intelligence Brief — executive summary card, <20 second comprehension */}
+      <IntelligenceBriefCard memo={memo} />
+
+      {/* 0b. Source Agreement Banner — shows per-source ✓/✗ + why they agree/disagree */}
       <SourceAgreementBanner memo={memo} />
 
       {/* 1. Decision card — comparative verdict for A vs B queries, binary YES/NO otherwise */}

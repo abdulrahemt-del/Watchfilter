@@ -40,10 +40,12 @@ export type IntelligenceMemo = {
         community: "Strong" | "Medium" | "Weak" | "Missing";
         web:       "Strong" | "Medium" | "Weak" | "Missing";
       };
-      advantages:    string[];
-      costs:         string[];
-      failure_modes: string[];
-      best_for:      string[];
+      advantages:       string[];
+      costs:            string[];
+      failure_modes:    string[];
+      best_for:         string[];
+      expected_outcome: string | null;
+      evidence_gaps:    string[];
     }> | null;
     comparison_completeness: "High" | "Medium" | "Low" | null;
     completeness_reason:     string | null;
@@ -1686,10 +1688,12 @@ type StrategyProfilesLLMResult = {
   profiles: Array<{
     option: string;
     evidence_strength?: number;
-    advantages:    string[];
-    costs:         string[];
-    failure_modes: string[];
-    best_for:      string[];
+    advantages:       string[];
+    costs:            string[];
+    failure_modes:    string[];
+    best_for:         string[];
+    expected_outcome?: string | null;
+    evidence_gaps?:    string[];
   }>;
   comparison_completeness: "High" | "Medium" | "Low";
   completeness_reason:     string | null;
@@ -1765,7 +1769,14 @@ CRITICAL RULES:
 4. failure_modes: 3–4 ways this strategy commonly FAILS. These are the most valuable insight for founders.
    Examples: "Fails when offer is too generic and cannot be personalized", "Fails when CAC exceeds LTV before content compounds"
 5. best_for: 3–4 conditions where this strategy works best (stage, model, founder type, situation).
-6. comparison_completeness: How comparable is the evidence for both options?
+6. expected_outcome: One specific, measurable result a founder should expect after 90 days of consistent execution.
+   Ground in practitioner evidence. NOT generic forecasting.
+   Example: "Founders who execute consistent outbound for 90 days typically close 2–5 pilot customers, per practitioner reports."
+   If evidence is insufficient for a specific outcome, state that explicitly: "Evidence is insufficient to project a specific 90-day outcome."
+7. evidence_gaps: 1–3 specific questions this option's evidence could NOT answer.
+   These are blind spots — not general unknowns.
+   Example: ["How does reply rate scale beyond 3 reps?", "Does this approach work in B2C contexts?", "What happens at sales cycles exceeding 6 months?"]
+8. comparison_completeness: How comparable is the evidence for both options?
    "High" = both have substantial multi-source evidence
    "Medium" = one has moderately more evidence
    "Low" = significant imbalance — one option dominates the signal pool
@@ -1792,7 +1803,9 @@ Return JSON exactly:
       "advantages": ["specific evidence-backed benefit"],
       "costs": ["specific resource/time/effort cost"],
       "failure_modes": ["fails when X because Y"],
-      "best_for": ["condition where this works best"]
+      "best_for": ["condition where this works best"],
+      "expected_outcome": "Specific measurable result after 90 days of consistent execution, grounded in evidence.",
+      "evidence_gaps": ["Specific question the evidence could not answer."]
     }
   ],
   "comparison_completeness": "High|Medium|Low",
@@ -1837,10 +1850,12 @@ Return JSON exactly:
           community: classifyOptionSourceCoverage(matchedPartition.claims, "reddit",   qualityScores.reddit.excluded),
           web:       classifyOptionSourceCoverage(matchedPartition.claims, "web",      qualityScores.web.excluded),
         },
-        advantages:    Array.isArray(profile.advantages)    ? (profile.advantages as unknown[]).map(String).slice(0, 4)    : [],
-        costs:         Array.isArray(profile.costs)         ? (profile.costs as unknown[]).map(String).slice(0, 3)         : [],
-        failure_modes: Array.isArray(profile.failure_modes) ? (profile.failure_modes as unknown[]).map(String).slice(0, 4) : [],
-        best_for:      Array.isArray(profile.best_for)      ? (profile.best_for as unknown[]).map(String).slice(0, 4)      : [],
+        advantages:       Array.isArray(profile.advantages)    ? (profile.advantages as unknown[]).map(String).slice(0, 4)    : [],
+        costs:            Array.isArray(profile.costs)         ? (profile.costs as unknown[]).map(String).slice(0, 3)         : [],
+        failure_modes:    Array.isArray(profile.failure_modes) ? (profile.failure_modes as unknown[]).map(String).slice(0, 4) : [],
+        best_for:         Array.isArray(profile.best_for)      ? (profile.best_for as unknown[]).map(String).slice(0, 4)      : [],
+        expected_outcome: (typeof profile.expected_outcome === "string" && profile.expected_outcome.length > 10) ? profile.expected_outcome : null,
+        evidence_gaps:    Array.isArray(profile.evidence_gaps)  ? (profile.evidence_gaps as unknown[]).map(String).slice(0, 3) : [],
       };
     });
 
@@ -1856,7 +1871,7 @@ Return JSON exactly:
               community: classifyOptionSourceCoverage(claims, "reddit",   qualityScores.reddit.excluded),
               web:       classifyOptionSourceCoverage(claims, "web",      qualityScores.web.excluded),
             },
-            advantages: [], costs: [], failure_modes: [], best_for: [],
+            advantages: [], costs: [], failure_modes: [], best_for: [], expected_outcome: null, evidence_gaps: [],
           });
         }
       }
@@ -2757,6 +2772,62 @@ function buildAttributedEvidence(
         .map(([source, signal_count]) => ({ source, signal_count })),
     };
   });
+}
+
+// ── Reasoning Audit — pre-render quality gate ─────────────────────────────────
+
+function auditMemo(memo: IntelligenceMemo): IntelligenceMemo {
+  const audit: string[] = [];
+  let m = { ...memo };
+
+  const uniqueCreators = m.creator_intelligence?.coverage?.unique_creators ?? 0;
+
+  // Rule: No creator consensus inferred from a single creator
+  if (uniqueCreators === 1) {
+    if (m.consensus_quality === "Strong") {
+      audit.push("FAIL consensus_quality=Strong with 1 creator → downgraded to Medium");
+      m = { ...m, consensus_quality: "Medium" };
+    }
+    if (m.recommendation_stability === "High") {
+      audit.push("FAIL recommendation_stability=High with 1 creator → downgraded to Medium");
+      m = { ...m, recommendation_stability: "Medium" };
+    }
+  }
+
+  // Rule: No overstated confidence — if all three source quality scores are Low, cap at 60
+  const sq = m.source_quality_scores;
+  const allLow = sq.youtube.level === "Low" && sq.reddit.level === "Low" && sq.web.level === "Low";
+  if (allLow && m.confidence_score > 60) {
+    audit.push(`FAIL confidence=${m.confidence_score} with all-Low source quality → capped at 60`);
+    m = {
+      ...m,
+      confidence_score: 60,
+      confidence_breakdown: { ...m.confidence_breakdown },
+    };
+  }
+
+  // Rule: No consensus_quality=Strong when consensus.supporting_sources < 2
+  const supporting = m.consensus?.supporting_sources ?? 0;
+  if (m.consensus_quality === "Strong" && supporting < 2) {
+    audit.push(`FAIL consensus_quality=Strong with ${supporting} supporting source(s) → downgraded to Medium`);
+    m = { ...m, consensus_quality: "Medium" };
+  }
+
+  // Rule: Recommendation type cannot be Universal when unique_creators === 1 and no reddit/web signal
+  const hasReddit = (m.evidence_count?.reddit ?? 0) > 0;
+  const hasWeb    = (m.evidence_count?.web ?? 0) > 0;
+  if (uniqueCreators === 1 && !hasReddit && !hasWeb && m.recommendation_type === "Universal") {
+    audit.push("FAIL recommendation_type=Universal with 1 creator and no other sources → changed to Conditional");
+    m = { ...m, recommendation_type: "Conditional" };
+  }
+
+  if (audit.length > 0) {
+    console.warn(`[Reasoning Audit] ${audit.length} issue(s) found and corrected:\n${audit.map(a => `  · ${a}`).join("\n")}`);
+  } else {
+    console.log("[Reasoning Audit] PASS — no issues detected");
+  }
+
+  return m;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3686,7 +3757,8 @@ export async function POST(req: NextRequest) {
         }).catch(e => console.warn("[OutcomeLog] failed:", e));
       }
 
-      const memo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence, sourceStates, queryType, comparativeVerdict, strategyProfilesResult);
+      const rawMemo = assembleMemo(query, pipelineClaims, rawClaims, intentThresholds.relevanceGate, clusters, extractor, confidenceResult, decision, perspResult, rawCounts, redditDiag, qualityScores, evidenceProcessing, perspRaw, creatorIntelligence, sourceStates, queryType, comparativeVerdict, strategyProfilesResult);
+      const memo = auditMemo(rawMemo);
 
       emit({ type: "complete", memo });
 
