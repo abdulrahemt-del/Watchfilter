@@ -83,6 +83,15 @@ function StrategyProfileGrid({ cv }: { cv: NonNullable<IntelligenceMemo["compara
                     );
                   })}
                 </div>
+                {/* Coverage Gap badge — shown only when at least one source has no evidence collected */}
+                {(sc.creator === "Missing" || sc.community === "Missing" || sc.web === "Missing") && (
+                  <div style={{ marginTop: "0.3rem", display: "inline-flex", alignItems: "center", gap: "0.3rem", padding: "0.15rem 0.45rem", background: "#1c1917", border: "1px solid #ef4444", borderRadius: 4 }}>
+                    <span style={{ fontSize: "0.5rem", color: "#ef4444", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>Coverage Gap</span>
+                    <span style={{ fontSize: "0.5rem", color: "#78716c" }}>
+                      — no evidence collected from {[sc.creator === "Missing" && "creators", sc.community === "Missing" && "community", sc.web === "Missing" && "web"].filter(Boolean).join(" · ")}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Advantages */}
@@ -471,12 +480,24 @@ function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
           <p style={{ margin: 0, fontSize: "0.75rem", color: "#94a3b8", lineHeight: 1.6 }}>{dd.decision_justification}</p>
         </div>
       )}
-      {memo.condition_qualifier && (
+      {(memo.recommendation_conditions && memo.recommendation_conditions.length > 0) ? (
+        <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", background: "#f0f9ff", borderRadius: 8, borderLeft: "3px solid #0ea5e9" }}>
+          <p style={{ margin: "0 0 0.45rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#0369a1" }}>This recommendation changes if...</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            {memo.recommendation_conditions.map((cond, i) => (
+              <div key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-start" }}>
+                <span style={{ fontSize: "0.62rem", color: "#0ea5e9", flexShrink: 0, paddingTop: 2, fontWeight: 700 }}>›</span>
+                <p style={{ margin: 0, fontSize: "0.72rem", color: "#0c4a6e", lineHeight: 1.5 }}>{cond}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : memo.condition_qualifier ? (
         <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", background: "#f0f9ff", borderRadius: 8, borderLeft: "3px solid #0ea5e9" }}>
           <p style={{ margin: "0 0 0.15rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#0369a1" }}>When This Changes</p>
           <p style={{ margin: 0, fontSize: "0.72rem", color: "#0c4a6e", lineHeight: 1.55 }}>{memo.condition_qualifier}</p>
         </div>
-      )}
+      ) : null}
       {memo.why_not_alternative && (
         <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", background: "#1e293b", borderRadius: 8, borderLeft: "3px solid #475569" }}>
           <p style={{ margin: "0 0 0.15rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#475569" }}>Why Not the Alternative?</p>
@@ -647,6 +668,41 @@ function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
                 <span style={{ fontSize: "0.67rem", color: "#374151", lineHeight: 1.45 }}>{f}</span>
               </div>
             ))}
+          </div>
+        );
+      })()}
+
+      {/* Why this confidence score — deterministic prose */}
+      {(() => {
+        const parts: string[] = [];
+        const sqCreator   = memo.source_quality_scores?.youtube?.score  ?? 0;
+        const sqCommunity = memo.source_quality_scores?.reddit?.score   ?? 0;
+        const sqWeb       = memo.source_quality_scores?.web?.score      ?? 0;
+        const activeSources = [sqCreator > 0 && "creators", sqCommunity > 0 && "community practitioners", sqWeb > 0 && "web sources"].filter(Boolean);
+
+        if (score >= 75) {
+          parts.push(`Confidence is high because evidence converges across ${activeSources.length >= 2 ? activeSources.slice(0, -1).join(", ") + " and " + activeSources.slice(-1) : activeSources[0] ?? "multiple sources"}.`);
+        } else if (score >= 50) {
+          parts.push(`Confidence is moderate — evidence is directional but not fully convergent across all sources.`);
+        } else {
+          parts.push(`Confidence is low due to limited or conflicting evidence.`);
+        }
+
+        const cvData = memo.comparative_verdict;
+        if (cvData?.comparison_completeness === "Low" || cvData?.missing_dimensions?.length) {
+          const missing = cvData.missing_dimensions?.slice(0, 2).join(" and ");
+          parts.push(`Comparative coverage is incomplete${missing ? `: ${missing} dimension${cvData.missing_dimensions!.length > 1 ? "s are" : " is"} not covered by collected evidence` : ""}.`);
+        }
+
+        if ((memo.contradictions?.length ?? 0) > 0) {
+          parts.push(`${memo.contradictions.length} contradiction${memo.contradictions.length > 1 ? "s were" : " was"} found and penalized.`);
+        }
+
+        if (parts.length === 0) return null;
+        return (
+          <div style={{ marginTop: "0.65rem", paddingTop: "0.65rem", borderTop: "1px solid #f1f5f9" }}>
+            <p style={{ margin: "0 0 0.2rem", fontSize: "0.52rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#94a3b8" }}>Why this confidence score</p>
+            <p style={{ margin: 0, fontSize: "0.67rem", color: "#374151", lineHeight: 1.55 }}>{parts.join(" ")}</p>
           </div>
         );
       })()}
@@ -2494,6 +2550,53 @@ function PredictionIntelligenceCard({ query }: { query: string }) {
   );
 }
 
+// ── Decision Flow Section ─────────────────────────────────────────────────────
+
+function DecisionFlowSection({ cv }: { cv: NonNullable<IntelligenceMemo["comparative_verdict"]> }) {
+  const flow = cv.decision_flow;
+  if (!flow || flow.length === 0) return null;
+
+  return (
+    <section style={{ background: "#0a0f1a", borderRadius: 14, overflow: "hidden", border: "1px solid #1e293b" }}>
+      <div style={{ padding: "0.8rem 1.25rem", borderBottom: "1px solid #1e293b", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#475569" }}>Decision Flow</span>
+        <span style={{ fontSize: "0.52rem", color: "#334155", marginLeft: "auto" }}>answer each question to reach your own conclusion</span>
+      </div>
+
+      <div style={{ padding: "1.1rem 1.25rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        {flow.map((node, i) => (
+          <div key={i} style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+            {/* Connector */}
+            {i > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.1rem" }}>
+                <div style={{ width: 1, height: 14, background: "#1e293b", marginLeft: 12 }} />
+              </div>
+            )}
+            {/* Question */}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
+              <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#1e293b", border: "1px solid #334155", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                <span style={{ fontSize: "0.55rem", fontWeight: 800, color: "#64748b" }}>{i + 1}</span>
+              </div>
+              <p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 700, color: "#f8fafc", lineHeight: 1.4, paddingTop: 2 }}>{node.question}</p>
+            </div>
+            {/* Yes / No branches */}
+            <div style={{ marginLeft: 28, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+              <div style={{ padding: "0.4rem 0.65rem", background: "#052e16", border: "1px solid #166534", borderRadius: 8 }}>
+                <p style={{ margin: "0 0 0.15rem", fontSize: "0.5rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#4ade80" }}>Yes →</p>
+                <p style={{ margin: 0, fontSize: "0.65rem", color: "#86efac", lineHeight: 1.45 }}>{node.yes_action}</p>
+              </div>
+              <div style={{ padding: "0.4rem 0.65rem", background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 8 }}>
+                <p style={{ margin: "0 0 0.15rem", fontSize: "0.5rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#f87171" }}>No →</p>
+                <p style={{ margin: 0, fontSize: "0.65rem", color: "#fca5a5", lineHeight: 1.45 }}>{node.no_action}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // ── Counter-Evidence Section ─────────────────────────────────────────────────
 
 function CounterEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
@@ -2540,6 +2643,9 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
 
           {/* 1c. Strategy Roadmap — replaces priority actions for comparative queries */}
           <StrategyRoadmapSection cv={memo.comparative_verdict} />
+
+          {/* 1d. Decision Flow — branching yes/no questions to reach own conclusion */}
+          <DecisionFlowSection cv={memo.comparative_verdict} />
         </>
       ) : (
         <DecisionCard memo={memo} />

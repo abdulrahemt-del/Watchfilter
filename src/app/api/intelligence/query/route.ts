@@ -54,6 +54,11 @@ export type IntelligenceMemo = {
       phase: string;
       steps: string[];
     }> | null;
+    decision_flow: Array<{
+      question: string;
+      yes_action: string;
+      no_action: string;
+    }> | null;
   } | null;
   reddit_gap: boolean;
   confidence_score: number;
@@ -321,6 +326,7 @@ export type IntelligenceMemo = {
   recommendation_stability: "High" | "Medium" | "Low";
   counter_evidence: string[];
   why_not_alternative: string | null;
+  recommendation_conditions: string[];
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -1378,6 +1384,7 @@ type DecisionResult = {
   decision_summary: string;
   recommendation_type: "Universal" | "Conditional" | "Stage-Based" | "Industry-Specific" | "Team-Dependent";
   condition_qualifier: string | null;
+  recommendation_conditions: string[];
   priority_actions: PriorityAction[];
   counter_evidence: string[];
   why_not_alternative: string | null;
@@ -1445,14 +1452,24 @@ RULES:
    REQUIRED for Conditional, Stage-Based, Industry-Specific, Team-Dependent — explain when the recommendation shifts.
    Set to null ONLY for Universal recommendations.
    Example: "This shifts once product-market fit is established and repeatable messaging exists."
-9. counter_evidence: 1–3 specific observations that reveal DOWNSIDES, FAILURE CASES, or LIMITATIONS of the RECOMMENDED option itself.
-   CRITICAL: If cold outreach is recommended, surface evidence that cold outreach fails, is hard, or has high cost/effort — NOT observations about content marketing being complicated.
-   If content marketing is recommended, surface evidence that content marketing is slow, hard, or commonly fails — NOT observations about cold outreach's shortcomings.
-   Counter-evidence argues AGAINST the winner, not FOR the loser. It is the strongest honest case someone would make against your recommendation.
-   Pull ONLY from evidence provided. No invented counterarguments.
-   Each must describe a specific failure, limitation, or cost: "Practitioners who tried X found Y" — NOT "The alternative requires Z."
-   Omit if truly no contrary signal exists in evidence.
-10. why_not_alternative: REQUIRED for comparative queries (Comparative Verdict directional).
+9. recommendation_conditions: 3–4 SPECIFIC conditions under which this recommendation would change.
+   Each must be a concrete, testable situation a founder can self-identify.
+   GOOD: "You already generate consistent inbound from existing content"
+   GOOD: "Your average sales cycle exceeds six months"
+   GOOD: "You cannot personally commit to outbound for 90+ days"
+   BAD: "Your situation is different" | "Evidence changes" | "Context shifts"
+   For Universal recommendations, return 1–2 edge-case conditions where the advice still might not apply.
+10. counter_evidence: 1–3 specific observations that reveal DOWNSIDES, FAILURE CASES, or LIMITATIONS of the RECOMMENDED option itself.
+    CRITICAL: Counter-evidence MUST challenge the RECOMMENDED option — not the alternative.
+    WRONG example (query: cold outreach vs content marketing, cold outreach recommended):
+      BAD: "Content marketing requires consistent publishing" ← this argues against the loser
+      GOOD: "Cold outreach fails when personalization is absent and reply rates drop to under 1%" ← argues against winner
+    WRONG example (content marketing recommended):
+      BAD: "Cold outreach is time-consuming" ← this argues against the loser
+      GOOD: "Content marketing commonly fails when distribution is weak and publishing is inconsistent" ← argues against winner
+    Pull ONLY from evidence provided. No invented counterarguments.
+    Each must describe a specific failure, limitation, or cost of the WINNING option.
+11. why_not_alternative: REQUIRED for comparative queries (Comparative Verdict directional).
     One sentence explaining why the non-recommended option was not chosen first, traced to specific evidence.
     Example: "Content marketing was not prioritized first because evidence consistently shows 6–12 month lag before measurable results — contradicting the early-stage need for rapid customer feedback."
     Set to null ONLY for non-comparative exploratory queries.
@@ -1463,7 +1480,8 @@ Return ONLY valid JSON:
   "decision_summary": "2–3 sentences: what the evidence shows, what is genuinely disputed, what matters most.",
   "recommendation_type": "Universal|Conditional|Stage-Based|Industry-Specific|Team-Dependent",
   "condition_qualifier": "One sentence on when this recommendation changes, or null.",
-  "counter_evidence": ["specific observation arguing against recommendation", "..."],
+  "recommendation_conditions": ["Specific condition 1", "Specific condition 2", "Specific condition 3"],
+  "counter_evidence": ["specific failure/limitation of the RECOMMENDED option", "..."],
   "why_not_alternative": "One sentence on why the alternative was not chosen, traced to evidence. Or null.",
   "priority_actions": [
     { "action": "specific immediately executable action", "evidence_strength": "High|Medium|Low", "supporting_signals": 5 }
@@ -1488,6 +1506,7 @@ Return ONLY valid JSON:
       decision_summary?: string;
       recommendation_type?: string;
       condition_qualifier?: string | null;
+      recommendation_conditions?: unknown;
       counter_evidence?: unknown;
       why_not_alternative?: string | null;
       priority_actions?: Array<{ action?: string; evidence_strength?: string; supporting_signals?: number }>;
@@ -1497,6 +1516,9 @@ Return ONLY valid JSON:
       decision_summary:    p.decision_summary ?? "Insufficient evidence to synthesize a decision.",
       recommendation_type: VALID_REC_TYPES.has(p.recommendation_type ?? "") ? p.recommendation_type as DecisionResult["recommendation_type"] : "Universal",
       condition_qualifier:  (typeof p.condition_qualifier === "string" && p.condition_qualifier.length > 5) ? p.condition_qualifier : null,
+      recommendation_conditions: Array.isArray(p.recommendation_conditions)
+        ? (p.recommendation_conditions as unknown[]).filter((s): s is string => typeof s === "string" && s.length > 10).slice(0, 4)
+        : [],
       counter_evidence: Array.isArray(p.counter_evidence)
         ? (p.counter_evidence as unknown[]).filter((s): s is string => typeof s === "string" && s.length > 10).slice(0, 3)
         : [],
@@ -1518,6 +1540,7 @@ Return ONLY valid JSON:
       decision_summary:    "Insufficient evidence to synthesize a decision.",
       recommendation_type: "Universal" as const,
       condition_qualifier:  null,
+      recommendation_conditions: [],
       counter_evidence:    [],
       why_not_alternative: null,
       priority_actions:    [],
@@ -1602,7 +1625,7 @@ Return JSON:
       overall_recommendation: p.overall_recommendation ?? "",
       coverage_balance: null, comparison_quality: null,
       strategy_profiles: null, comparison_completeness: null, completeness_reason: null,
-      missing_dimensions: [], decision_risk: null, decision_risk_reason: null, strategy_roadmap: null,
+      missing_dimensions: [], decision_risk: null, decision_risk_reason: null, strategy_roadmap: null, decision_flow: null,
     };
   } catch {
     return null;
@@ -1674,6 +1697,7 @@ type StrategyProfilesLLMResult = {
   decision_risk:           "High" | "Medium" | "Low";
   decision_risk_reason:    string | null;
   strategy_roadmap: Array<{ phase: string; steps: string[] }>;
+  decision_flow: Array<{ question: string; yes_action: string; no_action: string }>;
 };
 
 type StrategyProfilesOutput = {
@@ -1684,6 +1708,7 @@ type StrategyProfilesOutput = {
   decision_risk: NonNullable<IntelligenceMemo["comparative_verdict"]>["decision_risk"];
   decision_risk_reason: string | null;
   strategy_roadmap: NonNullable<IntelligenceMemo["comparative_verdict"]>["strategy_roadmap"];
+  decision_flow: NonNullable<IntelligenceMemo["comparative_verdict"]>["decision_flow"];
 };
 
 async function generateStrategyProfiles(
@@ -1701,6 +1726,7 @@ async function generateStrategyProfiles(
     decision_risk: null,
     decision_risk_reason: null,
     strategy_roadmap: null,
+    decision_flow: null,
   };
 
   if (options.length < 2) return EMPTY;
@@ -1750,6 +1776,13 @@ CRITICAL RULES:
    Phase 2: When and how to transition or add the second strategy.
    Phase 3: Long-term integrated state.
    Each phase: descriptive title + 3–4 sequential action steps.
+10. decision_flow: 4–5 sequential decision questions that guide the user to reach their own conclusion.
+    Each question should be answerable with Yes/No. Each answer leads to a specific action or next step.
+    Question order: most critical decision gate first (e.g. PMF, ICP clarity, resource constraints).
+    yes_action and no_action should be CONCRETE actions, not just "proceed" or "don't proceed."
+    Example:
+      { "question": "Do you have product-market fit?", "yes_action": "Add content marketing to build inbound alongside outreach.", "no_action": "Start with cold outreach to collect rapid customer feedback." }
+      { "question": "Do you know your exact ICP?", "yes_action": "Build systematic outbound sequences targeting that ICP.", "no_action": "Run 3–5 customer interviews per week before launching outreach." }
 
 Return JSON exactly:
 {
@@ -1771,6 +1804,9 @@ Return JSON exactly:
     { "phase": "Phase 1: Title", "steps": ["step 1", "step 2", "step 3"] },
     { "phase": "Phase 2: Title", "steps": ["step 1", "step 2", "step 3"] },
     { "phase": "Phase 3: Title", "steps": ["step 1", "step 2", "step 3"] }
+  ],
+  "decision_flow": [
+    { "question": "Question a founder can answer Yes/No?", "yes_action": "Concrete action if yes.", "no_action": "Concrete action if no." }
   ]
 }`,
       },
@@ -1833,7 +1869,18 @@ Return JSON exactly:
           .map(r => ({ phase: String(r.phase), steps: (r.steps as unknown[]).map(String).slice(0, 4) }))
       : null;
 
-    console.log(`[generateStrategyProfiles] profiles=${strategy_profiles.length} roadmap_phases=${roadmap?.length ?? 0} completeness=${p.comparison_completeness} risk=${p.decision_risk}`);
+    const decision_flow = Array.isArray(p.decision_flow)
+      ? (p.decision_flow as Array<{ question?: string; yes_action?: string; no_action?: string }>)
+          .filter(n => typeof n.question === "string" && n.question.length > 5)
+          .slice(0, 5)
+          .map(n => ({
+            question:   String(n.question),
+            yes_action: String(n.yes_action ?? "Proceed with this strategy."),
+            no_action:  String(n.no_action  ?? "Consider the alternative first."),
+          }))
+      : null;
+
+    console.log(`[generateStrategyProfiles] profiles=${strategy_profiles.length} roadmap_phases=${roadmap?.length ?? 0} completeness=${p.comparison_completeness} risk=${p.decision_risk} flow_nodes=${decision_flow?.length ?? 0}`);
 
     return {
       strategy_profiles,
@@ -1843,6 +1890,7 @@ Return JSON exactly:
       decision_risk:           VALID_COMP.has(p.decision_risk ?? "") ? p.decision_risk as "High" | "Medium" | "Low" : null,
       decision_risk_reason:    (typeof p.decision_risk_reason === "string" && p.decision_risk_reason.length > 5) ? p.decision_risk_reason : null,
       strategy_roadmap:        roadmap && roadmap.length >= 2 ? roadmap : null,
+      decision_flow:           decision_flow && decision_flow.length >= 2 ? decision_flow : null,
     };
   } catch (err) {
     console.error("[generateStrategyProfiles] failed:", err instanceof Error ? err.message : err);
@@ -2859,6 +2907,7 @@ function assembleMemo(
     decision_summary: decision.decision_summary,
     recommendation_type: decision.recommendation_type,
     condition_qualifier:  decision.condition_qualifier,
+    recommendation_conditions: decision.recommendation_conditions,
     consensus_quality: computeConsensusQuality(qualityScores, clusters, creatorIntelligence?.coverage.unique_creators ?? 0),
     recommendation_stability: computeRecommendationStability(qualityScores, clusters),
     counter_evidence: decision.counter_evidence,
@@ -2874,6 +2923,7 @@ function assembleMemo(
           decision_risk:           strategyProfiles?.decision_risk           ?? null,
           decision_risk_reason:    strategyProfiles?.decision_risk_reason    ?? null,
           strategy_roadmap:        strategyProfiles?.strategy_roadmap        ?? null,
+          decision_flow:           strategyProfiles?.decision_flow           ?? null,
         }
       : null,
     reddit_gap: qualityScores.reddit.excluded,
