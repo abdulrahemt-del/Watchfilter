@@ -325,6 +325,15 @@ export type IntelligenceMemo = {
   recommendation_type: "Universal" | "Conditional" | "Stage-Based" | "Industry-Specific" | "Team-Dependent";
   condition_qualifier: string | null;
   consensus_quality: "Strong" | "Medium" | "Weak" | "Insufficient";
+  canonical_agreement: {
+    score: number;
+    label: "Strong Consensus" | "Moderate Consensus" | "Partial Consensus" | "Mixed Evidence" | "No Consensus";
+    supporting_sources: number;
+    contradictions_count: number;
+    tradeoffs_count: number;
+    coverage_quality: "Strong" | "Moderate" | "Weak" | "Insufficient";
+    explanation: string;
+  };
   recommendation_stability: "High" | "Medium" | "Low";
   counter_evidence: string[];
   why_not_alternative: string | null;
@@ -912,6 +921,70 @@ function computeConsensusQuality(
   // Insufficient: only one source or very few clusters
   if (nonExcluded.length <= 1 || clusters.length <= 2) return "Insufficient";
   return "Weak";
+}
+
+// Single canonical agreement object — every section consumes this, nothing derives independently.
+function computeCanonicalAgreement(
+  rawScore: number,
+  qualityScores: Record<"youtube" | "reddit" | "web", SourceQualityResult>,
+  clusters: ClaimCluster[],
+  uniqueCreators: number,
+  contradictionsCount: number,
+  tradeoffsCount: number,
+  supportingSources: number,
+  comparativeCompleteness: "High" | "Medium" | "Low" | null,
+): IntelligenceMemo["canonical_agreement"] {
+  let score = rawScore;
+
+  // Penalty: creator coverage weakness (most impactful driver of false consensus signals)
+  if (uniqueCreators === 0) score = Math.round(score * 0.35);
+  else if (uniqueCreators === 1) score = Math.round(score * 0.62);
+
+  // Penalty: all sources low quality
+  const nonExcluded = (["youtube", "reddit", "web"] as const).filter(s => !qualityScores[s].excluded);
+  const highQuality  = nonExcluded.filter(s => qualityScores[s].score >= 65);
+  if (nonExcluded.length > 0 && highQuality.length === 0) score = Math.round(score * 0.75);
+
+  // Penalty: contradictions (12 pts each, cap 36)
+  score = Math.max(0, score - Math.min(contradictionsCount * 12, 36));
+
+  // Penalty: no cross-source corroboration when multiple sources available
+  const crossSourceClusters = clusters.filter(c =>
+    new Set(c.claims.filter(cl => !qualityScores[cl.source as "youtube" | "reddit" | "web"].excluded).map(cl => cl.source)).size >= 2
+  ).length;
+  if (crossSourceClusters === 0 && nonExcluded.length > 1) score = Math.round(score * 0.82);
+
+  // Hard cap: low comparison coverage cannot produce Moderate+ consensus
+  if (comparativeCompleteness === "Low") score = Math.min(score, 65);
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  const label: IntelligenceMemo["canonical_agreement"]["label"] =
+    score >= 90 ? "Strong Consensus"
+    : score >= 70 ? "Moderate Consensus"
+    : score >= 50 ? "Partial Consensus"
+    : score >= 30 ? "Mixed Evidence"
+    : "No Consensus";
+
+  const coverageQuality: IntelligenceMemo["canonical_agreement"]["coverage_quality"] =
+    highQuality.length > 0 && highQuality.length === nonExcluded.length && nonExcluded.length >= 2 ? "Strong"
+    : highQuality.length >= 2 ? "Moderate"
+    : highQuality.length === 1 ? "Weak"
+    : "Insufficient";
+
+  const penalties: string[] = [];
+  if (uniqueCreators === 0) penalties.push("no creator evidence");
+  else if (uniqueCreators === 1) penalties.push("single creator");
+  if (nonExcluded.length > 0 && highQuality.length === 0) penalties.push("low source quality");
+  if (contradictionsCount > 0) penalties.push(`${contradictionsCount} contradiction${contradictionsCount > 1 ? "s" : ""}`);
+  if (crossSourceClusters === 0 && nonExcluded.length > 1) penalties.push("no cross-source corroboration");
+  if (comparativeCompleteness === "Low") penalties.push("incomplete comparison coverage");
+
+  const explanation = penalties.length > 0
+    ? `Adjusted from raw ${rawScore}: ${penalties.join(", ")}.`
+    : `${supportingSources} source${supportingSources !== 1 ? "s" : ""} converge with ${coverageQuality.toLowerCase()} evidence quality.`;
+
+  return { score, label, supporting_sources: supportingSources, contradictions_count: contradictionsCount, tradeoffs_count: tradeoffsCount, coverage_quality: coverageQuality, explanation };
 }
 
 // How robust is the recommendation to adding more evidence?
@@ -2851,6 +2924,25 @@ function auditMemo(memo: IntelligenceMemo): IntelligenceMemo {
     m = { ...m, consensus_quality: "Medium" };
   }
 
+  // Validate canonical_agreement label matches score (spec final validation rule)
+  const ca = m.canonical_agreement;
+  const expectedLabel: IntelligenceMemo["canonical_agreement"]["label"] =
+    ca.score >= 90 ? "Strong Consensus"
+    : ca.score >= 70 ? "Moderate Consensus"
+    : ca.score >= 50 ? "Partial Consensus"
+    : ca.score >= 30 ? "Mixed Evidence"
+    : "No Consensus";
+  if (ca.label !== expectedLabel) {
+    audit.push(`FAIL canonical_agreement label="${ca.label}" does not match score=${ca.score} (expected "${expectedLabel}") → corrected`);
+    m = { ...m, canonical_agreement: { ...ca, label: expectedLabel } };
+  }
+
+  // Spec rule: agreement_score cannot be 100 with Weak coverage quality
+  if (ca.score >= 95 && ca.coverage_quality === "Weak") {
+    audit.push(`FAIL canonical_agreement score=${ca.score} with coverage_quality=Weak → capped at 69`);
+    m = { ...m, canonical_agreement: { ...m.canonical_agreement, score: 69, label: "Partial Consensus" } };
+  }
+
   if (audit.length > 0) {
     console.warn(`[Reasoning Audit] ${audit.length} issue(s) found and corrected:\n${audit.map(a => `  · ${a}`).join("\n")}`);
   } else {
@@ -3010,6 +3102,16 @@ function assembleMemo(
     condition_qualifier:  decision.condition_qualifier,
     recommendation_conditions: decision.recommendation_conditions,
     consensus_quality: computeConsensusQuality(qualityScores, clusters, creatorIntelligence?.coverage.unique_creators ?? 0),
+    canonical_agreement: computeCanonicalAgreement(
+      agreementScore,
+      qualityScores,
+      clusters,
+      creatorIntelligence?.coverage.unique_creators ?? 0,
+      hardContradictions.length,
+      filteredTradeoffs.length,
+      (["youtube", "reddit", "web"] as const).filter(s => effectiveSourceStates[s] === "SUPPORTS").length,
+      strategyProfiles?.comparison_completeness ?? null,
+    ),
     recommendation_stability: computeRecommendationStability(qualityScores, clusters),
     counter_evidence: decision.counter_evidence,
     why_not_alternative: decision.why_not_alternative,

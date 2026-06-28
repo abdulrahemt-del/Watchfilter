@@ -9,8 +9,13 @@ import type { PredictionRow } from "@/lib/db";
 function IntelligenceBriefCard({ memo }: { memo: IntelligenceMemo }) {
   const score = memo.confidence_score;
   const scoreColor = score >= 75 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
+  const ca = memo.canonical_agreement;
+  const agreeStyle = ca ? (AGREEMENT_STYLE[ca.label] ?? AGREEMENT_STYLE["Partial Consensus"]) : null;
 
-  const recPrefix = score >= 80 ? "We recommend:" : score >= 55 ? "Evidence suggests:" : "Current evidence indicates:";
+  // Recommendation prefix driven by both confidence and agreement (spec requirement)
+  const isHighConf = score >= 80 && (ca?.label === "Strong Consensus" || ca?.label === "Moderate Consensus");
+  const isMid = score >= 55 || ca?.label === "Moderate Consensus";
+  const recPrefix = isHighConf ? "We recommend:" : isMid ? "Evidence suggests:" : "Current evidence indicates:";
 
   const biggestTradeoff = memo.tradeoffs?.[0]?.why_it_matters ?? null;
   const keyLimitation   = memo.decision_drivers?.negative_signals?.[0]?.insight
@@ -41,6 +46,11 @@ function IntelligenceBriefCard({ memo }: { memo: IntelligenceMemo }) {
           </span>
         )}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.6rem" }}>
+          {ca && agreeStyle && (
+            <span style={{ fontSize: "0.57rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: agreeStyle.bg, color: agreeStyle.color, border: `1px solid ${agreeStyle.border}` }}>
+              {ca.label}
+            </span>
+          )}
           {memo.recommendation_stability && (
             <span style={{ fontSize: "0.57rem", fontWeight: 700, color: stabilityColor }}>
               {memo.recommendation_stability} stability
@@ -471,11 +481,14 @@ const AGR_SOURCE_META = {
   web:     { label: "Web",       icon: "⬡", color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
 } as const;
 
-const CONSENSUS_QUALITY_STYLE: Record<string, { bg: string; color: string; border: string; label: string }> = {
-  Strong:       { bg: "#dcfce7", color: "#14532d", border: "#86efac", label: "Strong Consensus" },
-  Medium:       { bg: "#fef3c7", color: "#78350f", border: "#fcd34d", label: "Partial Consensus" },
-  Weak:         { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5", label: "Weak Consensus" },
-  Insufficient: { bg: "#f1f5f9", color: "#475569", border: "#cbd5e1", label: "Insufficient Evidence" },
+// Single canonical agreement style map — keyed by the 5 spec-defined labels.
+// Every component reads memo.canonical_agreement.label and looks up style here.
+const AGREEMENT_STYLE: Record<string, { bg: string; color: string; border: string }> = {
+  "Strong Consensus":   { bg: "#dcfce7", color: "#14532d", border: "#86efac" },
+  "Moderate Consensus": { bg: "#d1fae5", color: "#065f46", border: "#6ee7b7" },
+  "Partial Consensus":  { bg: "#fef3c7", color: "#78350f", border: "#fcd34d" },
+  "Mixed Evidence":     { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5" },
+  "No Consensus":       { bg: "#f1f5f9", color: "#475569", border: "#cbd5e1" },
 };
 
 function SourceAgreementBanner({ memo }: { memo: IntelligenceMemo }) {
@@ -484,8 +497,9 @@ function SourceAgreementBanner({ memo }: { memo: IntelligenceMemo }) {
   const relType  = memo.consensus?.relationship_type ?? "CONSENSUS";
   if (!states || !reason) return null;
 
-  const relStyle   = REL_STYLE[relType] ?? REL_STYLE.CONSENSUS;
-  const cqStyle    = memo.consensus_quality ? (CONSENSUS_QUALITY_STYLE[memo.consensus_quality] ?? CONSENSUS_QUALITY_STYLE.Medium) : null;
+  const relStyle    = REL_STYLE[relType] ?? REL_STYLE.CONSENSUS;
+  const ca          = memo.canonical_agreement;
+  const agreeStyle  = ca ? (AGREEMENT_STYLE[ca.label] ?? AGREEMENT_STYLE["Partial Consensus"]) : null;
 
   return (
     <div style={{ background: relStyle.bg, border: `1px solid ${relStyle.border}`, borderRadius: 10, padding: "0.7rem 1rem", display: "flex", alignItems: "center", gap: "0.85rem", flexWrap: "wrap" }}>
@@ -511,10 +525,10 @@ function SourceAgreementBanner({ memo }: { memo: IntelligenceMemo }) {
       <p style={{ margin: 0, flex: 1, fontSize: "0.72rem", color: relStyle.textColor, lineHeight: 1.45, minWidth: 160 }}>
         {reason}
       </p>
-      {/* Consensus quality badge — derived from evidence depth, not just directional agreement */}
-      {cqStyle && (
-        <span style={{ fontSize: "0.55rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: cqStyle.bg, color: cqStyle.color, border: `1px solid ${cqStyle.border}`, flexShrink: 0, whiteSpace: "nowrap" }}>
-          {cqStyle.label}
+      {/* Canonical agreement badge — single source of truth */}
+      {ca && agreeStyle && (
+        <span style={{ fontSize: "0.55rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: agreeStyle.bg, color: agreeStyle.color, border: `1px solid ${agreeStyle.border}`, flexShrink: 0, whiteSpace: "nowrap" }}>
+          {ca.label}
         </span>
       )}
     </div>
@@ -627,21 +641,14 @@ function DecisionCard({ memo }: { memo: IntelligenceMemo }) {
 
 // ── Confidence section (score + explanation) ──────────────────────────────────
 
-function agreeLabel(score: number): string {
-  if (score >= 81) return "Strong Consensus";
-  if (score >= 61) return "General Consensus";
-  if (score >= 31) return "Emerging Consensus";
-  return "Low Consensus";
-}
-
 function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
   const score = memo.confidence_score;
   const bd    = memo.confidence_breakdown;
   const density = memo.insight_density;
-  const agreeScore = memo.consensus.agreement_score;
+  const ca = memo.canonical_agreement;
+  const agreeStyle = ca ? (AGREEMENT_STYLE[ca.label] ?? AGREEMENT_STYLE["Partial Consensus"]) : null;
 
   const color = score >= 72 ? "#10b981" : score >= 48 ? "#f59e0b" : "#ef4444";
-  const agreeColor = agreeScore >= 65 ? "#10b981" : agreeScore >= 40 ? "#f59e0b" : "#ef4444";
 
   // Compute evidence quality score from source quality scores (mirrors backend formula)
   const sqScores = memo.source_quality_scores;
@@ -702,12 +709,10 @@ function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
         <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", minWidth: 140 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
             <div style={{ width: 60, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
-              <div style={{ width: `${agreeScore}%`, height: "100%", background: agreeColor, borderRadius: 2 }} />
+              <div style={{ width: `${ca?.score ?? 0}%`, height: "100%", background: agreeStyle?.color ?? "#94a3b8", borderRadius: 2 }} />
             </div>
-            <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>
-              {memo.consensus_quality
-                ? CONSENSUS_QUALITY_STYLE[memo.consensus_quality]?.label ?? agreeLabel(agreeScore)
-                : agreeLabel(agreeScore)}
+            <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeStyle?.color ?? "#94a3b8" }}>
+              {ca?.label ?? "—"}
             </span>
           </div>
           {memo.consensus.supporting_sources != null && (
@@ -2098,18 +2103,17 @@ function ConsensusSection({
   consensus,
   tradeoffs,
   contradictions,
-  consensusQuality,
+  canonicalAgreement,
 }: {
   consensus: IntelligenceMemo["consensus"];
   tradeoffs: IntelligenceMemo["tradeoffs"];
   contradictions: IntelligenceMemo["contradictions"];
-  consensusQuality?: IntelligenceMemo["consensus_quality"];
+  canonicalAgreement?: IntelligenceMemo["canonical_agreement"];
 }) {
-  const score = consensus.agreement_score;
-  const agreeColor = score >= 65 ? "#10b981" : score >= 40 ? "#f59e0b" : "#ef4444";
-  const canonicalLabel = consensusQuality
-    ? (CONSENSUS_QUALITY_STYLE[consensusQuality]?.label ?? agreeLabel(score))
-    : agreeLabel(score);
+  const displayScore = canonicalAgreement?.score ?? consensus.agreement_score;
+  const displayLabel = canonicalAgreement?.label ?? "Partial Consensus";
+  const agreeStyle = AGREEMENT_STYLE[displayLabel] ?? AGREEMENT_STYLE["Partial Consensus"];
+  const agreeColor = agreeStyle.color;
 
   const hasContent = consensus.shared_insights.length > 0 || (tradeoffs?.length ?? 0) > 0 || contradictions.length > 0;
   if (!hasContent) return null;
@@ -2123,13 +2127,13 @@ function ConsensusSection({
           Agreement
         </h2>
 
-        {/* Agreement bar */}
+        {/* Agreement bar — uses canonical score, never raw agreement_score */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
           <div style={{ width: 80, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
-            <div style={{ width: `${score}%`, height: "100%", background: agreeColor, borderRadius: 2 }} />
+            <div style={{ width: `${displayScore}%`, height: "100%", background: agreeColor, borderRadius: 2 }} />
           </div>
-          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>{score}%</span>
-          <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>— {canonicalLabel}</span>
+          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>{displayScore}%</span>
+          <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>— {displayLabel}</span>
         </div>
 
         {/* Tradeoff + contradiction counts */}
@@ -2828,7 +2832,7 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
       <MissingEvidenceSection items={memo.decision_drivers?.missing_evidence ?? []} />
 
       {/* 11. Consensus */}
-      <ConsensusSection consensus={memo.consensus} tradeoffs={memo.tradeoffs ?? []} contradictions={memo.contradictions} consensusQuality={memo.consensus_quality} />
+      <ConsensusSection consensus={memo.consensus} tradeoffs={memo.tradeoffs ?? []} contradictions={memo.contradictions} canonicalAgreement={memo.canonical_agreement} />
 
       {/* 12. Tradeoffs */}
       <TradeoffsSection items={memo.tradeoffs ?? []} />
