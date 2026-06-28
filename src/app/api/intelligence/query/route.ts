@@ -2022,12 +2022,12 @@ async function generatePerspectives(
     messages: [
       {
         role: "system",
-        content: `You are a startup intelligence analyst. SINGLE TASK: extract source-specific perspectives from evidence.
+        content: `You are a startup intelligence analyst. SINGLE TASK: extract source-specific perspectives from evidence for this exact question: "${query}"
 
 For each source with 1+ evidence items, synthesize what that source reveals about the question:
-- creator_evidence → "youtube": What do experienced operators and founders believe? Recurring mental models, tactical beliefs, operator convictions backed by their own results.
-- community_evidence → "reddit": What measurable outcomes did founders and practitioners actually report? Focus strictly on: what they tried, what specific results they observed, what failed and why. Every bullet must answer "What actually happened?" NOT "What should you do?"
-- web_evidence → "web": What do published frameworks and industry sources recommend? Specific playbooks, data-backed findings, documented approaches.
+- creator_evidence → "youtube": What do experienced operators and founders believe specifically about "${query}"? Recurring mental models, tactical beliefs, operator convictions backed by their own results.
+- community_evidence → "reddit": What measurable outcomes did founders and practitioners actually report about "${query}"? Focus strictly on: what they tried, what specific results they observed, what failed and why. Every bullet must directly answer "${query}" — NOT adjacent advice.
+- web_evidence → "web": What do published frameworks and industry sources recommend specifically for "${query}"? Specific playbooks, data-backed findings, documented approaches.
 
 RULES (CRITICAL):
 1. Synthesize ONLY from that source's own evidence. Never cross-contaminate with another source.
@@ -2040,8 +2040,13 @@ RULES (CRITICAL):
    "customer interviews" stays "customer interviews" — NOT "understand your customers"
 6. Creator bullets: what specific belief or conviction do they hold? (operator viewpoint, not general advice)
 7. Community bullets MUST describe OUTCOMES not ADVICE: "Founders who tried X reported Y results" — NEVER "Consider doing X" or "It's important to Y"
+   CRITICAL FILTER: Every community bullet MUST directly address "${query}". REJECT observations that are weakly related, tangentially connected, or generically true for any startup question. If a bullet would make sense as an answer to "How do I build a successful startup?" rather than specifically "${query}", DISCARD it.
 8. 3–5 bullets per active source. common_view: one sentence capturing the central pattern.
-9. cross_source_synthesis: for each active source (1+ items), one sentence capturing its unique contribution to answering the question.
+9. cross_source_synthesis: COMPARE sources against each other — do NOT summarize each source individually. Use exactly these three keys as COMPARISON DIMENSIONS (not source labels):
+   - "youtube" key: One sentence on what ALL active sources AGREE on regarding "${query}". Lead with "All sources agree..." or "Both X and Y sources agree..."
+   - "reddit" key: One sentence on the KEY DIFFERENCE between source perspectives. Lead with "Community practitioners emphasize..." or "While creators focus on X, web sources highlight Y..."
+   - "web" key: One sentence on the most important perspective MISSING from all evidence. Lead with "No source covered..." or "Missing from all sources:..."
+   Omit a key only if fewer than 2 active sources are available. These keys represent comparison dimensions, not the sources they are named after.
 
 Return ONLY valid JSON:
 {
@@ -2049,12 +2054,12 @@ Return ONLY valid JSON:
   "reddit":  { "bullets": ["..."], "common_view": "..." },
   "web":     { "bullets": ["..."], "common_view": "..." },
   "cross_source_synthesis": {
-    "youtube": "One sentence on creators' unique contribution",
-    "reddit":  "One sentence on community's unique contribution",
-    "web":     "One sentence on web's unique contribution"
+    "youtube": "All sources agree that cold outreach is strongest before product-market fit.",
+    "reddit":  "Community practitioners emphasize execution quality; web sources emphasize strategic frameworks.",
+    "web":     "No source directly addressed how these strategies perform at sales cycles exceeding 6 months."
   }
 }
-Omit source keys with 0 evidence. cross_source_synthesis only includes active sources.`,
+Omit source keys with 0 evidence. cross_source_synthesis only includes comparison dimensions when 2+ sources are active.`,
       },
       {
         role: "user",
@@ -2114,10 +2119,10 @@ function buildBestEvidenceRanking(
   gatedClaims: NormalizedClaim[],
   extractor:   ExtractorOutput,
 ): string[] {
-  // Use key_themes — these are synthesized insight bullets, never raw excerpts
+  // One key_theme per cluster — guarantees each card represents a distinct insight, never two from the same cluster
   const fromKeyThemes = extractor.insight_clusters
-    .flatMap(c => c.key_themes ?? [])
-    .filter(t => t && t.length > 10 && !t.startsWith("#"))
+    .map(c => (c.key_themes ?? []).find(t => t && t.length > 10 && !t.startsWith("#")))
+    .filter((t): t is string => t != null)
     .slice(0, 4);
 
   if (fromKeyThemes.length >= 3) return fromKeyThemes;

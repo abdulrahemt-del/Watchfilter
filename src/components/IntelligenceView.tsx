@@ -1664,25 +1664,30 @@ function SourceBreakdown({ memo }: { memo: IntelligenceMemo }) {
       })}
 
       {/* Cross-Source Synthesis — only when 2+ active perspectives */}
-      {activeCrossSrcs.length >= 2 && crossSynth && (
+      {activeCrossSrcs.length >= 2 && crossSynth && (crossSynth.youtube || crossSynth.reddit || crossSynth.web) && (
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.85rem 1rem" }}>
           <p style={{ margin: "0 0 0.6rem", fontSize: "0.62rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>
-            Cross-Source Synthesis
+            Source Comparison
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-            {SOURCES.map(src => {
-              const syn = crossSynth[src];
-              if (!syn || !hasPerspective(src)) return null;
-              const disp = SRC_DISPLAY[src];
-              return (
-                <div key={src} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
-                  <span style={{ fontSize: "0.6rem", fontWeight: 700, color: disp.accent, flexShrink: 0, paddingTop: 3, whiteSpace: "nowrap" }}>
-                    {SRC_SYNTH_LABEL[src]}
-                  </span>
-                  <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{syn}</span>
-                </div>
-              );
-            })}
+            {crossSynth.youtube && (
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "#10b981", flexShrink: 0, paddingTop: 3, whiteSpace: "nowrap" }}>Agreement:</span>
+                <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{crossSynth.youtube}</span>
+              </div>
+            )}
+            {crossSynth.reddit && (
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "#f59e0b", flexShrink: 0, paddingTop: 3, whiteSpace: "nowrap" }}>Difference:</span>
+                <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{crossSynth.reddit}</span>
+              </div>
+            )}
+            {crossSynth.web && (
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "#94a3b8", flexShrink: 0, paddingTop: 3, whiteSpace: "nowrap" }}>Missing Perspective:</span>
+                <span style={{ fontSize: "0.72rem", color: "#374151", lineHeight: 1.5 }}>{crossSynth.web}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2158,7 +2163,9 @@ function ConsensusSection({
       {/* Shared insights */}
       {consensus.shared_insights.length > 0 && (
         <div style={{ marginBottom: consensus.disagreements.length > 0 ? "0.65rem" : 0 }}>
-          <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10b981" }}>Sources agree</p>
+          <p style={{ margin: "0 0 0.3rem", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10b981" }}>
+            {displayScore >= 90 ? "Sources strongly agree" : displayScore >= 70 ? "Most sources agree" : displayScore >= 50 ? "Sources show directional agreement" : displayScore >= 30 ? "Sources are mixed" : "Sources disagree"}
+          </p>
           <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
             {consensus.shared_insights.map((s, i) => (
               <li key={i} style={{ fontSize: "0.74rem", color: "#374151", marginBottom: "0.2rem", lineHeight: 1.5 }}>{s}</li>
