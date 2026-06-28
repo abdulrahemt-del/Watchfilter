@@ -1426,15 +1426,26 @@ async function generateDecision(
     messages: [
       {
         role: "system",
-        content: `You are the Decision Intelligence Synthesizer for WatchFilter.
-Transform clustered evidence into a structured decision. Work only from provided signals — do not invent facts.
+        content: `You are the Decision Intelligence Synthesizer for WatchFilter. Write like an experienced research analyst — precise, honest, and uncertainty-aware. Work only from provided signals. Do not invent facts.
+
+LANGUAGE RULES (apply everywhere):
+- NEVER use absolute statements: "X is essential", "X always works", "X is the best", "X will", "X must"
+- Scale certainty to evidence: one source → "One practitioner suggested"; several → "Several operators reported"; strong convergence → "Evidence consistently supports"
+- Write naturally. Avoid repetitive phrases like "The evidence suggests..." in every sentence. Vary the language.
+- NEVER present inference as observed fact. Distinguish: "Practitioners report X" (evidence) vs "This suggests Y" (inference)
 
 RULES:
 1. Never output confidence scores or numeric probabilities.
 2. Do NOT name platforms (YouTube, Reddit, HN). Refer to signal content only.
 3. Lead with what sources agree on. Only surface disagreements if they materially change the decision.
 4. Every insight must trace to at least one provided signal. No hallucinated synthesis.
-5. priority_actions: Generate 3–5 IMMEDIATELY EXECUTABLE actions.
+5. decision_summary: REQUIRED structure — 2–3 sentences:
+   - Sentence 1: What the recommendation is, stated with evidence basis (not as universal fact)
+   - Sentence 2: The primary cost or tradeoff of this recommendation — acknowledge what is sacrificed
+   - Sentence 3: A key uncertainty or what would change this recommendation
+   NEVER recommend without acknowledging cost in sentence 2.
+   Example: "The available evidence supports cold outreach as the stronger early-stage customer acquisition path. This approach requires sustained personal effort and typically produces results over 30–90 days rather than immediately. The recommendation shifts if consistent inbound demand already exists or if the sales cycle exceeds six months."
+6. priority_actions: Generate 3–5 IMMEDIATELY EXECUTABLE actions.
    Each MUST have: specific verb + specific target + measurable criterion (number/frequency/binary).
    evidence_strength: "High" if 4+ signals, "Medium" if 2–3, "Low" if 1.
    GOOD: "Reach out directly to 50 target prospects this week, focusing on the problem before the product"
@@ -1461,16 +1472,18 @@ RULES:
    GOOD: "You cannot personally commit to outbound for 90+ days"
    BAD: "Your situation is different" | "Evidence changes" | "Context shifts"
    For Universal recommendations, return 1–2 edge-case conditions where the advice still might not apply.
-10. counter_evidence: 1–3 specific observations that reveal DOWNSIDES, FAILURE CASES, or LIMITATIONS of the RECOMMENDED option itself.
-    CRITICAL: Counter-evidence MUST challenge the RECOMMENDED option — not the alternative.
-    WRONG example (query: cold outreach vs content marketing, cold outreach recommended):
-      BAD: "Content marketing requires consistent publishing" ← this argues against the loser
-      GOOD: "Cold outreach fails when personalization is absent and reply rates drop to under 1%" ← argues against winner
-    WRONG example (content marketing recommended):
-      BAD: "Cold outreach is time-consuming" ← this argues against the loser
-      GOOD: "Content marketing commonly fails when distribution is weak and publishing is inconsistent" ← argues against winner
-    Pull ONLY from evidence provided. No invented counterarguments.
-    Each must describe a specific failure, limitation, or cost of the WINNING option.
+10. counter_evidence: 1–3 observations presenting the STRONGEST GENUINE CASE FOR CHOOSING THE ALTERNATIVE.
+    Answer the question: "Why might a reasonable founder choose the non-recommended option instead?"
+    GOAL: Users should think "I understand why someone would choose that." NOT "I see why the winner is flawed."
+    WRONG (if cold outreach recommended):
+      BAD: "Cold outreach is time-consuming." ← disadvantage of winner, not case for alternative
+      BAD: "Cold outreach fails at scale." ← still about the winner's weaknesses
+    RIGHT (if cold outreach recommended):
+      GOOD: "Content marketing compounds over 6–12 months and can lower blended CAC significantly after product-market fit." ← genuine strength of alternative
+      GOOD: "Founder-led educational content can pre-qualify prospects before any outbound conversation begins." ← genuine strength of alternative
+    Pull from actual evidence. No invented claims.
+    Each item must describe a GENUINE STRENGTH or ADVANTAGE of the non-recommended option.
+    Set to [] ONLY if no evidence for the alternative was found in the provided signals.
 11. why_not_alternative: REQUIRED for comparative queries (Comparative Verdict directional).
     One sentence explaining why the non-recommended option was not chosen first, traced to specific evidence.
     Example: "Content marketing was not prioritized first because evidence consistently shows 6–12 month lag before measurable results — contradicting the early-stage need for rapid customer feedback."
@@ -1479,7 +1492,7 @@ RULES:
 Return ONLY valid JSON:
 {
   "directional": "...",
-  "decision_summary": "2–3 sentences: what the evidence shows, what is genuinely disputed, what matters most.",
+  "decision_summary": "Sentence 1: recommendation with evidence basis. Sentence 2: primary cost/tradeoff. Sentence 3: key uncertainty or what would change this.",
   "recommendation_type": "Universal|Conditional|Stage-Based|Industry-Specific|Team-Dependent",
   "condition_qualifier": "One sentence on when this recommendation changes, or null.",
   "recommendation_conditions": ["Specific condition 1", "Specific condition 2", "Specific condition 3"],
@@ -1787,13 +1800,17 @@ CRITICAL RULES:
    Phase 2: When and how to transition or add the second strategy.
    Phase 3: Long-term integrated state.
    Each phase: descriptive title + 3–4 sequential action steps.
-10. decision_flow: 4–5 sequential decision questions that guide the user to reach their own conclusion.
-    Each question should be answerable with Yes/No. Each answer leads to a specific action or next step.
-    Question order: most critical decision gate first (e.g. PMF, ICP clarity, resource constraints).
-    yes_action and no_action should be CONCRETE actions, not just "proceed" or "don't proceed."
+10. decision_flow: 3–4 sequential decision questions followed by ONE TERMINAL CONCLUSION NODE.
+    Questions 1–(n-1): answerable Yes/No. Each answer leads to a concrete next step.
+    Question order: most critical decision gate first (e.g. PMF, ICP clarity, resource constraints, bandwidth).
+    FINAL NODE (last entry): MUST be a terminal conclusion, not a question.
+    Final node format: { "question": "Based on your answers above:", "yes_action": "Recommended: [Strategy] — [1-sentence reason grounded in evidence]", "no_action": "Alternative: [Strategy] — [1-sentence reason grounded in evidence]" }
+    If a hybrid is the right answer for one path, use: "no_action": "Hybrid: [Strategy A + B] — [reason]"
+    If evidence is insufficient for a strong recommendation: "yes_action": "Recommended: [best available option] — evidence is directional but limited", "no_action": "Alternative: [other option] — reasonable if [condition]"
+    yes_action and no_action for decision questions should be CONCRETE actions, not just "proceed" or "don't proceed."
     Example:
       { "question": "Do you have product-market fit?", "yes_action": "Add content marketing to build inbound alongside outreach.", "no_action": "Start with cold outreach to collect rapid customer feedback." }
-      { "question": "Do you know your exact ICP?", "yes_action": "Build systematic outbound sequences targeting that ICP.", "no_action": "Run 3–5 customer interviews per week before launching outreach." }
+      { "question": "Based on your answers above:", "yes_action": "Recommended: Cold Outreach — evidence supports it as the faster path to customer feedback at this stage.", "no_action": "Alternative: Content Marketing — valid if you already have distribution or consistent inbound." }
 
 Return JSON exactly:
 {
@@ -2819,6 +2836,19 @@ function auditMemo(memo: IntelligenceMemo): IntelligenceMemo {
   if (uniqueCreators === 1 && !hasReddit && !hasWeb && m.recommendation_type === "Universal") {
     audit.push("FAIL recommendation_type=Universal with 1 creator and no other sources → changed to Conditional");
     m = { ...m, recommendation_type: "Conditional" };
+  }
+
+  // Rule: Directional must match confidence level
+  if (m.confidence_score < 55 && (m.directional === "Strong YES (conditional)" || m.directional === "Strong NO (conditional)")) {
+    const safer = m.directional === "Strong YES (conditional)" ? "Lean YES" : "Lean NO";
+    audit.push(`FAIL directional=${m.directional} with confidence=${m.confidence_score} (<55) → downgraded to ${safer}`);
+    m = { ...m, directional: safer };
+  }
+
+  // Rule: consensus_quality=Strong requires agreement_score >= 65
+  if (m.consensus_quality === "Strong" && (m.consensus?.agreement_score ?? 0) < 65) {
+    audit.push(`FAIL consensus_quality=Strong with agreement_score=${m.consensus?.agreement_score} (<65) → downgraded to Medium`);
+    m = { ...m, consensus_quality: "Medium" };
   }
 
   if (audit.length > 0) {

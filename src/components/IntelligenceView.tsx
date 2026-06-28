@@ -2098,13 +2098,18 @@ function ConsensusSection({
   consensus,
   tradeoffs,
   contradictions,
+  consensusQuality,
 }: {
   consensus: IntelligenceMemo["consensus"];
   tradeoffs: IntelligenceMemo["tradeoffs"];
   contradictions: IntelligenceMemo["contradictions"];
+  consensusQuality?: IntelligenceMemo["consensus_quality"];
 }) {
   const score = consensus.agreement_score;
   const agreeColor = score >= 65 ? "#10b981" : score >= 40 ? "#f59e0b" : "#ef4444";
+  const canonicalLabel = consensusQuality
+    ? (CONSENSUS_QUALITY_STYLE[consensusQuality]?.label ?? agreeLabel(score))
+    : agreeLabel(score);
 
   const hasContent = consensus.shared_insights.length > 0 || (tradeoffs?.length ?? 0) > 0 || contradictions.length > 0;
   if (!hasContent) return null;
@@ -2124,7 +2129,7 @@ function ConsensusSection({
             <div style={{ width: `${score}%`, height: "100%", background: agreeColor, borderRadius: 2 }} />
           </div>
           <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>{score}%</span>
-          <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>— {agreeLabel(score)}</span>
+          <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>— {canonicalLabel}</span>
         </div>
 
         {/* Tradeoff + contradiction counts */}
@@ -2674,34 +2679,60 @@ function DecisionFlowSection({ cv }: { cv: NonNullable<IntelligenceMemo["compara
       </div>
 
       <div style={{ padding: "1.1rem 1.25rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {flow.map((node, i) => (
-          <div key={i} style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-            {/* Connector */}
-            {i > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.1rem" }}>
-                <div style={{ width: 1, height: 14, background: "#1e293b", marginLeft: 12 }} />
-              </div>
-            )}
-            {/* Question */}
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
-              <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#1e293b", border: "1px solid #334155", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
-                <span style={{ fontSize: "0.55rem", fontWeight: 800, color: "#64748b" }}>{i + 1}</span>
-              </div>
-              <p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 700, color: "#f8fafc", lineHeight: 1.4, paddingTop: 2 }}>{node.question}</p>
+        {flow.map((node, i) => {
+          const isTerminal = i === flow.length - 1;
+          return (
+            <div key={i} style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              {/* Connector */}
+              {i > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.1rem" }}>
+                  <div style={{ width: 1, height: 14, background: "#1e293b", marginLeft: 12 }} />
+                </div>
+              )}
+
+              {isTerminal ? (
+                /* Terminal conclusion node */
+                <div style={{ border: "1px solid #334155", borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ padding: "0.5rem 0.9rem", background: "#0f172a", borderBottom: "1px solid #1e293b" }}>
+                    <p style={{ margin: 0, fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#6366f1" }}>
+                      {node.question}
+                    </p>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+                    <div style={{ padding: "0.7rem 0.9rem", background: "#0d1f0d", borderRight: "1px solid #1e293b" }}>
+                      <p style={{ margin: "0 0 0.2rem", fontSize: "0.5rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#4ade80" }}>Primary Path</p>
+                      <p style={{ margin: 0, fontSize: "0.68rem", color: "#86efac", lineHeight: 1.5, fontWeight: 600 }}>{node.yes_action}</p>
+                    </div>
+                    <div style={{ padding: "0.7rem 0.9rem", background: "#0f172a" }}>
+                      <p style={{ margin: "0 0 0.2rem", fontSize: "0.5rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8" }}>Alternative Path</p>
+                      <p style={{ margin: 0, fontSize: "0.68rem", color: "#64748b", lineHeight: 1.5 }}>{node.no_action}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Decision question node */
+                <>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
+                    <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#1e293b", border: "1px solid #334155", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                      <span style={{ fontSize: "0.55rem", fontWeight: 800, color: "#64748b" }}>{i + 1}</span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 700, color: "#f8fafc", lineHeight: 1.4, paddingTop: 2 }}>{node.question}</p>
+                  </div>
+                  <div style={{ marginLeft: 28, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                    <div style={{ padding: "0.4rem 0.65rem", background: "#052e16", border: "1px solid #166534", borderRadius: 8 }}>
+                      <p style={{ margin: "0 0 0.15rem", fontSize: "0.5rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#4ade80" }}>Yes →</p>
+                      <p style={{ margin: 0, fontSize: "0.65rem", color: "#86efac", lineHeight: 1.45 }}>{node.yes_action}</p>
+                    </div>
+                    <div style={{ padding: "0.4rem 0.65rem", background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 8 }}>
+                      <p style={{ margin: "0 0 0.15rem", fontSize: "0.5rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#f87171" }}>No →</p>
+                      <p style={{ margin: 0, fontSize: "0.65rem", color: "#fca5a5", lineHeight: 1.45 }}>{node.no_action}</p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-            {/* Yes / No branches */}
-            <div style={{ marginLeft: 28, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-              <div style={{ padding: "0.4rem 0.65rem", background: "#052e16", border: "1px solid #166534", borderRadius: 8 }}>
-                <p style={{ margin: "0 0 0.15rem", fontSize: "0.5rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#4ade80" }}>Yes →</p>
-                <p style={{ margin: 0, fontSize: "0.65rem", color: "#86efac", lineHeight: 1.45 }}>{node.yes_action}</p>
-              </div>
-              <div style={{ padding: "0.4rem 0.65rem", background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 8 }}>
-                <p style={{ margin: "0 0 0.15rem", fontSize: "0.5rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#f87171" }}>No →</p>
-                <p style={{ margin: 0, fontSize: "0.65rem", color: "#fca5a5", lineHeight: 1.45 }}>{node.no_action}</p>
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -2719,7 +2750,7 @@ function CounterEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
         <span style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#9f1239" }}>
           Counter-Evidence
         </span>
-        <span style={{ fontSize: "0.55rem", color: "#94a3b8", marginLeft: "auto" }}>arguments against the recommendation</span>
+        <span style={{ fontSize: "0.55rem", color: "#94a3b8", marginLeft: "auto" }}>why the alternative might be the better choice for some founders</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         {items.map((item, i) => (
@@ -2797,7 +2828,7 @@ function IntelligenceReport({ memo, query, debug }: { memo: IntelligenceMemo; qu
       <MissingEvidenceSection items={memo.decision_drivers?.missing_evidence ?? []} />
 
       {/* 11. Consensus */}
-      <ConsensusSection consensus={memo.consensus} tradeoffs={memo.tradeoffs ?? []} contradictions={memo.contradictions} />
+      <ConsensusSection consensus={memo.consensus} tradeoffs={memo.tradeoffs ?? []} contradictions={memo.contradictions} consensusQuality={memo.consensus_quality} />
 
       {/* 12. Tradeoffs */}
       <TradeoffsSection items={memo.tradeoffs ?? []} />
