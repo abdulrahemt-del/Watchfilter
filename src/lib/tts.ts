@@ -231,6 +231,7 @@ export async function generateSpeechFile(
       access: "public",
       contentType: "audio/mpeg",
       addRandomSuffix: false,
+      allowOverwrite: true,
       ...(storeId ? { storeId } : { token: blobToken! }),
     });
     return blob.url;
