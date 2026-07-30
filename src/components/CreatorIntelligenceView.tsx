@@ -362,7 +362,7 @@ export function CreatorIntelligenceView() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
                   <thead>
                     <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                      {["#", "Creator", "Tier", "Videos", "Evidence", "Topics", "Score"].map(h => (
+                      {["#", "Creator", "Tier", "Videos", "Evidence", "Topics", "WatchFilter Rating"].map(h => (
                         <th
                           key={h}
                           style={{

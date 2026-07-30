@@ -151,7 +151,7 @@ export function FluffAnalyzerDrawer({ isOpen, video, ai, onClose, onFullAnalyze,
                     Worth Watching: {verdict}
                   </span>
                   <span style={{ fontSize: "11px", fontFamily: "monospace", fontWeight: 700, color: qualityColor }}>
-                    Signal Quality: {quality}
+                    WatchFilter's Read: {quality}
                   </span>
                 </div>
                 {reason && (
@@ -171,9 +171,9 @@ export function FluffAnalyzerDrawer({ isOpen, video, ai, onClose, onFullAnalyze,
               <p className="fluff-drawer__metric-sub">of runtime</p>
             </div>
             <div className="fluff-drawer__metric fluff-drawer__metric--blue">
-              <p className="fluff-drawer__metric-label">Core Signal</p>
+              <p className="fluff-drawer__metric-label">Substantive Content</p>
               <div className="fluff-drawer__metric-value">~{coreMins} min</div>
-              <p className="fluff-drawer__metric-sub">dense content</p>
+              <p className="fluff-drawer__metric-sub">WatchFilter estimate</p>
             </div>
           </div>
 

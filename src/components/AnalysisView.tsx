@@ -204,10 +204,10 @@ const SIGNAL_STYLES: Record<SignalStrength, string> = {
 };
 
 const SIGNAL_LABEL: Record<SignalStrength, string> = {
-  "Very High": "HIGH SIGNAL",
-  "High":      "HIGH SIGNAL",
-  "Medium":    "MEDIUM SIGNAL",
-  "Low":       "EMERGING SIGNAL",
+  "Very High": "TOP PICK",
+  "High":      "TOP PICK",
+  "Medium":    "NOTABLE",
+  "Low":       "WORTH A LOOK",
 };
 
 const EVIDENCE_STYLES: Record<EvidenceStrength, string> = {
@@ -497,7 +497,7 @@ function WorthWatchingCard({
           </span>
         </div>
         <div className="av-verdict-banner__right">
-          <span className="av-verdict-banner__signal-label">Signal Quality</span>
+          <span className="av-verdict-banner__signal-label" title="WatchFilter's own editorial read — not a YouTube metric">WatchFilter's Read</span>
           <span className="av-verdict-banner__signal" style={{ color: signalColor }}>{signalQuality}</span>
         </div>
       </div>
@@ -794,7 +794,7 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio, onReanalyzed }:
         )}
 
         <div className="av-score-section">
-          <p className="av-score-key">Clickbait Score</p>
+          <p className="av-score-key" title="WatchFilter's own editorial read — not a YouTube metric">WatchFilter's Clickbait Read</p>
           <div className="av-score-top">
             <span className={`av-score-num ${colorClass}`}>{analysis.clickbait_score}/10</span>
             <span className={`av-score-label ${colorClass}`}>{cbLabel}</span>
@@ -885,7 +885,7 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio, onReanalyzed }:
       {/* ── Metrics Grid ── */}
       {analysis.hard_data_points.length > 0 && (
         <section className="av-section">
-          <p className="av-section-label">📊 Intelligence — Ranked by Signal Priority</p>
+          <p className="av-section-label">📊 Intelligence — Ranked by WatchFilter Priority</p>
           <div className="av-metrics-grid">
             {(() => {
               const RANK: Record<string, number> = { "Very High": 4, "High": 3, "Medium": 2, "Low": 1 };

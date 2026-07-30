@@ -455,6 +455,14 @@ export async function getRefreshToken(userId: string): Promise<string | null> {
   return rows.length ? (rows[0].refresh_token as string) : null;
 }
 
+export async function deleteRefreshToken(userId: string): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: "DELETE FROM user_refresh_tokens WHERE user_id = ?",
+    args: [userId],
+  });
+}
+
 // ── Feed cache ────────────────────────────────────────────────────────────────
 
 export async function getFeedCache(userId: string): Promise<{ cachedAt: Date; videos: unknown[] } | null> {
@@ -477,6 +485,14 @@ export async function setFeedCache(userId: string, videos: unknown[]): Promise<v
           VALUES (?, ?, ?)
           ON CONFLICT(user_id) DO UPDATE SET cached_at = excluded.cached_at, videos = excluded.videos`,
     args: [userId, new Date().toISOString(), JSON.stringify(videos)],
+  });
+}
+
+export async function deleteFeedCache(userId: string): Promise<void> {
+  const c = await db();
+  await c.execute({
+    sql: "DELETE FROM feed_cache WHERE user_id = ?",
+    args: [userId],
   });
 }
 

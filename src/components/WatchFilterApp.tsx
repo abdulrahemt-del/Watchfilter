@@ -296,7 +296,7 @@ function LibraryView({
                 {compareMode && <th style={TH}>✓</th>}
                 <th style={TH}>Creator</th>
                 <th style={TH}>Title</th>
-                <th style={TH}>Score</th>
+                <th style={TH}>WatchFilter Take</th>
                 <th style={{ ...TH, textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
@@ -358,7 +358,11 @@ function LibraryView({
                       </button>
                     </td>
                     <td style={TD}>
-                      <span className={`bc-score-badge ${scoreClass}`} style={{ whiteSpace: "nowrap" }}>
+                      <span
+                        className={`bc-score-badge ${scoreClass}`}
+                        style={{ whiteSpace: "nowrap" }}
+                        title="WatchFilter's own editorial read — not a YouTube metric"
+                      >
                         {score}/10 {scoreLabel}
                       </span>
                     </td>

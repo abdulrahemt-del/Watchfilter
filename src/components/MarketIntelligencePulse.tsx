@@ -368,7 +368,7 @@ export function MarketIntelligencePulse({ onNavigate, onAnalyze }: { onNavigate?
     const savedHrs = Math.round(totalSecs * 0.6 / 3600);
     return [
       { label: "Feed Size",    value: String(feedVideos.length),    sub: "total videos",     trend: "flat"  as const },
-      { label: "Signal Yield", value: String(filteredVideos.length), sub: "approved signals", color: "text-[#a3cef1]",   trend: "up"   as const },
+      { label: "Curated",      value: String(filteredVideos.length), sub: "WatchFilter picks", color: "text-[#a3cef1]",   trend: "up"   as const },
       { label: "Themes Found", value: String(todaysThemes.length),   sub: "active clusters",  color: "text-[#a3cef1]",   trend: "up"   as const },
       { label: "Priority",     value: String(hp),                    sub: "high-priority",    color: "text-emerald-300", trend: "up"   as const },
       { label: "Channels",     value: String(uniqueChannels),        sub: "unique sources",   color: "text-white/70",    trend: "flat" as const },

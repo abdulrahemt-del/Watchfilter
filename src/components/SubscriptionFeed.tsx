@@ -256,7 +256,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
   const [consensusData, setConsensusData]         = useState<ConsensusResult | null>(null);
   const [consensusLoading, setConsensusLoading]   = useState(false);
   const [selectedConsensusTheme, setSelectedConsensusTheme] = useState<string | null>(null);
-  const [proofSort, setProofSort] = useState<"relevance" | "recent">("relevance");
+  const [proofSort, setProofSort] = useState<"relevance" | "recent">("recent");
   const [insightsVideo, setInsightsVideo]         = useState<FeedVideo | null>(null);
   const [insightsCache, setInsightsCache]         = useState<Record<string, Insight[]>>({});
   const [insightsTypeCache, setInsightsTypeCache] = useState<Record<string, VideoType | null>>({});
@@ -861,7 +861,6 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             {video.duration && formatDuration(video.duration) && (
               <span className="feed-card__duration-badge">{formatDuration(video.duration)}</span>
             )}
-            {rs !== null && <span className={scoreBadgeClass(rs)}>{rs}</span>}
           </div>
         )}
         <div className="feed-card__body">
@@ -887,6 +886,11 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             <span className="feed-card__age">{formatAge(video.publishedAt)}</span>
             {video.duration && estimateSavings(video.duration) && (
               <span className="feed-card__savings">{estimateSavings(video.duration)}</span>
+            )}
+            {rs !== null && (
+              <span className={scoreBadgeClass(rs)} title="WatchFilter's own editorial read — not a YouTube metric">
+                WatchFilter Take: {rs}
+              </span>
             )}
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -971,6 +975,19 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             {loading ? <><span className="spinner" /> Loading…</> : "↻ Refresh"}
           </button>
           <button onClick={() => void signOut()} className="feed-signout">Sign out</button>
+          <button
+            onClick={async () => {
+              if (!confirm("This revokes WatchFilter's access to your Google account and deletes your stored subscription data. Continue?")) return;
+              try {
+                await fetch("/api/auth/disconnect", { method: "POST" });
+              } catch { /* ignore — still sign out locally */ }
+              void signOut({ callbackUrl: "/" });
+            }}
+            className="feed-signout"
+            title="Revoke WatchFilter's access to your Google account and delete stored data"
+          >
+            Disconnect Google Account
+          </button>
         </div>
       </div>
 
@@ -1095,7 +1112,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                 <div className="intel-scoreboard__item">
                   <span className="intel-scoreboard__icon">⚡</span>
                   <div className="intel-scoreboard__value intel-scoreboard__value--blue">{filteredVideos.length}</div>
-                  <div className="intel-scoreboard__label">High-Signal</div>
+                  <div className="intel-scoreboard__label">Curated by WatchFilter</div>
                 </div>
                 <div className="intel-scoreboard__item">
                   <span className="intel-scoreboard__icon">📈</span>
@@ -1781,7 +1798,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                           style={proofSort === opt
                             ? { background: "#38bdf8", color: "#0f2535" }
                             : { background: "rgba(15,37,53,0.6)", color: "#64748b" }}>
-                          {opt === "relevance" ? "By Score" : "Most Recent"}
+                          {opt === "relevance" ? "WatchFilter Take" : "Most Recent"}
                         </button>
                       ))}
                     </div>
