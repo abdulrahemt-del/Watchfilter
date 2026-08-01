@@ -363,7 +363,7 @@ function LibraryView({
                         style={{ whiteSpace: "nowrap" }}
                         title="WatchFilter's own editorial read — not a YouTube metric"
                       >
-                        {score}/10 {scoreLabel}
+                        {scoreLabel}
                       </span>
                     </td>
                     <td style={{ ...TD, textAlign: "right" }}>

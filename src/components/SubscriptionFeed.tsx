@@ -158,6 +158,12 @@ function scoreBadgeClass(score: number): string {
   return "feed-card__score-badge feed-card__score-badge--low";
 }
 
+function scoreBadgeLabel(score: number): string {
+  if (score >= 80) return "Top Pick";
+  if (score >= 65) return "Notable";
+  return "Worth A Look";
+}
+
 const CONTENT_TYPE_ICONS: Partial<Record<ContentType, string>> = {
   "Podcast":           "🎙",
   "Interview":         "🎤",
@@ -889,7 +895,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
             )}
             {rs !== null && (
               <span className={scoreBadgeClass(rs)} title="WatchFilter's own editorial read — not a YouTube metric">
-                WatchFilter Take: {rs}
+                WatchFilter Take: {scoreBadgeLabel(rs)}
               </span>
             )}
           </div>

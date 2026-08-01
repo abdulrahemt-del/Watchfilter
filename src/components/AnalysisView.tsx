@@ -516,8 +516,7 @@ function WorthWatchingCard({
 
       <div className="av-ww-top">
         <div className="av-ww-score">
-          <span className="av-ww-num" style={{ color }}>{ww.score.toFixed(1)}</span>
-          <span className="av-ww-denom">/10</span>
+          <span className="av-ww-num" style={{ color }} title="WatchFilter's own editorial read — not a YouTube metric">{signalQuality}</span>
         </div>
         <p className="av-ww-verdict">{ww.verdict}</p>
       </div>
@@ -796,7 +795,6 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio, onReanalyzed }:
         <div className="av-score-section">
           <p className="av-score-key" title="WatchFilter's own editorial read — not a YouTube metric">WatchFilter's Clickbait Read</p>
           <div className="av-score-top">
-            <span className={`av-score-num ${colorClass}`}>{analysis.clickbait_score}/10</span>
             <span className={`av-score-label ${colorClass}`}>{cbLabel}</span>
           </div>
           <div className="av-score-track">

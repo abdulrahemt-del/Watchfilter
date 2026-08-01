@@ -126,8 +126,8 @@ export function BriefingCard({
           <div className="bc-v2-avatar">{channelDisplay[0]?.toUpperCase()}</div>
           <span className="bc-v2-channel-name">{channelDisplay}</span>
         </div>
-        <span className={`bc-v2-badge ${badgeVariant}`}>
-          {score}/10 {scoreLabel}
+        <span className={`bc-v2-badge ${badgeVariant}`} title="WatchFilter's own editorial read — not a YouTube metric">
+          {scoreLabel}
         </span>
       </div>
 
