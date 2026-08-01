@@ -306,7 +306,7 @@ function LibraryView({
                 const letter = (item.channelName ?? item.videoId)[0]?.toUpperCase() ?? "?";
                 const score = item.clickbaitScore;
                 const scoreClass = score <= 3 ? "score-ok" : score <= 6 ? "score-mid" : "score-high";
-                const scoreLabel = score <= 3 ? "Accurate" : score <= 6 ? "Sensationalized" : "High Clickbait";
+                const scoreLabel = score <= 3 ? "Low Clickbait" : score <= 6 ? "Sensationalized" : "High Clickbait";
                 const isSelected = selected.has(item.id);
                 const isActive = !compareMode && item.id === activeId;
                 const rowBg = isActive ? "#f0f7ff" : isSelected ? "#eff6ff" : "transparent";

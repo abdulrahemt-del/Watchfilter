@@ -98,7 +98,7 @@ export function BriefingCard({
   const badgeVariant =
     score >= 7 ? "bc-v2-badge--high" : score >= 4 ? "bc-v2-badge--mid" : "bc-v2-badge--ok";
   const scoreLabel =
-    score <= 3 ? "Accurate" : score <= 6 ? "Sensationalized" : "High Clickbait";
+    score <= 3 ? "Low Clickbait" : score <= 6 ? "Sensationalized" : "High Clickbait";
 
   const channelDisplay = item.channelName ?? "Unknown Channel";
   const duration = formatDurationSecs(item.durationSeconds);

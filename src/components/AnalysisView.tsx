@@ -31,7 +31,7 @@ function formatViews(n: number): string {
 }
 
 function clickbaitMeta(score: number) {
-  if (score <= 3) return { label: "Accurate", colorClass: "score-ok", barColor: "var(--ok)" };
+  if (score <= 3) return { label: "Low Clickbait", colorClass: "score-ok", barColor: "var(--ok)" };
   if (score <= 6) return { label: "Sensationalized", colorClass: "score-mid", barColor: "var(--warn)" };
   return { label: "High Clickbait", colorClass: "score-high", barColor: "var(--danger)" };
 }
