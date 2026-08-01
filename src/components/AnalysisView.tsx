@@ -546,7 +546,6 @@ function WorthWatchingCard({
                   style={{ width: `${displayPct}%`, background: barColor }}
                 />
               </div>
-              <span className="av-ww-bar-val">{raw}</span>
             </div>
           );
         })}
