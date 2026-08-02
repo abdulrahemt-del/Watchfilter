@@ -99,7 +99,9 @@ function IntelligenceGridCard({ theme, isOpen, onSelect }: CardProps) {
           <div className="flex items-center gap-1.5">
             <span className={`font-bold ${trend.color}`}>{trend.icon} {trend.label}</span>
             <span className="text-white/40">·</span>
-            <span className="text-white font-bold">{theme.agreementPercentage}%</span>
+            <span className="text-white font-bold" title="WatchFilter's own editorial read — not a YouTube metric">
+              {theme.agreementPercentage >= 70 ? "Strong" : theme.agreementPercentage >= 40 ? "Moderate" : "Weak"} agreement
+            </span>
           </div>
 
           <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded border transition-colors ${

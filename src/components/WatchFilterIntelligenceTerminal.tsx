@@ -145,7 +145,9 @@ export function WatchFilterIntelligenceTerminal({ clusters, defaultActiveId, las
 
                   <div className="flex items-center justify-between text-xs font-mono text-slate-500 pt-2 border-t border-slate-800 mt-3">
                     <span>{cluster.contributingCreatorsCount} creators · {cluster.totalLinkedVideos} videos</span>
-                    <span className="text-blue-400 font-bold">{cluster.consensusAgreementRate}%</span>
+                    <span className="text-blue-400 font-bold" title="WatchFilter's own editorial read — not a YouTube metric">
+                      {cluster.consensusAgreementRate >= 70 ? "Strong" : cluster.consensusAgreementRate >= 40 ? "Moderate" : "Weak"}
+                    </span>
                   </div>
                 </div>
               );

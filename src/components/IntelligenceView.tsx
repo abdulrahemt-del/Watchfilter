@@ -675,8 +675,8 @@ function ConfidenceSection({ memo }: { memo: IntelligenceMemo }) {
       <div style={{ display: "flex", alignItems: "flex-start", gap: "1.5rem", flexWrap: "wrap" }}>
 
         {/* Score */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.2rem", minWidth: 60 }}>
-          <span style={{ fontSize: "2rem", fontWeight: 900, color, lineHeight: 1 }}>{score}</span>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.2rem", minWidth: 60 }} title="WatchFilter's own editorial read — not a YouTube metric">
+          <span style={{ fontSize: "1.1rem", fontWeight: 900, color, lineHeight: 1 }}>{score >= 72 ? "High" : score >= 48 ? "Medium" : "Low"}</span>
           <span style={{ fontSize: "0.57rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>Confidence</span>
         </div>
 
@@ -874,8 +874,8 @@ function DecisionDriversSection({ memo }: { memo: IntelligenceMemo }) {
                     <p style={{ margin: "0 0 0.35rem", fontSize: "0.73rem", color: "#166534", lineHeight: 1.5, fontWeight: 500 }}>{sig.insight}</p>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                       <SignalSourceBadges srcs={sig.source_types} />
-                      <span style={{ fontSize: "0.58rem", fontWeight: 700, color: scoreColor, marginLeft: "auto" }}>
-                        {sig.confidence_score}
+                      <span style={{ fontSize: "0.58rem", fontWeight: 700, color: scoreColor, marginLeft: "auto" }} title="WatchFilter's own editorial read — not a YouTube metric">
+                        {sig.confidence_score >= 60 ? "High" : sig.confidence_score >= 35 ? "Medium" : "Low"}
                       </span>
                     </div>
                   </div>
@@ -899,8 +899,8 @@ function DecisionDriversSection({ memo }: { memo: IntelligenceMemo }) {
                     <p style={{ margin: "0 0 0.35rem", fontSize: "0.73rem", color: "#9a3412", lineHeight: 1.5, fontWeight: 500 }}>{sig.insight}</p>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                       <SignalSourceBadges srcs={sig.source_types} />
-                      <span style={{ fontSize: "0.58rem", fontWeight: 700, color: scoreColor, marginLeft: "auto" }}>
-                        {sig.confidence_score}
+                      <span style={{ fontSize: "0.58rem", fontWeight: 700, color: scoreColor, marginLeft: "auto" }} title="WatchFilter's own editorial read — not a YouTube metric">
+                        {sig.confidence_score >= 60 ? "High" : sig.confidence_score >= 35 ? "Medium" : "Low"}
                       </span>
                     </div>
                   </div>
@@ -1087,7 +1087,7 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
               { label: "Corpus", value: ci.coverage.corpus_matches ?? "—" },
               { label: "Retrieved", value: ci.coverage.retrieved },
               { label: "Accepted", value: ci.coverage.accepted },
-              { label: "Aligned", value: ci.alignment_percentage != null ? `${ci.debug.alignment.high_alignment_claims} (${ci.alignment_percentage}%)` : ci.debug.alignment.high_alignment_claims },
+              { label: "Aligned", value: ci.alignment_percentage != null ? `${ci.debug.alignment.high_alignment_claims} (${ci.alignment_percentage >= 60 ? "strong" : ci.alignment_percentage >= 30 ? "moderate" : "weak"})` : ci.debug.alignment.high_alignment_claims },
               { label: "Themes", value: ci.themes_generated },
             ].map(s => (
               <div key={s.label} style={{ display: "flex", gap: "0.3rem", alignItems: "baseline" }}>
@@ -1363,7 +1363,7 @@ function CreatorDiagnostics({ memo }: { memo: IntelligenceMemo }) {
               </p>
               <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
                 <DiagStat label="Accepted Claims" value={debug.alignment.accepted_claims} />
-                <DiagStat label="Avg Alignment"   value={`${Math.round(debug.alignment.average_alignment * 100)}%`}
+                <DiagStat label="Avg Alignment"   value={debug.alignment.average_alignment >= 0.60 ? "Strong" : debug.alignment.average_alignment >= 0.35 ? "Moderate" : "Weak"}
                   accent={debug.alignment.average_alignment >= 0.60 ? "#10b981" : debug.alignment.average_alignment >= 0.35 ? "#d97706" : "#ef4444"} />
                 <DiagStat label="High Alignment"  value={debug.alignment.high_alignment_claims} accent="#10b981" />
                 <DiagStat label="Off-Question"    value={debug.off_question_claims?.length ?? 0}
@@ -1371,7 +1371,7 @@ function CreatorDiagnostics({ memo }: { memo: IntelligenceMemo }) {
               </div>
               {debug.alignment.average_alignment < 0.40 && (
                 <p style={{ margin: "0.5rem 0 0", fontSize: "0.62rem", color: "#f97316", lineHeight: 1.5 }}>
-                  Most accepted creator claims do not directly answer the query (avg {Math.round(debug.alignment.average_alignment * 100)}% aligned). Consider adjusting the query or reviewing corpus coverage.
+                  Most accepted creator claims do not directly answer the query (avg alignment: weak). Consider adjusting the query or reviewing corpus coverage.
                 </p>
               )}
             </div>
@@ -1390,7 +1390,7 @@ function CreatorDiagnostics({ memo }: { memo: IntelligenceMemo }) {
                   return (
                     <div key={i} style={{ background: "#1e293b", borderRadius: 6, padding: "0.4rem 0.65rem", display: "flex", gap: "0.6rem", alignItems: "flex-start" }}>
                       <span style={{ fontSize: "0.65rem", fontWeight: 800, color: col, flexShrink: 0, minWidth: "2.8rem" }}>
-                        {pct}%
+                        {pct >= 60 ? "strong" : pct >= 30 ? "moderate" : "weak"}
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "#cbd5e1", display: "block" }}>{c.creator}</span>
@@ -1756,8 +1756,8 @@ function CrossSourceConsensusSection({ items }: { items: IntelligenceMemo["cross
 
               {/* Confidence + agreement */}
               <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "0.62rem", fontWeight: 800, color: scoreColor }}>
-                  Confidence: {item.confidence_score} / 100
+                <span style={{ fontSize: "0.62rem", fontWeight: 800, color: scoreColor }} title="WatchFilter's own editorial read — not a YouTube metric">
+                  Confidence: {item.confidence_score >= 80 ? "High" : item.confidence_score >= 50 ? "Medium" : "Low"}
                 </span>
                 <span style={{ fontSize: "0.57rem", fontWeight: 700, padding: "1px 8px", borderRadius: 20, background: agreeMeta.bg, color: agreeMeta.color, border: `1px solid ${agreeMeta.border}` }}>
                   {item.agreement} Agreement
@@ -2143,8 +2143,7 @@ function ConsensusSection({
           <div style={{ width: 80, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
             <div style={{ width: `${displayScore}%`, height: "100%", background: agreeColor, borderRadius: 2 }} />
           </div>
-          <span style={{ fontSize: "0.65rem", fontWeight: 800, color: agreeColor }}>{displayScore}%</span>
-          <span style={{ fontSize: "0.6rem", color: "#94a3b8" }}>— {displayLabel}</span>
+          <span style={{ fontSize: "0.6rem", color: "#94a3b8" }} title="WatchFilter's own editorial read — not a YouTube metric">{displayLabel}</span>
         </div>
 
         {/* Tradeoff + contradiction counts */}
@@ -2379,10 +2378,9 @@ function EvidenceQualityPanel({ scores }: {
               <div style={{ flex: 1, height: 4, background: "#f1f5f9", borderRadius: 2, overflow: "hidden" }}>
                 <div style={{ width: `${q.score}%`, height: "100%", background: LEVEL_META[q.level].bar, borderRadius: 2, transition: "width 0.5s ease" }} />
               </div>
-              <span style={{ fontSize: "0.58rem", fontWeight: 700, padding: "1px 7px", borderRadius: 4, background: LEVEL_META[q.level].pill.bg, color: LEVEL_META[q.level].pill.color, minWidth: 42, textAlign: "center" }}>
+              <span style={{ fontSize: "0.58rem", fontWeight: 700, padding: "1px 7px", borderRadius: 4, background: LEVEL_META[q.level].pill.bg, color: LEVEL_META[q.level].pill.color, minWidth: 42, textAlign: "center" }} title="WatchFilter's own editorial read — not a YouTube metric">
                 {q.level}
               </span>
-              <span style={{ fontSize: "0.6rem", color: "#94a3b8", width: 22, textAlign: "right" }}>{q.score}</span>
             </div>
           );
         })}

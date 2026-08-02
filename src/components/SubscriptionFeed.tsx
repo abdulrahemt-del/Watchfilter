@@ -19,8 +19,6 @@ import { FluffAnalyzerDrawer, categoryChipClass } from "@/components/FluffAnalyz
 import { InsightsDrawer } from "@/components/InsightsDrawer";
 import type { Insight, VideoType } from "@/app/api/youtube/insights/route";
 
-const DEBUG_BADGES = false;
-
 // ── Consensus types ───────────────────────────────────────────────────────────
 
 interface ConsensusTheme {
@@ -911,15 +909,6 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
               🧠 Key Insights
             </button>
           </div>
-          {DEBUG_BADGES && (
-            <div className="feed-card__debug-badge">
-              <span>⏱ {isoToSeconds(video.duration)}s</span>
-              <span>{topicIcon} Topic: {topicScore ?? "—"}</span>
-              <span>💼 Biz: {bizScore ?? "—"}</span>
-              <span>⭐ Ch: {affinity > 0 ? `+${affinity}` : affinity}{isTrusted ? " ✓" : ""}</span>
-              <span>📌 {topic}</span>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -1538,7 +1527,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                           />
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-mono text-white">{confidence}% consensus</span>
+                          <span className="text-xs font-mono text-white" title="WatchFilter's own editorial read — not a YouTube metric">{strengthLabel} consensus</span>
                           <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-mono font-bold uppercase tracking-wider transition-all duration-200 ${
                             isActive
                               ? "bg-blue-500/15 text-blue-400 border-blue-500/40"

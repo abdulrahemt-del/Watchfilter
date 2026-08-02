@@ -278,7 +278,11 @@ function IntelligenceSignalCard({ signal }: { signal: IntelligenceSignal }) {
         <div className="flex items-center gap-3 text-[10px] font-mono text-slate-600">
           {signal.creators !== undefined && <span>{signal.creators} creators</span>}
           {signal.videos   !== undefined && <span>{signal.videos} videos</span>}
-          {signal.confidence !== undefined && <span>{signal.confidence}% confidence</span>}
+          {signal.confidence !== undefined && (
+            <span title="WatchFilter's own editorial read — not a YouTube metric">
+              {signal.confidence >= 70 ? "High" : signal.confidence >= 40 ? "Medium" : "Low"} confidence
+            </span>
+          )}
         </div>
       </div>
       <p className="text-sm text-slate-700 leading-relaxed">{signal.text}</p>

@@ -705,8 +705,8 @@ export function MarketIntelligencePulse({ onNavigate, onAnalyze }: { onNavigate?
             </div>
             <div>
               <p className="text-[9px] font-mono text-[#a3cef1]/60 uppercase tracking-wider mb-1">Confidence</p>
-              <p className={`text-sm font-black ${topInsight.confidence >= 70 ? "text-emerald-300" : "text-amber-300"}`}>
-                {topInsight.confidence}% — {topInsight.confidenceLabel}
+              <p className={`text-sm font-black ${topInsight.confidence >= 70 ? "text-emerald-300" : "text-amber-300"}`} title="WatchFilter's own editorial read — not a YouTube metric">
+                {topInsight.confidenceLabel}
               </p>
             </div>
             <div>

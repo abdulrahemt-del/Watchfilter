@@ -87,8 +87,8 @@ export function UltimateIntelligenceHub({ clusters, defaultActiveId }: Props) {
                   className="bg-gradient-to-r from-[#4a6fa5] to-[#6b4fbb] h-full transition-all duration-500"
                 />
               </div>
-              <div className="text-[9px] font-mono text-[#6b8a99] mt-1 text-right">
-                {cluster.agreementRate}% agreement
+              <div className="text-[9px] font-mono text-[#6b8a99] mt-1 text-right" title="WatchFilter's own editorial read — not a YouTube metric">
+                {cluster.agreementRate >= 70 ? "Strong" : cluster.agreementRate >= 40 ? "Moderate" : "Weak"} agreement
               </div>
             </div>
           );
