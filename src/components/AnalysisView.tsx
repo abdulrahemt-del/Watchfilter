@@ -395,11 +395,15 @@ function MetricCard({
                             Opportunity Potential
                           </p>
                           <div className="av-opportunity-score-row">
-                            <span className="av-opportunity-score" style={{
-                              color: opportunityPotential >= 80 ? "var(--ok)" : opportunityPotential >= 50 ? "var(--warn)" : "var(--muted)",
-                              borderColor: opportunityPotential >= 80 ? "color-mix(in srgb,var(--ok) 30%,transparent)" : opportunityPotential >= 50 ? "color-mix(in srgb,var(--warn) 30%,transparent)" : "var(--border)",
-                            }}>
-                              {opportunityPotential}/100
+                            <span
+                              className="av-opportunity-score"
+                              title="WatchFilter's own editorial read — not a YouTube metric"
+                              style={{
+                                color: opportunityPotential >= 80 ? "var(--ok)" : opportunityPotential >= 50 ? "var(--warn)" : "var(--muted)",
+                                borderColor: opportunityPotential >= 80 ? "color-mix(in srgb,var(--ok) 30%,transparent)" : opportunityPotential >= 50 ? "color-mix(in srgb,var(--warn) 30%,transparent)" : "var(--border)",
+                              }}
+                            >
+                              {opportunityPotential >= 80 ? "High" : opportunityPotential >= 50 ? "Medium" : "Low"}
                             </span>
                             {opportunityReason && <p className="av-opportunity-reason">{opportunityReason}</p>}
                           </div>
@@ -839,12 +843,16 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio, onReanalyzed }:
           <div className="av-confidence">
             <span className="av-confidence__label">Analysis Confidence</span>
             <div className="av-confidence__body">
-              <span className="av-confidence__score" style={{
-                color: analysis.analysis_confidence.score >= 80 ? "var(--ok)"
-                     : analysis.analysis_confidence.score >= 60 ? "var(--warn)"
-                     : "var(--danger)",
-              }}>
-                {analysis.analysis_confidence.score}/100
+              <span
+                className="av-confidence__score"
+                title="WatchFilter's own editorial read — not a YouTube metric"
+                style={{
+                  color: analysis.analysis_confidence.score >= 80 ? "var(--ok)"
+                       : analysis.analysis_confidence.score >= 60 ? "var(--warn)"
+                       : "var(--danger)",
+                }}
+              >
+                {analysis.analysis_confidence.score >= 80 ? "High" : analysis.analysis_confidence.score >= 60 ? "Medium" : "Low"}
               </span>
               {analysis.analysis_confidence.factors && (
                 <span className="av-confidence__factors">{analysis.analysis_confidence.factors}</span>

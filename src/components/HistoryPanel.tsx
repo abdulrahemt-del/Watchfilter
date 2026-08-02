@@ -12,6 +12,12 @@ type Props = {
   onCompare: (ids: string[], sources: AnalysisSummary[]) => void;
 };
 
+function clickbaitLabel(score: number): string {
+  if (score <= 3) return "Low Clickbait";
+  if (score <= 6) return "Sensationalized";
+  return "High Clickbait";
+}
+
 function formatRelative(iso: string): string {
   const date = new Date(iso);
   const diffMs = Date.now() - date.getTime();
@@ -130,7 +136,10 @@ export function HistoryPanel({
                   </div>
                   <div className="history-item-meta">
                     {item.channelName && <span>{item.channelName} · </span>}
-                    Score {item.clickbaitScore} · {formatRelative(item.createdAt)}
+                    <span title="WatchFilter's own editorial read — not a YouTube metric">
+                      {clickbaitLabel(item.clickbaitScore)}
+                    </span>{" "}
+                    · {formatRelative(item.createdAt)}
                   </div>
                 </div>
               </button>

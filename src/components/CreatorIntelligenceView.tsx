@@ -179,22 +179,6 @@ function LeaderboardRow({ rank, profile }: { rank: number; profile: CreatorProfi
           ))}
         </div>
       </td>
-      <td style={{ padding: "0.55rem 0.75rem", textAlign: "right" }}>
-        <span
-          style={{
-            display: "inline-block",
-            fontSize: "0.75rem",
-            fontWeight: 800,
-            color: authority_score >= 65 ? "#92400e" : authority_score >= 30 ? "#1e40af" : "#374151",
-            background: authority_score >= 65 ? "#fef3c7" : authority_score >= 30 ? "#dbeafe" : "#f3f4f6",
-            padding: "2px 8px",
-            borderRadius: 6,
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          {authority_score}
-        </span>
-      </td>
     </tr>
   );
 }
@@ -362,7 +346,7 @@ export function CreatorIntelligenceView() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
                   <thead>
                     <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                      {["#", "Creator", "Tier", "Videos", "Evidence", "Topics", "WatchFilter Rating"].map(h => (
+                      {["#", "Creator", "Tier", "Videos", "Evidence", "Topics"].map(h => (
                         <th
                           key={h}
                           style={{

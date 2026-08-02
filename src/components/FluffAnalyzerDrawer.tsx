@@ -86,11 +86,11 @@ export function FluffAnalyzerDrawer({ isOpen, video, ai, onClose, onFullAnalyze,
   if (ai?.subScores) {
     const { educationalValue, actionability, informationDensity } = ai.subScores;
     if (educationalValue >= 70)
-      actionPoints.push(`Educational depth ${educationalValue}/100 — dense with learnable frameworks and transferable concepts.`);
+      actionPoints.push(`Strong educational depth — dense with learnable frameworks and transferable concepts.`);
     if (actionability >= 70)
-      actionPoints.push(`Actionability ${actionability}/100 — contains concrete, executable steps you can apply immediately.`);
+      actionPoints.push(`Highly actionable — contains concrete, executable steps you can apply immediately.`);
     if (informationDensity >= 70)
-      actionPoints.push(`Information density ${informationDensity}/100 — low filler-to-insight ratio throughout runtime.`);
+      actionPoints.push(`High information density — low filler-to-insight ratio throughout runtime.`);
   }
 
   return (

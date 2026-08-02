@@ -77,9 +77,13 @@ function toUIStatus(s: OutputStatus): UIStatus { return { status: s.status as Se
 
 function ConfidencePill({ value, size = 11 }: { value: number; size?: number }) {
   const color = value >= 85 ? "#10b981" : value >= 70 ? "#f59e0b" : "#94a3b8";
+  const label = value >= 85 ? "High conf" : value >= 70 ? "Medium conf" : "Low conf";
   return (
-    <span style={{ fontSize: size, fontFamily: "monospace", fontWeight: 700, color, background: `${color}18`, padding: "1px 6px", borderRadius: 4 }}>
-      {value}% conf
+    <span
+      style={{ fontSize: size, fontFamily: "monospace", fontWeight: 700, color, background: `${color}18`, padding: "1px 6px", borderRadius: 4 }}
+      title="WatchFilter's own editorial read — not a YouTube metric"
+    >
+      {label}
     </span>
   );
 }
@@ -298,7 +302,9 @@ function InsightCard({ ins, index, autoSend, sending, onSend, onGenerateTask }: 
             <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: atMeta.bg, color: atMeta.color }}>
               {atMeta.label}
             </span>
-            <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>rel {ins.relevance_score}/10</span>
+            <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }} title="WatchFilter's own editorial read — not a YouTube metric">
+              {ins.relevance_score >= 7 ? "high rel" : ins.relevance_score >= 4 ? "med rel" : "low rel"}
+            </span>
           </div>
           <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 7px", lineHeight: 1.35 }}>{ins.title}</p>
           <p style={{ fontSize: 13, color: "#374151", margin: 0, lineHeight: 1.6 }}>{ins.why_it_matters}</p>

@@ -1134,8 +1134,11 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
                 </div>
                 <p style={{ margin: 0, fontSize: "0.75rem", fontWeight: 600, color: claim.potentially_off_question ? "#9a7a20" : "#0f172a", lineHeight: 1.5 }}>{claim.theme}</p>
                 {claim.avg_alignment != null && (
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.56rem", color: claim.avg_alignment >= 0.60 ? "#10b981" : claim.avg_alignment >= 0.35 ? "#d97706" : "#ef4444" }}>
-                    Alignment {Math.round(claim.avg_alignment * 100)}%
+                  <p
+                    style={{ margin: "0.1rem 0 0", fontSize: "0.56rem", color: claim.avg_alignment >= 0.60 ? "#10b981" : claim.avg_alignment >= 0.35 ? "#d97706" : "#ef4444" }}
+                    title="WatchFilter's own editorial read — not a YouTube metric"
+                  >
+                    Alignment {claim.avg_alignment >= 0.60 ? "Strong" : claim.avg_alignment >= 0.35 ? "Moderate" : "Weak"}
                   </p>
                 )}
               </div>
@@ -1146,8 +1149,8 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
                 </span>
                 {/* Confidence score */}
                 {claim.confidence_score != null && (
-                  <span style={{ fontSize: "0.6rem", fontWeight: 800, color: scoreColor }}>
-                    {claim.confidence_score} / 100
+                  <span style={{ fontSize: "0.6rem", fontWeight: 800, color: scoreColor }} title="WatchFilter's own editorial read — not a YouTube metric">
+                    {claim.confidence_score >= 80 ? "High" : claim.confidence_score >= 50 ? "Medium" : "Low"} confidence
                   </span>
                 )}
                 {/* Creator + evidence count */}
@@ -1191,10 +1194,13 @@ function CreatorEvidenceSection({ memo }: { memo: IntelligenceMemo }) {
                         </>
                       )}
                       {alignPct != null && (
-                        <span style={{ fontSize: "0.53rem", fontWeight: 700, padding: "1px 6px", borderRadius: 10,
-                          background: `${alignColor}18`, color: alignColor, border: `1px solid ${alignColor}44`,
-                          marginLeft: "auto", flexShrink: 0 }}>
-                          {alignPct}% aligned
+                        <span
+                          style={{ fontSize: "0.53rem", fontWeight: 700, padding: "1px 6px", borderRadius: 10,
+                            background: `${alignColor}18`, color: alignColor, border: `1px solid ${alignColor}44`,
+                            marginLeft: "auto", flexShrink: 0 }}
+                          title="WatchFilter's own editorial read — not a YouTube metric"
+                        >
+                          {alignPct >= 60 ? "well aligned" : alignPct >= 30 ? "loosely aligned" : "poorly aligned"}
                         </span>
                       )}
                     </div>
