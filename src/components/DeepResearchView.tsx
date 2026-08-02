@@ -78,8 +78,8 @@ function ScoreBar({ score }: { score: number }) {
       <div style={{ flex: 1, height: 5, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
         <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 3 }} />
       </div>
-      <span style={{ fontSize: "0.68rem", fontWeight: 800, color, minWidth: 34, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-        {pct}%
+      <span style={{ fontSize: "0.68rem", fontWeight: 800, color, minWidth: 34, textAlign: "right" }} title="WatchFilter's own editorial read — not a YouTube metric">
+        {pct >= 65 ? "Strong" : pct >= 35 ? "Moderate" : "Weak"}
       </span>
     </div>
   );
@@ -177,8 +177,8 @@ function DebateCard({ debate }: { debate: DebateCluster }) {
           <span style={{ fontSize: "0.62rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: `${relColor}18`, color: relColor, border: `1px solid ${relColor}44`, textTransform: "capitalize" }}>
             {rel}
           </span>
-          <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "#94a3b8" }}>
-            {Math.round(debate.strength * 100)}% strength
+          <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "#94a3b8" }} title="WatchFilter's own editorial read — not a YouTube metric">
+            {debate.strength >= 0.65 ? "strong" : debate.strength >= 0.35 ? "moderate" : "weak"} strength
           </span>
         </div>
       </div>
@@ -303,7 +303,7 @@ function NarrativeShiftSection({ shifts }: { shifts: NarrativeShift[] }) {
     <section>
       <SectionHeader title="Narrative Shifts" count={visible.length} />
       <p style={{ margin: "0 0 0.75rem", fontSize: "0.75rem", color: "#64748b" }}>
-        Creator belief changes detected across evidence — temporal intelligence only shown when shift_confidence &gt; 0.70.
+        Creator belief changes detected across evidence — temporal intelligence only shown for high-confidence shifts.
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
         {visible.map((s, i) => (
@@ -312,8 +312,8 @@ function NarrativeShiftSection({ shifts }: { shifts: NarrativeShift[] }) {
               <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0f172a" }}>{s.creator}</span>
               <span style={{ fontSize: "0.68rem", color: "#94a3b8" }}>on</span>
               <span style={{ fontSize: "0.73rem", fontWeight: 600, color: "#6366f1" }}>{s.topic}</span>
-              <span style={{ fontSize: "0.6rem", fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#f5f3ff", border: "1px solid #c4b5fd", color: "#6d28d9", marginLeft: "auto" }}>
-                {Math.round(s.shift_confidence * 100)}% confidence
+              <span style={{ fontSize: "0.6rem", fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#f5f3ff", border: "1px solid #c4b5fd", color: "#6d28d9", marginLeft: "auto" }} title="WatchFilter's own editorial read — not a YouTube metric">
+                {s.shift_confidence >= 0.85 ? "High" : "Medium"} confidence
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
@@ -348,8 +348,10 @@ function EarlyMoversSection({ movers }: { movers: EarlyMover[] }) {
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         {sorted.map((m, i) => (
           <div key={i} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "0.75rem 1rem", display: "flex", gap: "0.9rem", alignItems: "flex-start" }}>
-            <div style={{ flexShrink: 0, textAlign: "center", minWidth: 48 }}>
-              <p style={{ margin: 0, fontSize: "1rem", fontWeight: 900, color: "#6366f1" }}>{Math.round(m.predictive_score * 100)}</p>
+            <div style={{ flexShrink: 0, textAlign: "center", minWidth: 48 }} title="WatchFilter's own editorial read — not a YouTube metric">
+              <p style={{ margin: 0, fontSize: "0.72rem", fontWeight: 900, color: "#6366f1" }}>
+                {m.predictive_score >= 0.7 ? "High" : m.predictive_score >= 0.4 ? "Med" : "Low"}
+              </p>
               <p style={{ margin: 0, fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>score</p>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>

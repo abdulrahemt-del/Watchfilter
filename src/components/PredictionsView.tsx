@@ -15,8 +15,8 @@ function AccuracyMeter({ score, evaluated }: { score: number; evaluated: number 
       <div style={{ width: 80, height: 6, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
         <div style={{ width: `${score}%`, height: "100%", background: color, borderRadius: 3 }} />
       </div>
-      <span style={{ fontSize: "0.72rem", fontWeight: 800, color, minWidth: 32, fontVariantNumeric: "tabular-nums" }}>
-        {score}
+      <span style={{ fontSize: "0.72rem", fontWeight: 800, color, minWidth: 32 }} title="WatchFilter's own editorial read — not a YouTube metric">
+        {score >= 70 ? "High" : score >= 50 ? "Medium" : "Low"}
       </span>
     </div>
   );
@@ -189,8 +189,11 @@ function PredictionItem({ p, domainAccuracy }: { p: PredictionRow; domainAccurac
               <span style={{ fontSize: "0.55rem", color: "#94a3b8" }}>not trackable</span>
             )}
             {score !== null && (
-              <span style={{ fontSize: "0.65rem", fontWeight: 800, color: score >= 70 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444", marginLeft: "auto" }}>
-                {score}/100
+              <span
+                style={{ fontSize: "0.65rem", fontWeight: 800, color: score >= 70 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444", marginLeft: "auto" }}
+                title="WatchFilter's own editorial read — not a YouTube metric"
+              >
+                {score >= 70 ? "High" : score >= 50 ? "Medium" : "Low"} accuracy
               </span>
             )}
           </div>

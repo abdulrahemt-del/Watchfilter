@@ -73,6 +73,13 @@ function wwScoreColor(score: number): string {
   return "var(--danger, #ef4444)";
 }
 
+function wwScoreLabel(score: number): string {
+  if (score >= 8) return "High";
+  if (score >= 6) return "Above Average";
+  if (score >= 4) return "Mixed";
+  return "Low";
+}
+
 function wwBarColor(value: number, invert = false): string {
   const effective = invert ? 11 - value : value;
   if (effective >= 8) return "var(--ok, #22c55e)";
@@ -343,8 +350,7 @@ const allQuotes  = report?.clusters.flatMap((c) => c.supportingQuotes ?? []) ?? 
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5" style={sans}>🎯 Worth Watching?</p>
                     <div className="bg-[#141a27] border border-slate-800/60 rounded-2xl px-7 py-6 space-y-4">
                       <div className="flex items-baseline gap-2" style={sans}>
-                        <span className="text-4xl font-black" style={{ color: wwScoreColor(avgWw.score) }}>{avgWw.score.toFixed(1)}</span>
-                        <span className="text-slate-500 text-lg">/10</span>
+                        <span className="text-4xl font-black" style={{ color: wwScoreColor(avgWw.score) }} title="WatchFilter's own editorial read — not a YouTube metric">{wwScoreLabel(avgWw.score)}</span>
                         <span className="text-sm text-slate-500 ml-2">avg across {wwAnalyses.length} video{wwAnalyses.length !== 1 ? "s" : ""}</span>
                       </div>
                       <div className="space-y-2.5">
@@ -356,7 +362,6 @@ const allQuotes  = report?.clusters.flatMap((c) => c.supportingQuotes ?? []) ?? 
                               <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                                 <div className="h-full rounded-full" style={{ width: `${(val / 10) * 100}%`, background: wwBarColor(val, invert) }} />
                               </div>
-                              <span className="text-xs font-bold text-slate-400 w-5 text-right">{Math.round(val)}</span>
                             </div>
                           );
                         })}

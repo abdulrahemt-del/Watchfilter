@@ -812,7 +812,7 @@ export function IntelligenceDashboard() {
                     <div className="id-creator-row__body">
                       <div className="id-creator-row__name">{c.channel}</div>
                       <div className="id-creator-row__meta">
-                        {c.count} video{c.count !== 1 ? "s" : ""} · avg score {c.avgScore}
+                        {c.count} video{c.count !== 1 ? "s" : ""} · <span title="WatchFilter's own editorial read — not a YouTube metric">{c.avgScore >= 80 ? "high" : c.avgScore >= 50 ? "medium" : "low"} avg score</span>
                       </div>
                     </div>
                     <div className="id-creator-row__bar">

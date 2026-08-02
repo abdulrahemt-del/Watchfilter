@@ -72,11 +72,8 @@ export function ConsensusView({ result, sources, onBack }: Props) {
           ))}
         </div>
 
-        <div className={`cv-sentiment cv-sentiment--${result.overall_sentiment.label}`}>
+        <div className={`cv-sentiment cv-sentiment--${result.overall_sentiment.label}`} title="WatchFilter's own editorial read — not a YouTube metric">
           {sentimentEmoji(result.overall_sentiment.label)} {result.overall_sentiment.label}
-          <span style={{ fontWeight: 400, marginLeft: "0.4rem", opacity: 0.75 }}>
-            {result.overall_sentiment.score > 0 ? "+" : ""}{result.overall_sentiment.score.toFixed(1)}/5
-          </span>
         </div>
 
         <SentimentBar score={result.overall_sentiment.score} />

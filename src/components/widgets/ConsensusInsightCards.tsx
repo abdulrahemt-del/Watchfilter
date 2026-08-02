@@ -60,7 +60,9 @@ function Card({ card }: { card: InsightCard }) {
       {/* Evidence row */}
       <div className="flex items-center gap-3 flex-wrap text-[10px] font-mono">
         {card.confidence !== null && (
-          <span className={`font-bold ${confColor}`}>{card.confidence}% agreement</span>
+          <span className={`font-bold ${confColor}`} title="WatchFilter's own editorial read — not a YouTube metric">
+            {card.confidence >= 80 ? "Strong" : card.confidence >= 60 ? "Moderate" : "Weak"} agreement
+          </span>
         )}
         <span className="text-slate-500">{card.creators} creator{card.creators !== 1 ? "s" : ""}</span>
         <span className="text-slate-500">{card.videoCount} video{card.videoCount !== 1 ? "s" : ""}</span>
