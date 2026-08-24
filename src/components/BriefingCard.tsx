@@ -94,11 +94,6 @@ export function BriefingCard({
   const [thumbErr, setThumbErr] = useState(false);
   const thumbUrl = `https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg`;
 
-  const score = item.clickbaitScore;
-  const badgeVariant =
-    score >= 7 ? "bc-v2-badge--high" : score >= 4 ? "bc-v2-badge--mid" : "bc-v2-badge--ok";
-  const scoreLabel =
-    score <= 3 ? "Low Clickbait" : score <= 6 ? "Sensationalized" : "High Clickbait";
 
   const channelDisplay = item.channelName ?? "Unknown Channel";
   const duration = formatDurationSecs(item.durationSeconds);
@@ -126,9 +121,6 @@ export function BriefingCard({
           <div className="bc-v2-avatar">{channelDisplay[0]?.toUpperCase()}</div>
           <span className="bc-v2-channel-name">{channelDisplay}</span>
         </div>
-        <span className={`bc-v2-badge ${badgeVariant}`} title="WatchFilter's own editorial read — not a YouTube metric">
-          {scoreLabel}
-        </span>
       </div>
 
       {/* ── 2. Title ── */}

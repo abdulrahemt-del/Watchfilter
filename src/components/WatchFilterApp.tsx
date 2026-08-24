@@ -296,7 +296,6 @@ function LibraryView({
                 {compareMode && <th style={TH}>✓</th>}
                 <th style={TH}>Creator</th>
                 <th style={TH}>Title</th>
-                <th style={TH}>WatchFilter Take</th>
                 <th style={{ ...TH, textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
@@ -304,9 +303,6 @@ function LibraryView({
               {filtered.map((item, idx) => {
                 const hue = libStringHue(item.channelName ?? item.videoId);
                 const letter = (item.channelName ?? item.videoId)[0]?.toUpperCase() ?? "?";
-                const score = item.clickbaitScore;
-                const scoreClass = score <= 3 ? "score-ok" : score <= 6 ? "score-mid" : "score-high";
-                const scoreLabel = score <= 3 ? "Low Clickbait" : score <= 6 ? "Sensationalized" : "High Clickbait";
                 const isSelected = selected.has(item.id);
                 const isActive = !compareMode && item.id === activeId;
                 const rowBg = isActive ? "#f0f7ff" : isSelected ? "#eff6ff" : "transparent";
@@ -356,15 +352,6 @@ function LibraryView({
                           {item.channelName ?? "Unknown"} · {libRelative(item.createdAt)}
                         </span>
                       </button>
-                    </td>
-                    <td style={TD}>
-                      <span
-                        className={`bc-score-badge ${scoreClass}`}
-                        style={{ whiteSpace: "nowrap" }}
-                        title="WatchFilter's own editorial read — not a YouTube metric"
-                      >
-                        {scoreLabel}
-                      </span>
                     </td>
                     <td style={{ ...TD, textAlign: "right" }}>
                       <div style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>

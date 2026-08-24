@@ -888,14 +888,6 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
           )}
           <div className="feed-card__meta">
             <span className="feed-card__age">{formatAge(video.publishedAt)}</span>
-            {video.duration && estimateSavings(video.duration) && (
-              <span className="feed-card__savings">{estimateSavings(video.duration)}</span>
-            )}
-            {rs !== null && (
-              <span className={scoreBadgeClass(rs)} title="WatchFilter's own editorial read — not a YouTube metric">
-                WatchFilter Take: {scoreBadgeLabel(rs)}
-              </span>
-            )}
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button onClick={() => setDrawerVideo(video)} className="feed-card__analyze-btn">
@@ -1615,11 +1607,6 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                               <div className="flex-1 space-y-1.5 min-w-0">
                                 <div className="flex items-center justify-between gap-2 text-[10px] font-mono">
                                   <span className="font-black text-slate-300 uppercase truncate">{v.channelTitle}</span>
-                                  {estimateSavings(v.duration) && (
-                                    <span className="shrink-0 text-emerald-400 font-bold bg-emerald-500/5 border border-emerald-500/10 px-1.5 py-0.5 rounded text-[9px] whitespace-nowrap">
-                                      {estimateSavings(v.duration)}
-                                    </span>
-                                  )}
                                 </div>
                                 <a href={`https://www.youtube.com/watch?v=${v.videoId}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
                                   <p className="text-xs font-bold text-slate-200 line-clamp-2 group-hover/card:text-blue-400 transition-colors leading-snug tracking-tight">
@@ -1793,7 +1780,7 @@ export function SubscriptionFeed({ onAnalyze }: Props) {
                           style={proofSort === opt
                             ? { background: "#38bdf8", color: "#0f2535" }
                             : { background: "rgba(15,37,53,0.6)", color: "#64748b" }}>
-                          {opt === "relevance" ? "WatchFilter Take" : "Most Recent"}
+                          {opt === "relevance" ? "Recommended" : "Most Recent"}
                         </button>
                       ))}
                     </div>
