@@ -320,7 +320,7 @@ const allQuotes  = report?.clusters.flatMap((c) => c.supportingQuotes ?? []) ?? 
                   <span className="text-slate-700">|</span>
                   <span><strong className="text-slate-200">{hardDataCount}</strong> data points</span>
                   <span className="text-slate-700">|</span>
-                  <span><strong className="text-slate-200">{insightCount}</strong> signals</span>
+                  <span><strong className="text-slate-200">{insightCount}</strong> insights</span>
                 </div>
                 <div style={sans}>
                   <div className="flex items-center justify-between mb-1.5">

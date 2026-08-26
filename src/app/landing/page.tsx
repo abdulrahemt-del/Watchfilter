@@ -12,13 +12,13 @@ import { WaitlistForm } from "@/components/WaitlistForm";
 const FEATURES = [
   {
     icon: "🎯",
-    title: "AI Relevance Scoring",
-    desc: "Every video in your subscriptions gets scored 0–100 for business relevance. Podcasts, interviews, and deep dives surface first. Off-topic noise is filtered out automatically.",
+    title: "AI-Curated Relevance",
+    desc: "WatchFilter reviews every video in your subscriptions for business relevance. Podcasts, interviews, and deep dives surface first. Off-topic noise is filtered out automatically.",
   },
   {
     icon: "🧠",
     title: "Creator Consensus Engine",
-    desc: "When 3+ creators independently cover the same topic, WatchFilter surfaces it as a confirmed signal — with confidence scores, trend direction, and recommended actions.",
+    desc: "When 3+ creators independently cover the same topic, WatchFilter surfaces it as a cross-verified theme — with a confidence read, trend direction, and recommended actions.",
   },
   {
     icon: "⚡",
@@ -38,7 +38,7 @@ const FEATURES = [
   {
     icon: "🛡️",
     title: "Hard-Blocked Noise",
-    desc: "Politics, sports, religion, breaking news, and entertainment are permanently removed — even from trusted channels. A Diary of a CEO UFO episode scores zero.",
+    desc: "Politics, sports, religion, breaking news, and entertainment are permanently removed — even from trusted channels. A Diary of a CEO UFO episode gets filtered out entirely.",
   },
 ];
 
@@ -51,7 +51,7 @@ const STEPS = [
   {
     n: "02",
     title: "Pick your intelligence mode",
-    desc: "Select Business Intelligence, Founder & Investing, or Finance. The AI scans your feed and scores every video in seconds.",
+    desc: "Select Business Intelligence, Founder & Investing, or Finance. The AI scans your feed and prioritizes what's worth your time in seconds.",
   },
   {
     n: "03",
@@ -128,8 +128,8 @@ export default function LandingPage() {
         <div style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "2rem", textAlign: "center" }}>
           {[
             { value: "40 min+", label: "Minimum video length filtered" },
-            { value: "0–100", label: "AI relevance score per video" },
-            { value: "3+", label: "Creators needed to confirm a signal" },
+            { value: "55+", label: "Trusted source channels" },
+            { value: "3+", label: "Creators needed to confirm a theme" },
             { value: "~60%", label: "Average watch time saved" },
           ].map(({ value, label }) => (
             <div key={label}>
@@ -147,7 +147,7 @@ export default function LandingPage() {
             What it does
           </p>
           <h2 style={{ fontSize: "clamp(1.6rem, 3vw, 2.4rem)", fontWeight: 900, letterSpacing: "-0.02em", color: "#0f2535", margin: 0 }}>
-            Signal, not volume
+            Depth, not volume
           </h2>
         </div>
 
