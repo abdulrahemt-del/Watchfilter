@@ -74,7 +74,7 @@ function DashboardView({
           <input
             className="dash-deck-input"
             type="url"
-            placeholder="Paste any YouTube URL to extract verified metrics..."
+            placeholder="Paste any YouTube URL to analyze..."
             value={localUrl}
             onChange={(e) => setLocalUrl(e.target.value)}
             disabled={analyzing}

@@ -812,7 +812,7 @@ export function AnalysisView({ analysis, onRefresh, onPlayAudio, onReanalyzed }:
           </div>
           <div className="av-snapshot-item">
             <span className="av-snapshot-key">Data Density</span>
-            <span className="av-snapshot-val">{analysis.hard_data_points.length} metrics</span>
+            <span className="av-snapshot-val">{analysis.hard_data_points.length} data points</span>
           </div>
         </div>
 

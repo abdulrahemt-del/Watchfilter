@@ -386,7 +386,7 @@ export function MarketIntelligencePulse({ onNavigate, onAnalyze }: { onNavigate?
       const prevCount = prevSnapshot?.themes?.find(p => p.topic.toLowerCase() === t.topic.toLowerCase())?.count;
       const delta = prevCount !== undefined
         ? t.count > prevCount ? `+${t.count - prevCount} videos` : prevCount > t.count ? `-${prevCount - t.count} videos` : "Steady"
-        : isNew ? "New Signal" : "Steady";
+        : isNew ? "Newly Emerging" : "Steady";
       const ct = consensusData?.themes?.find(c => c.topic.toLowerCase() === t.topic.toLowerCase());
       if (!isRisk) alerts.push({
         id: i + 1, type, label: t.topic, delta,
@@ -865,11 +865,11 @@ export function MarketIntelligencePulse({ onNavigate, onAnalyze }: { onNavigate?
       </div>
 
       {/* ══════════════════════════════════════════════
-          7. SIGNAL METRICS — SUPPORTING DATA
+          7. SUPPORTING DATA
          ══════════════════════════════════════════════ */}
       <div className="space-y-3">
         <h2 className="text-[10px] font-mono font-black text-[#8b8c89] uppercase tracking-widest px-1">
-          Signal Metrics
+          Supporting Data
         </h2>
         <CorePulseMetrics metrics={coreMetrics} loading={isLoading && !coreMetrics.some(m => m.value !== "0")} />
       </div>

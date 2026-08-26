@@ -177,7 +177,7 @@ export function BriefingCard({
           {item.dataPointsCount > 0 && (
             <div className="bc-v2-metric-count">
               <span>📊</span>
-              <span>{item.dataPointsCount} Hard Metrics Extracted</span>
+              <span>{item.dataPointsCount} Key Data Points Extracted</span>
             </div>
           )}
 

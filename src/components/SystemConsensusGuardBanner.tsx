@@ -24,7 +24,7 @@ export function SystemConsensusGuardBanner({ currentSourceCount, requiredSourceC
           <p className="text-xs text-[#6b8a99] leading-relaxed max-w-2xl">
             This tracking view has isolated data parameters from{" "}
             <strong className="text-[#1a2e3b]">{currentSourceCount} creator channel</strong>. True market consensus
-            compilation metrics require cross-examination validation from{" "}
+            requires cross-examination validation from{" "}
             <strong className="text-[#1a2e3b]">{requiredSourceCount}+ independent channels</strong>.
           </p>
         </div>

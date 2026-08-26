@@ -396,7 +396,7 @@ function ThemeCard({
             </div>
             {theme.operatorPlaybook.implementationMetric && (
               <div className="space-y-0.5">
-                <p className="text-[10px] font-mono font-black text-emerald-600 uppercase tracking-wider">Implementation Metric</p>
+                <p className="text-[10px] font-mono font-black text-emerald-600 uppercase tracking-wider">How to Measure It</p>
                 <p className="text-sm font-mono text-emerald-800">{theme.operatorPlaybook.implementationMetric}</p>
               </div>
             )}

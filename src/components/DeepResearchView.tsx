@@ -631,7 +631,7 @@ function RecommendedActionCard({ rec }: { rec: RecommendedAction }) {
         {/* MEDIUM: metrics + risks */}
         {rec.metrics && (
           <div style={{ background: "white", borderRadius: 8, padding: "0.6rem 0.75rem", border: `1px solid ${meta.border}` }}>
-            <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: meta.accent }}>Metrics to Track</p>
+            <p style={{ margin: "0 0 0.2rem", fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: meta.accent }}>What to Track</p>
             <p style={{ margin: 0, fontSize: "0.76rem", color: "#334155" }}>{rec.metrics}</p>
           </div>
         )}

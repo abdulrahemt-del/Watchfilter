@@ -443,7 +443,7 @@ const allQuotes  = report?.clusters.flatMap((c) => c.supportingQuotes ?? []) ?? 
                       const p = pt as Record<string, unknown>;
                       return {
                         id: `${a.id}-${i}`,
-                        metricLabel: (p.metric_title as string) ?? "(no metric)",
+                        metricLabel: (p.metric_title as string) ?? "(no data point)",
                         verbatimQuote: (p.direct_quote as string) ?? "",
                         sourceChannel: a.channelName ?? "Unknown",
                         timestampMark: (p.exact_timestamp as string) ?? "",

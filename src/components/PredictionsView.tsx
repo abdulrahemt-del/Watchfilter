@@ -246,7 +246,7 @@ function PredictionItem({ p, domainAccuracy }: { p: PredictionRow; domainAccurac
               <p style={{ margin: "0 0 0.2rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b" }}>Resolution Method</p>
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                 {p.resolution.metric && (
-                  <span style={{ fontSize: "0.68rem", color: "#374151" }}>Metric: <strong>{p.resolution.metric}</strong></span>
+                  <span style={{ fontSize: "0.68rem", color: "#374151" }}>Tracking: <strong>{p.resolution.metric}</strong></span>
                 )}
                 {p.resolution.threshold && (
                   <span style={{ fontSize: "0.68rem", color: "#374151" }}>Threshold: <strong>{p.resolution.threshold}</strong></span>
